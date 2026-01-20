@@ -112,6 +112,33 @@ services:
       python backend/scripts/vectorDB/run_vector_etl.py
       "
 
+  scentmap:
+    build:
+      context: ./scentmap
+      dockerfile: ../docker/Dockerfile.scentmap
+    container_name: scentmap-service
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./scentmap:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DATABASE_URL=postgresql://scentence:scentence@db:5432/scentence_db
+      - PERFUME_DATABASE_URL=postgresql://scentence:scentence@db:5432/perfume_db
+      - RECOM_DATABASE_URL=postgresql://scentence:scentence@db:5432/recom_db
+      - MEMBER_DATABASE_URL=postgresql://scentence:scentence@db:5432/member_db
+    depends_on:
+      db:
+        condition: service_healthy
+      data-init:
+        condition: service_completed_successfully
+    command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+    env_file:
+      - .env
+    # environment (가장 높은 우선순위) > env_file (낮은 우선순위) 
+
 volumes:
   pgdata:
     name: pgdata

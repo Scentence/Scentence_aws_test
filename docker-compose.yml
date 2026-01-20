@@ -114,13 +114,13 @@ services:
 
   scentmap:
     build:
-      context: ./scentmap
+      context: .
       dockerfile: ../docker/Dockerfile.scentmap
     container_name: scentmap-service
     ports:
       - "8001:8001"
     volumes:
-      - ./scentmap:/app
+      - ./scentmap:/app/scentmap
     environment:
       - PYTHONUNBUFFERED=1
       - DB_HOST=db
@@ -134,7 +134,7 @@ services:
         condition: service_healthy
       data-init:
         condition: service_completed_successfully
-    command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+    command: uvicorn scentmap.main:app --host 0.0.0.0 --port 8001 --reload
     env_file:
       - .env
     # environment (가장 높은 우선순위) > env_file (낮은 우선순위) 

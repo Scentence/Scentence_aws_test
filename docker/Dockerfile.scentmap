@@ -1,5 +1,5 @@
 # 향수맵(scentmap) 서비스용 Dockerfile
-# Build context: Scentence/scentmap
+# Build context: Scentence
 FROM python:3.11-slim
 
 # 작업 디렉토리 설정
@@ -12,13 +12,11 @@ RUN apt-get update && \
     gcc && \
     rm -rf /var/lib/apt/lists/*
 
-# Python 의존성 파일 복사 및 설치
-COPY requirements.txt .
+# 프로젝트 파일 복사 및 설치
+COPY pyproject.toml /app/pyproject.toml
+COPY scentmap /app/scentmap
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
-
-# 애플리케이션 코드 복사
-COPY . .
+    pip install --no-cache-dir .
 
 # 헬스체크 설정
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
@@ -28,4 +26,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 EXPOSE 8001
 
 # 애플리케이션 실행
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
+CMD ["uvicorn", "scentmap.main:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]

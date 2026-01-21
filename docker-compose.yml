@@ -1,121 +1,48 @@
 version: '3.8'
 
 services:
-  db:
-    image: pgvector/pgvector:pg17
-    container_name: pgvector-db
-    environment:
-      POSTGRES_USER: scentence
-      POSTGRES_PASSWORD: scentence
-      POSTGRES_DB: scentence_db
-    ports:
-      - "5433:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
-      - ./postgres/scripts:/app/scripts
-      - ./postgres/create:/app/create
-    command: postgres -c log_statement=none -c log_min_duration_statement=-1
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U scentence -d scentence_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  data-init:
-    image: python:3.11-slim
-    container_name: data-init
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      POSTGRES_HOST: db
-      POSTGRES_PORT: 5432
-      POSTGRES_USER: scentence
-      POSTGRES_PASSWORD: scentence
-      POSTGRES_DB: perfume_db
-    volumes:
-      - ./postgres/scripts:/app/scripts
-      - ./init-data.sh:/app/init-data.sh
-    working_dir: /app
-    command: >
-      bash -c "
-        apt-get update &&
-        apt-get install -y postgresql-client &&
-        rm -rf /var/lib/apt/lists/* &&
-        pip install --no-cache-dir pandas psycopg2-binary numpy &&
-        bash /app/init-data.sh
-      "
-    restart: "no"
-
+  # [1] 백엔드 (FastAPI)
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: fastapi-backend
+    container_name: scentence-backend
     ports:
       - "8000:8000"
     volumes:
       - ./backend:/app
+    env_file: .env
     environment:
-      - PYTHONUNBUFFERED=1
-      - DB_HOST=db
-      - DB_PORT=5432
-      - DATABASE_URL=postgresql://scentence:scentence@db:5432/scentence_db
-      - PERFUME_DATABASE_URL=postgresql://scentence:scentence@db:5432/perfume_db
-      - RECOM_DATABASE_URL=postgresql://scentence:scentence@db:5432/recom_db
-      - MEMBER_DATABASE_URL=postgresql://scentence:scentence@db:5432/member_db
-    depends_on:
-      db:
-        condition: service_healthy
-      data-init:
-        condition: service_completed_successfully
+      # .env에서 불러온 값으로 DB 접속 URL 완성
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+    # [핵심] 도커 내부에서 'host.docker.internal'을 내 컴퓨터(Host) IP로 인식하게 함
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-    env_file:
-      - .env
 
+  # [2] 프론트엔드 (Next.js)
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: nextjs-frontend
+    container_name: scentence-frontend
     ports:
       - "3000:3000"
     volumes:
       - ./frontend:/app
       - /app/node_modules
-      - /app/.next
+    env_file: .env
     environment:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-    env_file:
-      - .env
     depends_on:
       - backend
-
-  etl-worker:
-    image: python:3.11-slim
-    container_name: perfume-etl-worker
-    depends_on:
-      db:
-        condition: service_healthy
-      data-init:
-        condition: service_completed_successfully
-    environment:
-      - DB_HOST=db
-      - DB_PORT=5432
-    volumes:
-      - ./:/app
-    working_dir: /app
-    command: >
-      sh -c "
-      pip install pandas psycopg2-binary tqdm &&
-      python backend/scripts/vectorDB/run_vector_etl.py
-      "
-
+      
   scentmap:
     build:
-      context: .
-      dockerfile: ../docker/Dockerfile.scentmap
+      context: ./scentmap
+      dockerfile: Dockerfile
     container_name: scentmap-service
     ports:
       - "8001:8001"

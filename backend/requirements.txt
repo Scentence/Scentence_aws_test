@@ -12,3 +12,4 @@ langgraph
 langsmith
 openai
 Levenshtein
+passlib[bcrypt]

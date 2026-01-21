@@ -12,7 +12,7 @@ DB_CONFIG = {
     "user": os.getenv("PERFUME_DB_USER", "scentence"),
     "password": os.getenv("PERFUME_DB_PASSWORD", "scentence"),
     "host": os.getenv("PERFUME_DB_HOST", os.getenv("DB_HOST", "localhost")),
-    "port": os.getenv("PERFUME_DB_PORT", os.getenv("DB_PORT", "5433")),
+    "port": os.getenv("PERFUME_DB_PORT", os.getenv("DB_PORT", "5432")),
 }
 
 

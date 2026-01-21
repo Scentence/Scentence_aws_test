@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # [1] 백엔드 (FastAPI)
+  # [1] 백엔드 (FastAPI) - 기존 유지
   backend:
     build:
       context: ./backend
@@ -13,16 +13,14 @@ services:
       - ./backend:/app
     env_file: .env
     environment:
-      # .env에서 불러온 값으로 DB 접속 URL 완성
       - DB_HOST=${DB_HOST}
       - DB_PORT=${DB_PORT}
       - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
-    # [핵심] 도커 내부에서 'host.docker.internal'을 내 컴퓨터(Host) IP로 인식하게 함
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
-  # [2] 프론트엔드 (Next.js)
+  # [2] 프론트엔드 (Next.js) - 기존 유지
   frontend:
     build:
       context: ./frontend
@@ -38,11 +36,12 @@ services:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
     depends_on:
       - backend
-      
+
+  # [3] Scentmap 서비스 - 대폭 수정
   scentmap:
     build:
-      context: ./scentmap
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./scentmap/Dockerfile
     container_name: scentmap-service
     ports:
       - "8001:8001"
@@ -50,21 +49,21 @@ services:
       - ./scentmap:/app/scentmap
     environment:
       - PYTHONUNBUFFERED=1
-      - DB_HOST=db
-      - DB_PORT=5432
-      - DATABASE_URL=postgresql://scentence:scentence@db:5432/scentence_db
-      - PERFUME_DATABASE_URL=postgresql://scentence:scentence@db:5432/perfume_db
-      - RECOM_DATABASE_URL=postgresql://scentence:scentence@db:5432/recom_db
-      - MEMBER_DATABASE_URL=postgresql://scentence:scentence@db:5432/member_db
-    depends_on:
-      db:
-        condition: service_healthy
-      data-init:
-        condition: service_completed_successfully
+      # [수정] 'db'라는 이름 대신 .env의 DB_HOST(host.docker.internal)를 사용하도록 변경
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      # [수정] 하드코딩된 'db:5432'를 변수로 교체하여 로컬 DB 접속 유도
+      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/scentence_db
+      - PERFUME_DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/perfume_db
+      - RECOM_DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/recom_db
+      - MEMBER_DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/member_db
+    # [삭제] 현재 파일에 없는 db 및 data-init 서비스 의존성 제거
+    # [추가] scentmap 컨테이너도 외부 DB 주소를 알 수 있게 함
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command: uvicorn scentmap.main:app --host 0.0.0.0 --port 8001 --reload
     env_file:
       - .env
-    # environment (가장 높은 우선순위) > env_file (낮은 우선순위) 
 
 volumes:
   pgdata:

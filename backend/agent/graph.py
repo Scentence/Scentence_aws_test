@@ -8,6 +8,8 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, AIMessage, HumanMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
+import itertools
+import copy
 
 # [Import] 로컬 모듈 - schemas.py에서 정의한 모든 클래스를 가져옵니다.
 from .schemas import (
@@ -148,7 +150,7 @@ def interviewer_node(state: AgentState):
         if result.is_sufficient:
             print("   -> 🚀 정보 충족! Researcher 호출", flush=True)
             return {
-                "messages": [AIMessage(content=result.response_message)],
+                "messages": [],
                 "user_preferences": result.user_preferences.dict(),
                 "active_mode": None,
                 "next_step": "researcher",
@@ -171,94 +173,96 @@ def interviewer_node(state: AgentState):
 # 5. Researcher에 사용될 기능함수 정의
 # ==========================================
 def log_filters(h_filters: dict, s_filters: dict):
-    # [수정] Hard Filters에 담긴 모든 요소를 동적으로 출력합니다.
-    hard_items = []
-    for k, v in h_filters.items():
-        if v:
-            hard_items.append(f"{k.capitalize()}: {v}")
-
-    hard_str = f"🔒 [Hard] " + (" | ".join(hard_items) if hard_items else "None")
-
-    # Soft Filter 포매팅 (기존 유지)
-    soft_items = []
+    """현재 적용 중인 필터 조건을 가독성 좋게 출력합니다."""
+    # Hard Filter 포맷팅
+    h_items = [f"{k.capitalize()}: {v}" for k, v in h_filters.items() if v]
+    h_str = " | ".join(h_items) if h_items else "None"
+    
+    # Soft Filter 포맷팅
+    s_items = []
     for k, v in s_filters.items():
         if v:
-            soft_items.append(f"{k.capitalize()}: {v}")
+            # 리스트면 간결하게 표시
+            val_str = str(v) if not isinstance(v, list) else f"{v}"
+            s_items.append(f"{k.capitalize()}: {val_str}")
+    s_str = " | ".join(s_items) if s_items else "None"
 
-    soft_str = f"✨ [Soft] " + (" | ".join(soft_items) if soft_items else "None")
+    print(f"       🔒 [Hard] {h_str}", flush=True)
+    print(f"       ✨ [Soft] {s_str}", flush=True)
 
-    print(f"      {hard_str}", flush=True)
-    print(f"      {soft_str}", flush=True)
-
+# ==========================================
+# [Helper] 스마트 검색 및 재시도 로직 (조합형 시도)
+# ==========================================
+# backend/graph.py
 
 def smart_search_with_retry(
-    h_filters: dict,
-    s_filters: dict,
+    h_filters: dict, 
+    s_filters: dict, 
     exclude_ids: list = None,
-    query_text: str = "",  # [추가] 리랭킹을 위한 전략 이유(Reason)
+    query_text: str = "" 
 ):
-    import copy
 
-    # 원본 보존을 위해 딥카피 사용
-    current_filters = copy.deepcopy(s_filters)
+    # 중요도 순서: Note > Accord > Occasion
+    priority_order = ["note", "accord", "occasion"]
+    active_keys = [k for k in priority_order if k in s_filters and s_filters[k]]
 
-    # 1. Full Condition 시도
-    print(f"\n      📍 [Attempt 1] Full Conditions", flush=True)
-    # log_filters(h_filters, current_filters) # 로그 함수가 있다면 유지
+    # ---------------------------------------------------------
+    # 1. [Attempt 1] Full Conditions (로그 유지)
+    # ---------------------------------------------------------
+    print(f"\n      📍 [Attempt 1] Full Conditions ({len(active_keys)} filters)", flush=True)
+    log_filters(h_filters, s_filters)
 
-    # [수정] advanced_perfume_search_tool 사용 (1차 검색 -> 리뷰 리랭킹 -> Top 5)
     results = advanced_perfume_search_tool.invoke(
         {
             "hard_filters": h_filters,
-            "strategy_filters": current_filters,
+            "strategy_filters": s_filters,
             "exclude_ids": exclude_ids,
-            "query_text": query_text,  # [추가] 전략 이유 전달
+            "query_text": query_text,
         }
     )
 
     if results:
-        print(
-            f"      ✅ Found {len(results)} perfumes (Perfect Match + Reranked)",
-            flush=True,
-        )
+        print(f"      ✅ Found {len(results)} perfumes (Perfect Match)", flush=True)
         return results, "Perfect Match"
 
-    # 2. Waterfall (단계적 조건 완화)
-    drop_priority = ["occasion", "style", "accord", "note"]
+    # ---------------------------------------------------------
+    # 2. [Loop] Combinations (로그 제거 -> 성공 시에만 출력)
+    # ---------------------------------------------------------
+    for r in range(len(active_keys) - 1, 0, -1):
+        # 중요도 순서대로 조합 생성
+        combinations = list(itertools.combinations(active_keys, r))
+        
+        # [수정] "Trying..." 로그 제거 (조용히 시도)
+        
+        for combo_keys in combinations:
+            temp_filters = {k: s_filters[k] for k in combo_keys}
+            combo_str = "+".join([k.upper() for k in combo_keys])
+            
+            # [수정] "Testing..." 로그 제거 (조용히 시도)
 
-    for i, key in enumerate(drop_priority):
-        if key in current_filters and current_filters[key]:
-            dropped_val = current_filters[key]
-            del current_filters[key]
-
-            print(
-                f"\n      📍 [Attempt {i+2}] Relaxing... (Drop {key.upper()}: {dropped_val})",
-                flush=True,
-            )
-
-            # [수정] advanced_perfume_search_tool 사용
             results = advanced_perfume_search_tool.invoke(
                 {
                     "hard_filters": h_filters,
-                    "strategy_filters": current_filters,
+                    "strategy_filters": temp_filters,
                     "exclude_ids": exclude_ids,
-                    "query_text": query_text,  # [추가] 전략 이유 전달
+                    "query_text": query_text,
                 }
             )
 
             if results:
-                match_type = f"Relaxed (Dropped {key})"
-                print(
-                    f"      ✅ Found {len(results)} perfumes ({match_type})", flush=True
-                )
+                # [수정] 성공 시 Level과 조합명(Combo)을 명시
+                level = len(active_keys) - r
+                match_type = f"Relaxed (Level {level} - [{combo_str}])"
+                print(f"      ✅ Found {len(results)} perfumes ({match_type})", flush=True)
                 return results, match_type
 
     return [], "No Results"
 
-
 # ==========================================
 # 6. Researcher노드 정의
 # ==========================================
+# backend/graph.py
+
 def researcher_node(state: AgentState):
     print(f"\n🧠 [Researcher] 전략 수립 및 DB 검색...", flush=True)
 
@@ -278,7 +282,7 @@ def researcher_node(state: AgentState):
                 flush=True,
             )
 
-    # [2] 전략 수립 메시지 생성 (기존 유지)
+    # [2] 전략 수립 메시지 생성
     messages = [
         SystemMessage(content=RESEARCHER_SYSTEM_PROMPT),
         HumanMessage(
@@ -298,8 +302,8 @@ def researcher_node(state: AgentState):
             print(f"   👉 [Strategy {plan.priority}] {plan.strategy_name}", flush=True)
 
             current_reason = plan.reason
-
-            # [추가] 리랭킹용 쿼리 텍스트 구성 (이유 + 키워드)
+            
+            # 리랭킹용 쿼리 텍스트 구성 (기본값)
             search_query_text = (
                 f"{current_reason}. Keywords: {', '.join(plan.strategy_keyword)}"
             )
@@ -310,13 +314,36 @@ def researcher_node(state: AgentState):
                 else plan.hard_filters.dict(exclude_none=True)
             )
 
-            # [안전장치] 매핑 (기존 유지)
-            if h_filters.get("season") == "봄":
-                h_filters["season"] = "Spring"
-            if h_filters.get("gender") == "남성":
-                h_filters["gender"] = "Men"
-            if refined_hard_note:
-                h_filters["note"] = refined_hard_note
+            # [안전장치] 기본 매핑
+            if h_filters.get("season") == "봄": h_filters["season"] = "Spring"
+            if h_filters.get("gender") == "남성": h_filters["gender"] = "Men"
+            if refined_hard_note: h_filters["note"] = refined_hard_note
+
+            # =================================================================
+            # [★수정 포인트] Occasion 이원화 전략 (Dual-Track Strategy)
+            # =================================================================
+            target_occasion = h_filters.get("occasion")
+            if target_occasion:
+                # DB 메타데이터 로드 (유효성 검사를 위해 필요)
+                from .database import fetch_meta_data
+                meta = fetch_meta_data()
+                
+                # DB에 있는 유효한 상황 목록 (소문자 변환하여 비교)
+                valid_occasions = [o.strip().lower() for o in meta.get("occasions", "").split(",")]
+                
+                if target_occasion.lower() in valid_occasions:
+                    # Case A: DB에 있는 값 (예: Office, Date) -> Hard Filter 유지
+                    print(f"      🔒 Occasion '{target_occasion}' is valid. Keeping Hard Filter.", flush=True)
+                else:
+                    # Case B: DB에 없는 값 (예: Wedding, Gym) -> Hard Filter 제거 & 쿼리에 추가
+                    print(f"      ⚠️ Occasion '{target_occasion}' not in DB. Moving to Query Text.", flush=True)
+                    
+                    # 1. SQL 조건에서 삭제 (0건 방지)
+                    del h_filters["occasion"]
+                    
+                    # 2. 리뷰 검색어(Query)에 추가하여 리랭킹으로 찾음
+                    search_query_text += f". It is perfect for {target_occasion}."
+            # =================================================================
 
             s_filters = (
                 plan.strategy_filters.model_dump(exclude_none=True)
@@ -324,7 +351,7 @@ def researcher_node(state: AgentState):
                 else plan.strategy_filters.dict(exclude_none=True)
             )
 
-            # [3] Strategy Filter용 노트 후보군 추출 (기존 유지)
+            # [3] Strategy Filter용 노트 후보군 추출
             strategy_note_input = s_filters.get("note")
             if strategy_note_input:
                 raw_keyword = (
@@ -355,14 +382,14 @@ def researcher_node(state: AgentState):
                             ),
                         ]
                         selected_response = SMART_LLM.invoke(selection_messages).content
-                        final_selected = [
-                            c
-                            for c in candidates
+                        
+                        llm_selected = [
+                            c for c in candidates
                             if c.lower() in selected_response.lower()
                         ]
 
                         s_filters["note"] = (
-                            final_selected if final_selected else candidates[:1]
+                            llm_selected if llm_selected else candidates[:1]
                         )
                         print(
                             f"      🎯 LLM 최종 선택 노트: {s_filters['note']}",
@@ -370,7 +397,6 @@ def researcher_node(state: AgentState):
                         )
 
             # [4] 검색 수행 (리랭킹 적용)
-            # [수정] query_text 인자 추가
             db_perfumes, match_type = smart_search_with_retry(
                 h_filters,
                 s_filters,
@@ -378,7 +404,7 @@ def researcher_node(state: AgentState):
                 query_text=search_query_text,
             )
 
-            # [5] 검색 실패 시 Re-Act (기존 로직 + query_text 추가)
+            # [5] 검색 실패 시 Re-Act
             if not db_perfumes:
                 print(
                     f"      ⚠️ '{plan.strategy_name}' 결과 없음. 재수립 시도...",
@@ -400,9 +426,15 @@ def researcher_node(state: AgentState):
                     else new_plan.strategy_filters.dict(exclude_none=True)
                 )
                 current_reason = new_plan.reason
-                search_query_text = f"{current_reason}. Keywords: {', '.join(new_plan.strategy_keyword)}"  # 쿼리 업데이트
+                
+                # 재시도 시에도 쿼리 업데이트
+                search_query_text = f"{current_reason}. Keywords: {', '.join(new_plan.strategy_keyword)}"
+                
+                # 재시도 시에도 Occasion이 쿼리에 반영되어야 한다면 추가 (선택사항)
+                if target_occasion and target_occasion.lower() not in valid_occasions:
+                     search_query_text += f". It is perfect for {target_occasion}."
 
-                # 노트 재검색 로직 (기존 유지)
+                # 노트 재검색 로직
                 if s_filters.get("note"):
                     retry_keyword = (
                         s_filters["note"][0]
@@ -415,7 +447,6 @@ def researcher_node(state: AgentState):
                     if retry_candidates:
                         s_filters["note"] = retry_candidates[:2]
 
-                # [수정] 재시도 호출 시에도 query_text 전달
                 db_perfumes, match_type = smart_search_with_retry(
                     h_filters,
                     s_filters,
@@ -433,10 +464,7 @@ def researcher_node(state: AgentState):
                     flush=True,
                 )
 
-                # [추가] 베스트 리뷰 정보 가져오기
                 best_review_text = p.get("best_review", "리뷰 정보 없음")
-
-                # Writer에게 전달할 Accord 정보에 리뷰 텍스트를 붙여서 풍부한 맥락 제공
                 accord_with_review = f"{p.get('accords') or '정보 없음'}\n[✨ Best Review]: {best_review_text}"
 
                 p_notes = PerfumeNotes(
@@ -447,7 +475,7 @@ def researcher_node(state: AgentState):
                 detail = PerfumeDetail(
                     perfume_name=p.get("name", "Unknown"),
                     perfume_brand=p.get("brand", "Unknown"),
-                    accord=accord_with_review,  # [수정] 리뷰 포함된 Accord 전달
+                    accord=accord_with_review,
                     season="All Seasons",
                     occasion="Any",
                     gender=p.get("gender", "Unisex"),

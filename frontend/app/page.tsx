@@ -71,13 +71,14 @@ export default function LandingPage() {
           <AutoScrollScript />
 
           {/* 4. QUICK MENU BUTTONS */}
+          {/* 버튼 반응 추가 */}
           <section className="flex gap-4">
-            <button className="flex-1 bg-[#E0E0E0] py-4 rounded-xl text-center text-sm font-bold text-[#333]">
+            <button className="flex-1 bg-[#E0E0E0] py-4 rounded-xl text-center text-sm font-bold text-[#333] transition-transform active:scale-95 duration-200 shadow-sm hover:bg-[#D6D6D6]">
               향수 백과
             </button>
             <button
               onClick={handleNewChat}
-              className="flex-1 bg-[#E0E0E0] py-4 rounded-xl text-center text-sm font-bold text-[#333]"
+              className="flex-1 bg-[#E0E0E0] py-4 rounded-xl text-center text-sm font-bold text-[#333] transition-transform active:scale-95 duration-200 shadow-sm hover:bg-[#D6D6D6]"
             >
               향수 추천
             </button>

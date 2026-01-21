@@ -24,3 +24,21 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ✅ 사이드바 슬라이드 애니메이션 정의 */
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+    /* 화면 밖(오른쪽)에서 시작 */
+  }
+
+  to {
+    transform: translateX(0);
+    /* 제자리로 옴 */
+  }
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.3s ease-out forwards;
+  /* 0.3초 동안 부드럽게 실행 */
+}

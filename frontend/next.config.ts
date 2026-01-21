@@ -7,6 +7,10 @@ const nextConfig: NextConfig = {
         source: '/api/chat',
         destination: 'http://backend:8000/chat',
       },
+      {
+        source: '/api/users/:path*',
+        destination: 'http://backend:8000/users/:path*',
+      },
     ];
   },
 };

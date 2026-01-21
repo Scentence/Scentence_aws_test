@@ -7,6 +7,19 @@ import Sidebar from "@/components/common/sidebar";
 export default function LoginPage() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
+  const handleKakaoPopup = () => {
+    if (typeof window === "undefined") return;
+    const width = 420;
+    const height = 640;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+    window.open(
+      "/kakao-login",
+      "kakao-login",
+      `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
+    );
+  };
+
   return (
     <div className="min-h-screen bg-white text-black flex flex-col">
       <Sidebar
@@ -64,7 +77,7 @@ export default function LoginPage() {
 
           <button
             type="button"
-            className="text-xs text-[#666] underline hover:text-black"
+            className="text-xs text-right text-[#666] underline hover:text-black"
           >
             비밀번호를 잊어버리셨나요?
           </button>
@@ -85,12 +98,13 @@ export default function LoginPage() {
 
           <div className="flex items-center gap-3 text-xs text-[#999]">
             <div className="flex-1 h-px bg-[#E5E5E5]" />
-            <span>--------또는--------</span>
+            <span>또는</span>
             <div className="flex-1 h-px bg-[#E5E5E5]" />
           </div>
 
           <button
             type="button"
+            onClick={handleKakaoPopup}
             className="w-full bg-[#FEE500] text-black py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:opacity-90 transition"
           >
             <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-black text-[#FEE500] text-xs font-bold">K</span>

@@ -1,18 +1,25 @@
 'use client';
 
-import { useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
 import Sidebar from "@/components/common/sidebar";
+import { useRouter } from "next/navigation";
 
 export default function SignupPage() {
+  const router = useRouter();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [termsAgree, setTermsAgree] = useState(false);
   const [privacyAgree, setPrivacyAgree] = useState(false);
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [sex, setSex] = useState<"M" | "F" | "">("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isConfirmVisible, setIsConfirmVisible] = useState(false);
   const [hasTypedConfirm, setHasTypedConfirm] = useState(false);
+  const [submitMessage, setSubmitMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const allAgree = termsAgree && privacyAgree;
 
@@ -56,6 +63,53 @@ export default function SignupPage() {
     return { text: "비밀번호가 일치하지 않습니다.", isMatch: false };
   }, [confirmPassword, hasTypedConfirm, password]);
 
+  const canSubmit =
+    email.trim().length > 0 &&
+    passwordRules.minLength &&
+    passwordRules.hasRequiredSets &&
+    passwordRules.allowedSpecialsOnly &&
+    password === confirmPassword &&
+    termsAgree &&
+    privacyAgree;
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canSubmit) {
+      setSubmitMessage("필수 항목을 확인해주세요.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setSubmitMessage(null);
+
+    try {
+      const response = await fetch("/api/users/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+          name: name.trim() || null,
+          sex: sex || null,
+          req_agr_yn: termsAgree && privacyAgree ? "Y" : "N",
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        const detail = data?.detail || "회원가입에 실패했습니다.";
+        setSubmitMessage(detail);
+        return;
+      }
+
+      router.push("/login");
+    } catch (error) {
+      setSubmitMessage("회원가입에 실패했습니다.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-white text-black flex flex-col">
       <Sidebar
@@ -88,7 +142,7 @@ export default function SignupPage() {
           <p className="text-sm text-[#666]">필수 정보를 입력해주세요.</p>
         </div>
 
-        <form className="space-y-5">
+        <form className="space-y-5" onSubmit={handleSubmit}>
           <div className="space-y-2">
             <label htmlFor="email" className="text-sm font-medium text-[#333]">이메일</label>
             <input
@@ -96,6 +150,8 @@ export default function SignupPage() {
               name="email"
               type="email"
               placeholder="example@email.com"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
               className="w-full rounded-xl border border-[#DDD] px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/20"
             />
           </div>
@@ -185,6 +241,8 @@ export default function SignupPage() {
               name="name"
               type="text"
               placeholder="이름을 입력하세요"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
               className="w-full rounded-xl border border-[#DDD] px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/20"
             />
           </div>
@@ -193,11 +251,25 @@ export default function SignupPage() {
             <span className="text-sm font-medium text-[#333]">성별</span>
             <div className="flex gap-4">
               <label className="flex items-center gap-2 text-sm">
-                <input type="radio" name="gender" value="male" className="accent-black" />
+                <input
+                  type="radio"
+                  name="gender"
+                  value="M"
+                  checked={sex === "M"}
+                  onChange={() => setSex("M")}
+                  className="accent-black"
+                />
                 남자
               </label>
               <label className="flex items-center gap-2 text-sm">
-                <input type="radio" name="gender" value="female" className="accent-black" />
+                <input
+                  type="radio"
+                  name="gender"
+                  value="F"
+                  checked={sex === "F"}
+                  onChange={() => setSex("F")}
+                  className="accent-black"
+                />
                 여자
               </label>
             </div>
@@ -233,9 +305,18 @@ export default function SignupPage() {
             </label>
           </div>
 
+          {submitMessage && (
+            <p className="text-xs text-red-600">{submitMessage}</p>
+          )}
+
           <button
             type="submit"
-            className="w-full bg-black text-white py-3 rounded-xl font-bold hover:opacity-90 transition"
+            disabled={!canSubmit || isSubmitting}
+            className={`w-full py-3 rounded-xl font-bold transition ${
+              !canSubmit || isSubmitting
+                ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                : "bg-black text-white hover:opacity-90"
+            }`}
           >
             가입 완료
           </button>

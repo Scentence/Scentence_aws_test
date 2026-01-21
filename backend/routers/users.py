@@ -2,11 +2,13 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 import psycopg2.extras
-from .user import get_user_db_connection
+from database import get_db_connection
+from passlib.context import CryptContext
 
 # 이 라우터는 '/users'로 시작하는 모든 요청을 처리합니다.
 router = APIRouter(prefix="/users", tags=["users"])
 
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # [요청 모델] 프론트엔드(NextAuth)에서 보내주는 데이터 형식 정의
 class KakaoLoginRequest(BaseModel):
@@ -15,7 +17,12 @@ class KakaoLoginRequest(BaseModel):
     email: Optional[str] = None  # NULL 허용
     profile_image: Optional[str] = None
 
-
+class LocalRegisterRequest(BaseModel):
+    email: str
+    password: str
+    name: Optional[str] = None
+    sex: Optional[str] = None  # 'M' or 'F'
+    req_agr_yn: Optional[str] = 'N'
 # [API] 카카오 로그인 처리 (POST /users/login)
 # 1. 이미 가입된 회원이면 -> 회원 번호 반환 (로그인 성공)
 # 2. 처음 온 회원이면 -> DB에 정보 저장 후 -> 회원 번호 반환 (회원가입 성공)
@@ -83,6 +90,95 @@ def login_with_kakao(req: KakaoLoginRequest):
         conn.rollback()  # 에러 발생 시 모든 작업 취소 (데이터 오염 방지)
         import traceback
 
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        conn.close()
+
+
+@router.post("/register")
+def register_local_user(req: LocalRegisterRequest):
+    if req.req_agr_yn not in ('Y', 'N'):
+        raise HTTPException(status_code=400, detail="Invalid agreement value")
+
+    if req.req_agr_yn != 'Y':
+        raise HTTPException(status_code=400, detail="Required agreements not accepted")
+
+    if req.sex and req.sex not in ('M', 'F'):
+        raise HTTPException(status_code=400, detail="Invalid sex value")
+
+    password = req.password
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+
+    allowed_specials_only = all(ch.isalnum() or ch in "!@#$%" for ch in password)
+    has_lower = any(ch.islower() for ch in password)
+    has_upper = any(ch.isupper() for ch in password)
+    has_number = any(ch.isdigit() for ch in password)
+    has_special = any(ch in "!@#$%" for ch in password)
+
+    if not allowed_specials_only:
+        raise HTTPException(status_code=400, detail="Password contains invalid special characters")
+    if not (has_lower and has_upper and has_number and has_special):
+        raise HTTPException(status_code=400, detail="Password must include upper, lower, number, special")
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    try:
+        cur.execute("SELECT member_id FROM tb_member_basic_m WHERE login_id=%s", (req.email,))
+        if cur.fetchone():
+            raise HTTPException(status_code=409, detail="Login ID already exists")
+
+        cur.execute(
+            "SELECT auth_id FROM tb_member_auth_t WHERE provider='LOCAL' AND provider_user_id=%s",
+            (req.email,)
+        )
+        if cur.fetchone():
+            raise HTTPException(status_code=409, detail="Local account already exists")
+
+        pwd_hash = pwd_context.hash(password)
+
+        sql_basic = """
+            INSERT INTO tb_member_basic_m
+            (login_id, pwd_hash, join_channel, sns_join_yn, req_agr_yn, email_alarm_yn, sns_alarm_yn)
+            VALUES (%s, %s, 'LOCAL', 'N', %s, 'N', 'N')
+            RETURNING member_id
+        """
+        cur.execute(sql_basic, (req.email, pwd_hash, req.req_agr_yn))
+        member_id = cur.fetchone()['member_id']
+
+        sql_profile = """
+            INSERT INTO tb_member_profile_t
+            (member_id, name, sex, email)
+            VALUES (%s, %s, %s, %s)
+        """
+        cur.execute(sql_profile, (member_id, req.name, req.sex, req.email))
+
+        sql_auth = """
+            INSERT INTO tb_member_auth_t
+            (member_id, provider, provider_user_id, email, pwd_hash)
+            VALUES (%s, 'LOCAL', %s, %s, %s)
+        """
+        cur.execute(sql_auth, (member_id, req.email, req.email, pwd_hash))
+
+        sql_status = """
+            INSERT INTO tb_member_status_t
+            (member_id, member_status)
+            VALUES (%s, 'NORMAL')
+        """
+        cur.execute(sql_status, (member_id,))
+
+        conn.commit()
+        return {"member_id": str(member_id)}
+
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
     finally:

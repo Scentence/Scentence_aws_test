@@ -7,8 +7,8 @@ from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 
 # 모듈 임포트
-from schemas import ChatRequest
-from graph import app_graph
+from agent.schemas import ChatRequest
+from agent.graph import app_graph
 
 # [추가됨] Frontend에서 가져온 유저 라우터
 from routers import users

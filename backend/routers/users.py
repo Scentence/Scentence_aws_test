@@ -33,6 +33,19 @@ class LocalLoginRequest(BaseModel):
     password: str
 
 
+class UpdateProfileRequest(BaseModel):
+    nickname: Optional[str] = None
+    sub_email: Optional[str] = None
+    email_alarm_yn: Optional[str] = None
+    sns_alarm_yn: Optional[str] = None
+
+
+class UpdatePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+    confirm_password: str
+
+
 # [API] 카카오 로그인 처리 (POST /users/login)
 # 1. 이미 가입된 회원이면 -> 회원 번호 반환 (로그인 성공)
 # 2. 처음 온 회원이면 -> DB에 정보 저장 후 -> 회원 번호 반환 (회원가입 성공)
@@ -107,6 +120,37 @@ def login_with_kakao(req: KakaoLoginRequest):
         conn.close()
 
 
+def _ensure_profile_columns(cur):
+    cur.execute(
+        "ALTER TABLE tb_member_profile_t ADD COLUMN IF NOT EXISTS sub_email VARCHAR(100)"
+    )
+
+
+def _validate_password(password: str):
+    if not password:
+        raise HTTPException(status_code=400, detail="Password is required")
+    if len(password) < 8:
+        raise HTTPException(
+            status_code=400, detail="Password must be at least 8 characters"
+        )
+    allowed_specials_only = bool(re.fullmatch(r"[A-Za-z0-9!@#$%]+", password))
+    has_lower = any(ch.islower() for ch in password)
+    has_upper = any(ch.isupper() for ch in password)
+    has_number = any(ch.isdigit() for ch in password)
+    has_special = any(ch in "!@#$%" for ch in password)
+
+    if not allowed_specials_only:
+        raise HTTPException(
+            status_code=400,
+            detail="Password must use only letters, numbers, and !@#$%",
+        )
+    if not (has_lower and has_upper and has_number and has_special):
+        raise HTTPException(
+            status_code=400,
+            detail="Password must include upper, lower, number, special",
+        )
+
+
 @router.post("/login/local")
 def login_local_user(req: LocalLoginRequest):
     conn = get_user_db_connection()
@@ -154,30 +198,7 @@ def register_local_user(req: LocalRegisterRequest):
         raise HTTPException(status_code=400, detail="Invalid sex value")
 
     password = req.password
-    if not password:
-        raise HTTPException(status_code=400, detail="Password is required")
-
-    if len(password) < 8:
-        raise HTTPException(
-            status_code=400, detail="Password must be at least 8 characters"
-        )
-
-    allowed_specials_only = bool(re.fullmatch(r"[A-Za-z0-9!@#$%]+", password))
-    has_lower = any(ch.islower() for ch in password)
-    has_upper = any(ch.isupper() for ch in password)
-    has_number = any(ch.isdigit() for ch in password)
-    has_special = any(ch in "!@#$%" for ch in password)
-
-    if not allowed_specials_only:
-        raise HTTPException(
-            status_code=400,
-            detail="Password must use only letters, numbers, and !@#$%",
-        )
-    if not (has_lower and has_upper and has_number and has_special):
-        raise HTTPException(
-            status_code=400,
-            detail="Password must include upper, lower, number, special",
-        )
+    _validate_password(password)
 
     conn = get_user_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -209,10 +230,10 @@ def register_local_user(req: LocalRegisterRequest):
 
         sql_profile = """
             INSERT INTO tb_member_profile_t
-            (member_id, name, sex, email)
-            VALUES (%s, %s, %s, %s)
+            (member_id, name, nickname, sex, email)
+            VALUES (%s, %s, %s, %s, %s)
         """
-        cur.execute(sql_profile, (member_id, req.name, req.sex, req.email))
+        cur.execute(sql_profile, (member_id, req.name, req.name, req.sex, req.email))
 
         sql_auth = """
             INSERT INTO tb_member_auth_t
@@ -230,6 +251,219 @@ def register_local_user(req: LocalRegisterRequest):
 
         conn.commit()
         return {"member_id": str(member_id)}
+
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        conn.close()
+
+
+@router.get("/profile/{member_id}")
+def get_profile(member_id: int):
+    conn = get_user_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    try:
+        _ensure_profile_columns(cur)
+        cur.execute(
+            """
+            SELECT
+                b.member_id,
+                b.join_channel,
+                b.email_alarm_yn,
+                b.sns_alarm_yn,
+                p.name,
+                p.nickname,
+                p.sex,
+                p.email,
+                p.sub_email
+            FROM tb_member_basic_m b
+            LEFT JOIN tb_member_profile_t p ON b.member_id = p.member_id
+            WHERE b.member_id = %s
+            """,
+            (member_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Member not found")
+        return row
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        conn.close()
+
+
+@router.get("/nickname/check")
+def check_nickname(nickname: str, member_id: Optional[int] = None):
+    if not re.fullmatch(r"[A-Za-z0-9가-힣]{2,12}", nickname):
+        return {"available": False}
+
+    conn = get_user_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    try:
+        _ensure_profile_columns(cur)
+        if member_id:
+            cur.execute(
+                "SELECT member_id FROM tb_member_profile_t WHERE nickname=%s AND member_id<>%s",
+                (nickname, member_id),
+            )
+        else:
+            cur.execute(
+                "SELECT member_id FROM tb_member_profile_t WHERE nickname=%s",
+                (nickname,),
+            )
+        exists = cur.fetchone() is not None
+        return {"available": not exists}
+    finally:
+        cur.close()
+        conn.close()
+
+
+@router.patch("/profile/{member_id}")
+def update_profile(member_id: int, req: UpdateProfileRequest):
+    conn = get_user_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    try:
+        _ensure_profile_columns(cur)
+
+        cur.execute(
+            "SELECT member_id FROM tb_member_basic_m WHERE member_id=%s",
+            (member_id,),
+        )
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Member not found")
+
+        nickname = req.nickname
+        if nickname is not None:
+            if not re.fullmatch(r"[A-Za-z0-9가-힣]{2,12}", nickname):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Nickname must be 2-12 chars (Korean/English/Number) with no symbols",
+                )
+            cur.execute(
+                "SELECT member_id FROM tb_member_profile_t WHERE nickname=%s AND member_id<>%s",
+                (nickname, member_id),
+            )
+            if cur.fetchone():
+                raise HTTPException(status_code=409, detail="Nickname already exists")
+
+        cur.execute(
+            "SELECT member_id FROM tb_member_profile_t WHERE member_id=%s",
+            (member_id,),
+        )
+        if cur.fetchone():
+            cur.execute(
+                """
+                UPDATE tb_member_profile_t
+                SET nickname = COALESCE(%s, nickname),
+                    sub_email = COALESCE(%s, sub_email)
+                WHERE member_id = %s
+                """,
+                (req.nickname, req.sub_email, member_id),
+            )
+        else:
+            cur.execute(
+                """
+                INSERT INTO tb_member_profile_t (member_id, nickname, sub_email)
+                VALUES (%s, %s, %s)
+                """,
+                (member_id, req.nickname, req.sub_email),
+            )
+
+        if req.email_alarm_yn in ("Y", "N") or req.sns_alarm_yn in ("Y", "N"):
+            cur.execute(
+                """
+                UPDATE tb_member_basic_m
+                SET email_alarm_yn = COALESCE(%s, email_alarm_yn),
+                    sns_alarm_yn = COALESCE(%s, sns_alarm_yn)
+                WHERE member_id = %s
+                """,
+                (req.email_alarm_yn, req.sns_alarm_yn, member_id),
+            )
+
+        conn.commit()
+        return {"status": "ok"}
+
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        conn.close()
+
+
+@router.post("/profile/{member_id}/password")
+def update_password(member_id: int, req: UpdatePasswordRequest):
+    if req.new_password != req.confirm_password:
+        raise HTTPException(status_code=400, detail="Password confirmation does not match")
+
+    _validate_password(req.new_password)
+
+    conn = get_user_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    try:
+        cur.execute(
+            "SELECT member_id FROM tb_member_basic_m WHERE member_id=%s",
+            (member_id,),
+        )
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Member not found")
+
+        cur.execute(
+            "SELECT pwd_hash FROM tb_member_auth_t WHERE provider='LOCAL' AND member_id=%s",
+            (member_id,),
+        )
+        row = cur.fetchone()
+
+        if not row or not row.get("pwd_hash"):
+            raise HTTPException(status_code=400, detail="Password login not enabled")
+
+        if not pwd_context.verify(req.current_password, row["pwd_hash"]):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        new_hash = pwd_context.hash(req.new_password)
+        cur.execute(
+            """
+            UPDATE tb_member_auth_t
+            SET pwd_hash=%s
+            WHERE provider='LOCAL' AND member_id=%s
+            """,
+            (new_hash, member_id),
+        )
+        cur.execute(
+            """
+            UPDATE tb_member_basic_m
+            SET pwd_hash=%s
+            WHERE member_id=%s
+            """,
+            (new_hash, member_id),
+        )
+
+        conn.commit()
+        return {"status": "ok"}
 
     except HTTPException:
         conn.rollback()

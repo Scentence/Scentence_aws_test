@@ -12,7 +12,7 @@ interface SidebarProps {
 
 export default function Sidebar({ isOpen, onClose, context }: SidebarProps) {
     const { data: session } = useSession(); // 로그인 상태 확인
-    const [localUser, setLocalUser] = useState<{ memberId?: string | null; email?: string | null } | null>(null);
+    const [localUser, setLocalUser] = useState<{ memberId?: string | null; email?: string | null; nickname?: string | null } | null>(null);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -31,7 +31,7 @@ export default function Sidebar({ isOpen, onClose, context }: SidebarProps) {
     }, [isOpen]);
 
     const isLoggedIn = Boolean(session || localUser);
-    const displayName = session?.user?.name || localUser?.email || "회원";
+    const displayName = session?.user?.name || localUser?.nickname || localUser?.email || "회원";
 
     if (!isOpen) return null;
 
@@ -69,6 +69,10 @@ export default function Sidebar({ isOpen, onClose, context }: SidebarProps) {
                                         <p className="font-bold text-lg">{displayName}님</p>
                                         <p className="text-sm text-gray-500">환영합니다!</p>
                                     </div>
+                                    <Link href="/mypage" className="flex items-center gap-2 text-lg font-medium hover:text-blue-600">
+                                        <img src="/profile.svg" alt="마이페이지" className="w-5 h-5" />
+                                        마이페이지
+                                    </Link>
                                     <Link href="/archives" className="block text-lg font-medium hover:text-blue-600">📂 나만의 아카이브</Link>
                                     <Link href="/map" className="block text-lg font-medium hover:text-blue-600">🗺️ 향수 관계맵</Link>
                                     <Link href="/contact" className="block text-gray-600">📞 문의하기</Link>

@@ -52,12 +52,21 @@ export default function LoginPage() {
         return;
       }
       const data = await response.json().catch(() => null);
+      let nickname = null;
+      if (data?.member_id) {
+        const profileResponse = await fetch(`${apiBaseUrl}/users/profile/${data.member_id}`);
+        if (profileResponse.ok) {
+          const profileData = await profileResponse.json().catch(() => null);
+          nickname = profileData?.nickname ?? null;
+        }
+      }
       if (typeof window !== "undefined") {
         localStorage.setItem(
           "localAuth",
           JSON.stringify({
             memberId: data?.member_id ?? null,
             email: loginId.trim(),
+            nickname,
             loggedInAt: new Date().toISOString(),
           })
         );

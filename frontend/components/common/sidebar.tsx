@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from "react";
 import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 
@@ -11,6 +12,26 @@ interface SidebarProps {
 
 export default function Sidebar({ isOpen, onClose, context }: SidebarProps) {
     const { data: session } = useSession(); // 로그인 상태 확인
+    const [localUser, setLocalUser] = useState<{ memberId?: string | null; email?: string | null } | null>(null);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        if (typeof window === "undefined") return;
+        const stored = localStorage.getItem("localAuth");
+        if (!stored) {
+            setLocalUser(null);
+            return;
+        }
+        try {
+            const parsed = JSON.parse(stored);
+            setLocalUser(parsed);
+        } catch (error) {
+            setLocalUser(null);
+        }
+    }, [isOpen]);
+
+    const isLoggedIn = Boolean(session || localUser);
+    const displayName = session?.user?.name || localUser?.email || "회원";
 
     if (!isOpen) return null;
 
@@ -28,7 +49,7 @@ export default function Sidebar({ isOpen, onClose, context }: SidebarProps) {
                     {/* 1. 홈(Main) 컨텍스트일 때 */}
                     {context === "home" && (
                         <>
-                            {!session ? (
+                            {!isLoggedIn ? (
                                 // 로그인 전
                                 <div className="space-y-4">
                                     <Link
@@ -45,13 +66,28 @@ export default function Sidebar({ isOpen, onClose, context }: SidebarProps) {
                                 // 로그인 후
                                 <div className="space-y-4">
                                     <div className="mb-6 pb-4 border-b">
-                                        <p className="font-bold text-lg">{session.user?.name}님</p>
+                                        <p className="font-bold text-lg">{displayName}님</p>
                                         <p className="text-sm text-gray-500">환영합니다!</p>
                                     </div>
                                     <Link href="/archives" className="block text-lg font-medium hover:text-blue-600">📂 나만의 아카이브</Link>
                                     <Link href="/map" className="block text-lg font-medium hover:text-blue-600">🗺️ 향수 관계맵</Link>
                                     <Link href="/contact" className="block text-gray-600">📞 문의하기</Link>
-                                    <button onClick={() => signOut()} className="text-gray-500 hover:text-red-500 text-sm mt-4">로그아웃</button>
+                                    <button
+                                        onClick={() => {
+                                            if (session) {
+                                                signOut();
+                                                return;
+                                            }
+                                            if (typeof window !== "undefined") {
+                                                localStorage.removeItem("localAuth");
+                                            }
+                                            setLocalUser(null);
+                                            onClose();
+                                        }}
+                                        className="text-gray-500 hover:text-red-500 text-sm mt-4"
+                                    >
+                                        로그아웃
+                                    </button>
                                 </div>
                             )}
                         </>

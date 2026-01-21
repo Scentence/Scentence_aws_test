@@ -33,6 +33,7 @@ services:
       - /app/node_modules
     env_file: .env
     environment:
+      - BACKEND_INTERNAL_URL=http://backend:8000
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
     depends_on:
       - backend

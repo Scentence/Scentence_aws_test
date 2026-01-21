@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
+import re
 import psycopg2.extras
 from .user import get_user_db_connection
 from passlib.context import CryptContext
@@ -8,7 +9,7 @@ from passlib.context import CryptContext
 # 이 라우터는 '/users'로 시작하는 모든 요청을 처리합니다.
 router = APIRouter(prefix="/users", tags=["users"])
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 
 # [요청 모델] 프론트엔드(NextAuth)에서 보내주는 데이터 형식 정의
@@ -25,6 +26,11 @@ class LocalRegisterRequest(BaseModel):
     name: Optional[str] = None
     sex: Optional[str] = None  # 'M' or 'F'
     req_agr_yn: Optional[str] = "N"
+
+
+class LocalLoginRequest(BaseModel):
+    email: str
+    password: str
 
 
 # [API] 카카오 로그인 처리 (POST /users/login)
@@ -60,8 +66,8 @@ def login_with_kakao(req: KakaoLoginRequest):
             login_id_gen = f"kakao_{req.kakao_id}"
             sql_basic = """
                 INSERT INTO tb_member_basic_m 
-                (login_id, pwd_hash, join_channel, sns_join_yn, req_agr_yn, email_alarm_yn, sns_alarm_yn)
-                VALUES (%s, %s, 'KAKAO', 'Y', 'Y', 'N', 'N')
+                (login_id, pwd_hash, join_channel, sns_join_yn, email_alarm_yn, sns_alarm_yn)
+                VALUES (%s, %s, 'KAKAO', 'Y', 'N', 'N')
                 RETURNING member_id
             """
             cur.execute(sql_basic, (login_id_gen, "KAKAO_NO_PASS"))
@@ -101,6 +107,41 @@ def login_with_kakao(req: KakaoLoginRequest):
         conn.close()
 
 
+@router.post("/login/local")
+def login_local_user(req: LocalLoginRequest):
+    conn = get_user_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    try:
+        cur.execute(
+            "SELECT member_id, pwd_hash FROM tb_member_auth_t WHERE provider='LOCAL' AND provider_user_id=%s",
+            (req.email,),
+        )
+        row = cur.fetchone()
+
+        if not row:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        if not row.get("pwd_hash"):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        if not pwd_context.verify(req.password, row["pwd_hash"]):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        return {"member_id": str(row["member_id"])}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        conn.close()
+
+
 @router.post("/register")
 def register_local_user(req: LocalRegisterRequest):
     if req.req_agr_yn not in ("Y", "N"):
@@ -113,12 +154,15 @@ def register_local_user(req: LocalRegisterRequest):
         raise HTTPException(status_code=400, detail="Invalid sex value")
 
     password = req.password
+    if not password:
+        raise HTTPException(status_code=400, detail="Password is required")
+
     if len(password) < 8:
         raise HTTPException(
             status_code=400, detail="Password must be at least 8 characters"
         )
 
-    allowed_specials_only = all(ch.isalnum() or ch in "!@#$%" for ch in password)
+    allowed_specials_only = bool(re.fullmatch(r"[A-Za-z0-9!@#$%]+", password))
     has_lower = any(ch.islower() for ch in password)
     has_upper = any(ch.isupper() for ch in password)
     has_number = any(ch.isdigit() for ch in password)
@@ -126,7 +170,8 @@ def register_local_user(req: LocalRegisterRequest):
 
     if not allowed_specials_only:
         raise HTTPException(
-            status_code=400, detail="Password contains invalid special characters"
+            status_code=400,
+            detail="Password must use only letters, numbers, and !@#$%",
         )
     if not (has_lower and has_upper and has_number and has_special):
         raise HTTPException(
@@ -155,11 +200,11 @@ def register_local_user(req: LocalRegisterRequest):
 
         sql_basic = """
             INSERT INTO tb_member_basic_m
-            (login_id, pwd_hash, join_channel, sns_join_yn, req_agr_yn, email_alarm_yn, sns_alarm_yn)
-            VALUES (%s, %s, 'LOCAL', 'N', %s, 'N', 'N')
+            (login_id, pwd_hash, join_channel, sns_join_yn, email_alarm_yn, sns_alarm_yn)
+            VALUES (%s, %s, 'LOCAL', 'N', 'N', 'N')
             RETURNING member_id
         """
-        cur.execute(sql_basic, (req.email, pwd_hash, req.req_agr_yn))
+        cur.execute(sql_basic, (req.email, pwd_hash))
         member_id = cur.fetchone()["member_id"]
 
         sql_profile = """

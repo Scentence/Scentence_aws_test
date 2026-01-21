@@ -20,6 +20,7 @@ export default function SignupPage() {
   const [hasTypedConfirm, setHasTypedConfirm] = useState(false);
   const [submitMessage, setSubmitMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "";
 
   const allAgree = termsAgree && privacyAgree;
 
@@ -83,7 +84,7 @@ export default function SignupPage() {
     setSubmitMessage(null);
 
     try {
-      const response = await fetch("/api/users/register", {
+      const response = await fetch(`${apiBaseUrl}/users/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -125,7 +126,7 @@ export default function SignupPage() {
         />
       )}
 
-      <header className="fixed top-0 left-0 right-0 flex items-center justify-between px-5 py-4 bg-[#E5E5E5] z-50">
+      <header className="fixed top-0 left-0 w-screen flex items-center justify-between px-5 py-4 bg-[#E5E5E5] z-50">
         <Link href="/" className="text-xl font-bold text-black tracking-tight">
           Scentence
         </Link>

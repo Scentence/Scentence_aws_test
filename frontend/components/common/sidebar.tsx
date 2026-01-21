@@ -1,6 +1,6 @@
 'use client';
 
-import { useSession, signIn, signOut } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 
 interface SidebarProps {
@@ -31,12 +31,13 @@ export default function Sidebar({ isOpen, onClose, context }: SidebarProps) {
                             {!session ? (
                                 // 로그인 전
                                 <div className="space-y-4">
-                                    <button
-                                        onClick={() => signIn("kakao")}
-                                        className="w-full bg-[#FEE500] text-black py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:opacity-90 transition"
+                                    <Link
+                                        href="/login"
+                                        onClick={onClose}
+                                        className="w-full bg-black text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:opacity-90 transition"
                                     >
-                                        카카오로 3초 만에 시작
-                                    </button>
+                                        로그인
+                                    </Link>
                                     <Link href="/about" className="block text-gray-700 hover:text-black">ℹ️ 서비스 소개</Link>
                                     <Link href="/contact" className="block text-gray-700 hover:text-black">📞 문의하기</Link>
                                 </div>

@@ -1,14 +1,34 @@
+# 향수 네트워크 시각화 오류 해결 가이드
+
+`perfume-network` 페이지에서 시각화 그래프가 보이지 않고 검은 화면만 뜨는 문제(CDN 로딩 실패)를 해결하기 위한 가이드입니다.
+
+## 1. 원인
+`vis-network` 라이브러리를 설치하지 않고 불안정한 CDN(`<script>`) 방식으로 불러와서 발생한 문제입니다. 네트워크 상황에 따라 `window.vis` 객체를 찾지 못해 오류가 발생합니다.
+
+## 2. 해결 방법 (Step-by-Step)
+
+### 단계 1: 라이브러리 설치
+터미널에서 `Scentence-app/frontend` 폴더로 이동한 뒤, 아래 명령어를 실행해 주세요.
+
+```bash
+cd Scentence-app/frontend
+npm install vis-network vis-data
+npm install -D @types/vis
+```
+
+### 단계 2: 코드 교체
+`frontend/app/perfume-network/page.tsx` 파일의 내용을 아래 코드로 **전체 교체**해 주세요.
+(기존의 `<Script>` 태그를 제거하고, 설치한 라이브러리를 `import` 해서 사용하는 안전한 방식입니다.)
+
+```tsx
 "use client";
 
-// import "./vis-network.css";
 import Link from "next/link";
-// import Script from "next/script";
 import { useEffect, useMemo, useRef, useState } from "react";
-
 // ✅ 라이브러리 직접 import (안정성 확보)
 import { Network } from "vis-network";
 import { DataSet } from "vis-data";
-import "vis-network/styles/vis-network.css"; // CSS도 여기서 불러옴 
+import "vis-network/styles/vis-network.css"; // CSS도 여기서 불러옴
 
 type NetworkNode = {
   id: string;
@@ -57,11 +77,10 @@ export default function PerfumeNetworkPage() {
   const [payload, setPayload] = useState<NetworkPayload | null>(null);
   const [status, setStatus] = useState("대기 중");
   const [error, setError] = useState("");
-  const [scriptReady, setScriptReady] = useState(false);
   const [lastRequest, setLastRequest] = useState("");
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const networkRef = useRef<any>(null);
+  const networkRef = useRef<Network | null>(null);
 
   const requestUrl = useMemo(() => {
     const params = new URLSearchParams();
@@ -97,10 +116,8 @@ export default function PerfumeNetworkPage() {
 
   useEffect(() => {
     if (!payload || !containerRef.current) return;
-    // if (!scriptReady || !payload || !containerRef.current) return;
-    // const vis = (window as any).vis;
-    // if (!vis) return;
 
+    // 기존 네트워크 파괴
     if (networkRef.current) {
       networkRef.current.destroy();
       networkRef.current = null;
@@ -113,8 +130,9 @@ export default function PerfumeNetworkPage() {
           label: node.label,
           shape: "circularImage",
           image: node.image || undefined,
-          title: `${node.label}\n${node.brand ?? ""}\n대표 어코드: ${node.primary_accord ?? "Unknown"
-            }`,
+          title: `<b>${node.label}</b><br/>${node.brand ?? ""}<br/>대표 어코드: ${
+            node.primary_accord ?? "Unknown"
+          }`,
           borderWidth: 2,
           color: {
             border: "#f0abfc",
@@ -145,31 +163,41 @@ export default function PerfumeNetworkPage() {
           smooth: true,
         };
       }
-
       // HAS_ACCORD
       return {
         from: edge.from,
         to: edge.to,
         value: edge.weight ?? 0.1,
-        color: { color: "#94a3b8", opacity: 0.4 },
+        color: { color: "#94a3b8", opacity: 0.2 },
         dashes: true,
+        smooth: false
       };
     });
 
     // DataSet으로 변환
-    const data = { nodes, edges };
+    const data = {
+      nodes: new DataSet(nodes),
+      edges: new DataSet(edges),
+    };
+
     const options = {
-      interaction: { hover: true, navigationButtons: true },
+      interaction: { hover: true, navigationButtons: true, zoomView: true },
       physics: {
         solver: "forceAtlas2Based",
-        stabilization: { iterations: 150 },
+        stabilization: { 
+            enabled: true,
+            iterations: 150 
+        },
+        forceAtlas2Based: {
+            gravitationalConstant: -50,
+            centralGravity: 0.01,
+            springLength: 100,
+            springConstant: 0.08
+        }
       },
       nodes: { shape: "dot" },
       edges: { smooth: { type: "continuous" } },
     };
-
-    // networkRef.current = new vis.Network(containerRef.current, data, options);
-    // }, [scriptReady, payload]);
 
     // ✅ window.vis 대신 import한 Network 클래스 사용
     networkRef.current = new Network(containerRef.current, data, options);
@@ -183,11 +211,8 @@ export default function PerfumeNetworkPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 px-6 py-10 space-y-6">
-      {/* <Script
-        src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"
-        strategy="afterInteractive"
-        onLoad={() => setScriptReady(true)}
-      /> */}
+      
+      {/* Script 태그 삭제됨 */}
 
       <header className="space-y-2">
         <div className="flex items-center justify-between">
@@ -206,9 +231,8 @@ export default function PerfumeNetworkPage() {
 
       <section className="grid gap-6 lg:grid-cols-[320px_1fr]">
         <div className="space-y-5 rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-
-          {/* 왼쪽 컨트롤 패널 */}
-          <div className="space-y-2">
+           {/* (왼쪽 컨트롤 패널 코드는 기존과 동일하므로 생략하지 않고 그대로 둡니다) */}
+           <div className="space-y-2">
             <p className="text-sm font-semibold">시각화 파라미터</p>
             <label className="block text-xs text-slate-400">
               유사도 임계치 ({minSimilarity.toFixed(2)})
@@ -278,20 +302,22 @@ export default function PerfumeNetworkPage() {
         </div>
 
         <div className="space-y-3">
-          {/* 우측 그래프 컨테이너 */}
+            {/* 그래프 컨테이너 */}
           <div className="h-[70vh] rounded-2xl border border-slate-800 bg-slate-900/40 p-4 relative">
-            {/* 
+             {/* 
                 중요: vis-network 캔버스가 부모 div 크기를 상속받도록 
                 style이나 class를 명시적으로 주는 것이 좋습니다. 
              */}
-            {/* </div><div className="h-[70vh] rounded-2xl border border-slate-800 bg-slate-900/40 p-4"> */}
             <div ref={containerRef} className="h-full w-full" />
           </div>
           <div className="text-xs text-slate-500">
             선 굵기는 유사도, 점선은 향수-어코드 연결입니다.
+            <br/>
+            (마우스 휠로 줌인/줌아웃, 드래그로 이동 가능)
           </div>
         </div>
       </section>
     </div>
   );
 }
+```

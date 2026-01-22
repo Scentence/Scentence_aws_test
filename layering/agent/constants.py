@@ -59,18 +59,6 @@ PERSISTENCE_MAP: Dict[str, int] = {
     "Citrus": 2,
 }
 
-BASE_NOTES: Tuple[str, ...] = (
-    "Woody",
-    "Oriental",
-    "Animal",
-    "Leathery",
-    "Resinous",
-    "Earthy",
-    "Smoky",
-)
-BASE_NOTE_SET: Set[str] = set(BASE_NOTES)
-BASE_NOTE_INDEXES: Tuple[int, ...] = tuple(ACCORD_INDEX[name] for name in BASE_NOTES)
-
 CLASH_PAIRS: Tuple[Tuple[Set[str], Set[str]], ...] = (
     ({"Aquatic"}, {"Gourmand", "Sweet"}),
     ({"Animal"}, {"Green", "Fresh"}),
@@ -87,6 +75,7 @@ KEYWORD_MAP: Dict[str, Sequence[str]] = {
 }
 
 KEYWORD_VECTOR_BOOST: float = 30.0
+MATCH_SCORE_THRESHOLD: float = 0.7
 
 
 def accord_index(name: str) -> int:
@@ -95,7 +84,3 @@ def accord_index(name: str) -> int:
     return ACCORD_INDEX[name]
 
 
-def base_note_indices() -> Tuple[int, ...]:
-    """Return tuple of indexes representing the base note subvector."""
-
-    return BASE_NOTE_INDEXES

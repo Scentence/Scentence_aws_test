@@ -3,11 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 try:  # pragma: no cover - fallback for script execution
     from .agent.database import PerfumeRepository
-    from .agent.schemas import LayeringRequest, LayeringResponse
+    from .agent.graph import analyze_user_input, analyze_user_query
+    from .agent.schemas import LayeringRequest, LayeringResponse, UserQueryRequest, UserQueryResponse
     from .agent.tools import rank_recommendations
 except ImportError:  # pragma: no cover
     from agent.database import PerfumeRepository
-    from agent.schemas import LayeringRequest, LayeringResponse
+    from agent.graph import analyze_user_input, analyze_user_query
+    from agent.schemas import LayeringRequest, LayeringResponse, UserQueryRequest, UserQueryResponse
     from agent.tools import rank_recommendations
 
 
@@ -61,5 +63,39 @@ def layering_recommend(payload: LayeringRequest) -> LayeringResponse:
         keywords=payload.keywords,
         total_available=total_available,
         recommendations=recommendations,
+        note=note,
+    )
+
+
+@app.post("/layering/analyze", response_model=UserQueryResponse)
+def layering_analyze(payload: UserQueryRequest) -> UserQueryResponse:
+    preferences = analyze_user_input(payload.user_text)
+    keywords = preferences.keywords
+    analysis = analyze_user_query(payload.user_text, repository, preferences)
+    recommendation = None
+    note = None
+    base_perfume_id = None
+
+    if analysis.pairing_analysis:
+        recommendation = analysis.pairing_analysis.result
+        if analysis.detected_pair:
+            base_perfume_id = analysis.detected_pair.base_perfume_id
+    elif analysis.detected_perfumes:
+        base_perfume_id = analysis.detected_perfumes[0].perfume_id
+        recommendations, _ = rank_recommendations(base_perfume_id, keywords, repository)
+        if recommendations:
+            recommendation = recommendations[0]
+        else:
+            note = "No feasible layering options found for the detected base perfume."
+    else:
+        note = "No perfume names detected from the query."
+
+    return UserQueryResponse(
+        raw_text=payload.user_text,
+        keywords=keywords,
+        base_perfume_id=base_perfume_id,
+        detected_perfumes=analysis.detected_perfumes,
+        detected_pair=analysis.detected_pair,
+        recommendation=recommendation,
         note=note,
     )

@@ -65,6 +65,25 @@ services:
     env_file:
       - .env
 
+  layering:
+    build:
+      context: ./layering
+      dockerfile: Dockerfile
+    container_name: scentence-layering
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./layering:/app
+    env_file: .env
+    environment:
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: uvicorn main:app --host 0.0.0.0 --port 8002 --reload
+
+
 volumes:
   pgdata:
     name: pgdata

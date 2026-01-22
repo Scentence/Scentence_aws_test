@@ -17,14 +17,20 @@ except ImportError:  # pragma: no cover
     Levenshtein = None
 
 
-DEFAULT_DB_ROOT = (
-    Path(__file__).resolve().parents[3]
-    / "scentence-db-init"
-    / "postgres"
-    / "RDB"
-    / "scripts"
-    / "perfume_db"
-)
+_env_db_root = os.getenv("LAYERING_DB_ROOT")
+if _env_db_root:
+    DEFAULT_DB_ROOT = Path(_env_db_root)
+else:
+    _parents = Path(__file__).resolve().parents
+    _base_root = _parents[3] if len(_parents) > 3 else _parents[-1]
+    DEFAULT_DB_ROOT = (
+        _base_root
+        / "scentence-db-init"
+        / "postgres"
+        / "RDB"
+        / "scripts"
+        / "perfume_db"
+    )
 DEFAULT_ACCORDS_PATH = DEFAULT_DB_ROOT / "routputs" / "TB_PERFUME_ACCORD_R.csv"
 DEFAULT_NOTES_PATH = DEFAULT_DB_ROOT / "outputs" / "TB_PERFUME_NOTES_M.csv"
 DEFAULT_BASIC_PATH = DEFAULT_DB_ROOT / "outputs" / "TB_PERFUME_BASIC_M.csv"

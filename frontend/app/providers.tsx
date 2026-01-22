@@ -21,8 +21,14 @@
 import { SessionProvider } from "next-auth/react";
 
 export function Providers({ children }: { children: React.ReactNode }) {
+    const authEnabled = process.env.NEXT_PUBLIC_ENABLE_AUTH === "true";
+
     return (
-        <SessionProvider>
+        <SessionProvider
+            session={authEnabled ? undefined : null}
+            refetchInterval={authEnabled ? undefined : 0}
+            refetchOnWindowFocus={authEnabled ? undefined : false}
+        >
             {children}
         </SessionProvider>
     );

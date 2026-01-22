@@ -12,50 +12,6 @@ import Sidebar from "../../components/Chat/Sidebar";
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const API_URL = `${BACKEND_URL}/chat`;
 
-function useTypewriter(text: string, speed = 10) {
-    const [displayedText, setDisplayedText] = useState("");
-
-    useEffect(() => {
-        // 텍스트가 줄어들었거나(새 메시지), 초기 상태면 리셋
-        if (!text || text.length < displayedText.length) {
-            setDisplayedText("");
-            return;
-        }
-
-        // 다 썼으면 멈춤
-        if (displayedText.length >= text.length) {
-            return;
-        }
-
-        const timeout = setTimeout(() => {
-            setDisplayedText((prev) => {
-                const nextCharIndex = prev.length;
-                if (nextCharIndex >= text.length) return prev;
-                // [스마트 이미지 감지 로직] by ksu
-                // '!'로 시작하고 바로 뒤가 '[' 라면 (이미지 태그 시작 지점)
-                if (text[nextCharIndex] === "!" && text[nextCharIndex + 1] === "[") {
-                    const remaining = text.slice(nextCharIndex);
-                    // 이미지 태그 전체 패턴 검사: ![...](...)
-                    const match = remaining.match(/^!\[.*?\]\(.*?\)/);
-
-                    if (match) {
-                        // 태그가 완성된 상태라면 -> 통째로 한 번에 출력 (URL 타이핑 생략)
-                        return prev + match[0];
-                    } else {
-                        // 태그가 아직 덜 넘어왔다면(스트리밍 중) -> 멈춰서 기다림 (마 뜨는 효과)
-                        // 다음 청크가 들어와서 text가 길어지면 useEffect가 다시 실행되어 결국 완성됨
-                        return prev;
-                    }
-                }
-                // 일반 텍스트는 한 글자씩 타이핑
-                return prev + text.charAt(nextCharIndex);
-            });
-        }, speed);
-        return () => clearTimeout(timeout);
-    }, [text, displayedText, speed]);
-    return displayedText;
-}
-
 export default function ChatPage() {
     const router = useRouter();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false); // 온오프 토글 (기본은 닫힘 상태)
@@ -109,18 +65,36 @@ export default function ChatPage() {
         const trimmed = inputValue.trim();
         if (!trimmed || !threadId) return;
 
+        // [★추가] 로그인 정보(MemberID) 가져오기
+        let currentMemberId = 0;
+        try {
+            const localAuth = localStorage.getItem("localAuth");
+            if (localAuth) {
+                const parsed = JSON.parse(localAuth);
+                if (parsed && parsed.memberId) {
+                    currentMemberId = parseInt(parsed.memberId, 10);
+                }
+            }
+        } catch (e) {
+            console.error("Member ID Parsing Error:", e);
+        }
+
         setMessages((prev) => prev.map(m => ({ ...m, isStreaming: false })));
         setMessages((prev) => [...prev, { role: "user", text: trimmed, isStreaming: false }]);
         setInputValue("");
         setError("");
         setLoading(true);
-        setStatusLog("AI가 요청을 분석 중입니다..."); // 초기 로그
+        setStatusLog("AI가 요청을 분석 중입니다...");
 
         try {
             const response = await fetch(API_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ user_query: trimmed, thread_id: threadId }),
+                body: JSON.stringify({
+                    user_query: trimmed,
+                    thread_id: threadId,
+                    member_id: currentMemberId  // [★추가] 백엔드로 내 ID 전송!
+                }),
             });
 
             if (!response.ok || !response.body) throw new Error("서버 연결 실패");
@@ -144,15 +118,14 @@ export default function ChatPage() {
                         if (!trimmedLine.startsWith("data: ")) continue;
                         try {
                             const data = JSON.parse(trimmedLine.replace("data: ", ""));
-                            console.log("Stream Data:", data); // [Debug] 데이터 수신 확인
+                            console.log("Stream Data:", data);
                             if (data.type === "answer") {
-                                setStatusLog(""); // 답변 시작되면 로그 지움
+                                setStatusLog("");
                                 setMessages((prev) => {
                                     const updated = [...prev];
                                     const lastIndex = updated.length - 1;
                                     const lastMsg = updated[lastIndex];
 
-                                    // [Fix] 덮어쓰기(=)가 아니라 이어붙이기(+)
                                     if (lastMsg.role === "assistant") {
                                         updated[lastIndex] = {
                                             ...lastMsg,
@@ -166,17 +139,17 @@ export default function ChatPage() {
                             } else if (data.type === "error") {
                                 setStatusLog(`오류: ${data.content}`);
                             }
-                        } catch (e: any) { // ✅ catch 에러 타입 any로 지정
+                        } catch (e: any) {
                             console.error(e);
                         }
                     }
                 }
             }
-        } catch (e: any) { // ✅ catch 에러 타입 any로 지정
+        } catch (e: any) {
             setError("오류가 발생했습니다.");
         } finally {
             setLoading(false);
-            setStatusLog(""); // 종료 시 로그 초기화
+            setStatusLog("");
         }
     };
 

@@ -398,9 +398,9 @@ def rerank_perfumes(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": query_text},
             ],
-            temperature=0, # 스타일 일관성을 위해 0 설정
+            temperature=0,  # 스타일 일관성을 위해 0 설정
         )
-        
+
         # 변수명을 의미에 맞게 'stylized_query'로 변경하여 사용
         stylized_query = translation_response.choices[0].message.content.strip()
 
@@ -480,3 +480,114 @@ def rerank_perfumes(
     finally:
         cur.close()
         conn.close()
+
+
+# ==========================================
+# 6. Recom DB 연결 및 저장 함수 (디버깅 강화판)
+# ==========================================
+
+# [설정] 추천/회원 데이터용 DB 설정
+RECOM_DB_CONFIG = {
+    **DB_CONFIG,
+    "dbname": os.getenv("RECOM_DB_NAME", "recom_db"),
+}
+
+
+def get_recom_db_connection():
+    # 연결 시도 직전에 접속 정보 출력
+    print(
+        f"   🔌 [DB접속시도] DB명: {RECOM_DB_CONFIG['dbname']} | Host: {RECOM_DB_CONFIG['host']}",
+        flush=True,
+    )
+    return psycopg2.connect(**RECOM_DB_CONFIG)
+
+
+def save_recommendation_log(
+    member_id: int, perfumes: List[Dict[str, Any]], reason: str
+):
+    """
+    Researcher 자동 저장 함수 (디버깅 로그 포함)
+    """
+    if not member_id or not perfumes:
+        return
+
+    print(
+        f"\n📝 [Auto-Save] 추천 이력 저장 시작 (Member: {member_id}, Count: {len(perfumes)})",
+        flush=True,
+    )
+
+    conn = None
+    try:
+        conn = get_recom_db_connection()
+        cur = conn.cursor()
+
+        sql = """
+            INSERT INTO TB_MEMBER_RECOM_RESULT_T 
+            (MEMBER_ID, PERFUME_ID, PERFUME_NAME, RECOM_TYPE, RECOM_REASON, INTEREST_YN)
+            VALUES (%s, %s, %s, 'GENERAL', %s, 'N')
+        """
+
+        for p in perfumes:
+            cur.execute(sql, (member_id, p.get("id"), p.get("name"), reason))
+
+        conn.commit()
+        print(
+            f"   ✅ [Success] 추천 이력 저장 완료! (DB: {RECOM_DB_CONFIG['dbname']})",
+            flush=True,
+        )
+
+    except Exception as e:
+        print(f"   🔥 [Error] 추천 이력 저장 실패: {e}", flush=True)
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            conn.close()
+
+
+def add_my_perfume(member_id: int, perfume_id: int, perfume_name: str):
+    """
+    사용자 버튼 클릭 저장 함수 (디버깅 로그 포함)
+    """
+    print(f"\n👇 [Button-Click] 내 향수 저장 요청 도착!", flush=True)
+    print(
+        f"   - 요청 데이터: Member={member_id}, Perfume={perfume_id} ({perfume_name})",
+        flush=True,
+    )
+
+    conn = None
+    try:
+        conn = get_recom_db_connection()
+        cur = conn.cursor()
+
+        # 1. 중복 체크
+        check_sql = "SELECT 1 FROM TB_MEMBER_MY_PERFUME_T WHERE MEMBER_ID = %s AND PERFUME_ID = %s"
+        cur.execute(check_sql, (member_id, perfume_id))
+        if cur.fetchone():
+            print("   ⚠️ [Skip] 이미 저장된 향수입니다.", flush=True)
+            return {"status": "already_exists", "message": "이미 저장된 향수입니다."}
+
+        # 2. 신규 저장
+        insert_sql = """
+            INSERT INTO TB_MEMBER_MY_PERFUME_T
+            (MEMBER_ID, PERFUME_ID, PERFUME_NAME, REGISTER_STATUS, PREFERENCE)
+            VALUES (%s, %s, %s, 'HAVE', 'GOOD')
+        """
+        cur.execute(insert_sql, (member_id, perfume_id, perfume_name))
+        conn.commit()
+
+        print(
+            f"   ✅ [Success] 저장 성공! (DB: {RECOM_DB_CONFIG['dbname']} / Table: TB_MEMBER_MY_PERFUME_T)",
+            flush=True,
+        )
+        return {"status": "success", "message": "향수가 저장되었습니다."}
+
+    except Exception as e:
+        # 에러 발생 시 여기서 정확한 이유가 출력됩니다.
+        print(f"   🔥 [Error] 저장 실패 원인: {e}", flush=True)
+        if conn:
+            conn.rollback()
+        return {"status": "error", "message": f"서버 에러: {str(e)}"}
+    finally:
+        if conn:
+            conn.close()

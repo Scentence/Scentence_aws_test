@@ -43,10 +43,10 @@ app.add_middleware(
 # 핵심 로직: 스트림 제너레이터 (Backend의 최신 v2 로직 유지)
 # =================================================================
 async def stream_generator(
-    user_query: str, thread_id: str
+    user_query: str, thread_id: str, member_id: int = 0
 ) -> Generator[str, None, None]:
     config = {"configurable": {"thread_id": thread_id}}
-    inputs = {"messages": [HumanMessage(content=user_query)]}
+    inputs = {"messages": [HumanMessage(content=user_query)], "member_id": member_id}
 
     try:
         async for event in app_graph.astream_events(
@@ -129,7 +129,8 @@ def health():
 @app.post("/chat")
 async def chat_stream(request: ChatRequest):
     return StreamingResponse(
-        stream_generator(request.user_query, request.thread_id),
+        # [★수정] request.member_id를 넘겨줌
+        stream_generator(request.user_query, request.thread_id, request.member_id),
         media_type="text/event-stream",
     )
 

@@ -1,15 +1,25 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 import re
 import psycopg2.extras
 from .user import get_user_db_connection
 from passlib.context import CryptContext
+import os
+import uuid
+import shutil
+from datetime import datetime, timedelta
 
 # 이 라우터는 '/users'로 시작하는 모든 요청을 처리합니다.
 router = APIRouter(prefix="/users", tags=["users"])
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
+
+ADMIN_EMAILS: List[str] = [
+    email.strip().lower()
+    for email in os.getenv("ADMIN_EMAILS", "").split(",")
+    if email.strip()
+]
 
 
 # [요청 모델] 프론트엔드(NextAuth)에서 보내주는 데이터 형식 정의
@@ -35,7 +45,14 @@ class LocalLoginRequest(BaseModel):
 
 class UpdateProfileRequest(BaseModel):
     nickname: Optional[str] = None
+    profile_image_url: Optional[str] = None
+    name: Optional[str] = None
+    sex: Optional[str] = None
+    phone_no: Optional[str] = None
+    address: Optional[str] = None
+    email: Optional[str] = None
     sub_email: Optional[str] = None
+    sns_join_yn: Optional[str] = None
     email_alarm_yn: Optional[str] = None
     sns_alarm_yn: Optional[str] = None
 
@@ -56,10 +73,15 @@ def login_with_kakao(req: KakaoLoginRequest):
 
     try:
         # [1단계] 가입 이력 조회
-        # TB_MEMBER_AUTH_T 테이블에서 'KAKAO' + '사용자ID' 조합이 있는지 확인합니다.
+        # TB_MEMBER_PROFILE_T.sns_id + TB_MEMBER_BASIC_M.join_channel 조합으로 확인합니다.
         cur.execute(
-            "SELECT member_id FROM tb_member_auth_t WHERE provider='KAKAO' AND provider_user_id=%s",
-            (req.kakao_id,),
+            """
+            SELECT b.member_id
+            FROM tb_member_basic_m b
+            JOIN tb_member_profile_t p ON b.member_id = p.member_id
+            WHERE b.join_channel = 'KAKAO' AND p.sns_id = %s
+            """,
+            (req.kakao_id,)
         )
         existing_auth = cur.fetchone()
 
@@ -69,6 +91,17 @@ def login_with_kakao(req: KakaoLoginRequest):
             # [A] 이미 가입된 유저인 경우
             member_id = existing_auth["member_id"]
             print(f"✅ 기존 회원 로그인 성공: 회원번호 {member_id}")
+
+            status_check = _check_withdraw_status(cur, member_id)
+            if status_check["status"] == "WITHDRAW_REQ":
+                return {
+                    "member_id": str(member_id),
+                    "withdraw_pending": True,
+                    "nickname": req.nickname,
+                }
+            if status_check["status"] == "DELETED":
+                conn.commit()
+                raise HTTPException(status_code=410, detail="Account deleted")
 
         else:
             # [B] 신규 회원가입 (3단계 Insert)
@@ -95,19 +128,21 @@ def login_with_kakao(req: KakaoLoginRequest):
             """
             cur.execute(sql_profile, (member_id, req.nickname, req.email, req.kakao_id))
 
-            # 3. 인증 연결 정보 저장 (TB_MEMBER_AUTH_T)
-            # - 역할: '이 회원은 카카오로 로그인한다'는 연결고리 저장
-            sql_auth = """
-                INSERT INTO tb_member_auth_t 
-                (member_id, provider, provider_user_id, email)
-                VALUES (%s, 'KAKAO', %s, %s)
+            sql_status = """
+                INSERT INTO tb_member_status_t
+                (member_id, member_status)
+                VALUES (%s, 'NORMAL')
             """
-            cur.execute(sql_auth, (member_id, req.kakao_id, req.email))
+            cur.execute(sql_status, (member_id,))
 
             print(f"🎉 신규 회원가입 완료: 회원번호 {member_id}")
 
         conn.commit()  # 모든 DB 변경사항 확정 (저장)
-        return {"member_id": str(member_id), "nickname": req.nickname}
+        return {
+            "member_id": str(member_id),
+            "nickname": req.nickname,
+            "is_admin": _is_admin_email(req.email),
+        }
 
     except Exception as e:
         conn.rollback()  # 에러 발생 시 모든 작업 취소 (데이터 오염 방지)
@@ -124,6 +159,43 @@ def _ensure_profile_columns(cur):
     cur.execute(
         "ALTER TABLE tb_member_profile_t ADD COLUMN IF NOT EXISTS sub_email VARCHAR(100)"
     )
+    cur.execute(
+        "ALTER TABLE tb_member_profile_t ADD COLUMN IF NOT EXISTS profile_image_url VARCHAR(255)"
+    )
+
+
+def _is_admin_email(email: Optional[str]) -> bool:
+    if not email:
+        return False
+    return email.strip().lower() in ADMIN_EMAILS
+
+
+def _ensure_admin_by_member_id(cur, member_id: int):
+    cur.execute(
+        "SELECT p.email FROM tb_member_profile_t p WHERE p.member_id=%s",
+        (member_id,),
+    )
+    row = cur.fetchone()
+    if not row or not _is_admin_email(row.get("email")):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+
+def _check_withdraw_status(cur, member_id: int):
+    cur.execute(
+        "SELECT member_status, alter_dt FROM tb_member_status_t WHERE member_id=%s",
+        (member_id,),
+    )
+    status_row = cur.fetchone()
+    if not status_row or status_row.get("member_status") != "WITHDRAW_REQ":
+        return {"status": "NORMAL"}
+
+    alter_dt = status_row.get("alter_dt")
+    if alter_dt and isinstance(alter_dt, datetime):
+        if alter_dt < datetime.utcnow() - timedelta(days=7):
+            cur.execute("DELETE FROM tb_member_basic_m WHERE member_id=%s", (member_id,))
+            return {"status": "DELETED"}
+
+    return {"status": "WITHDRAW_REQ"}
 
 
 def _validate_password(password: str):
@@ -158,7 +230,11 @@ def login_local_user(req: LocalLoginRequest):
 
     try:
         cur.execute(
-            "SELECT member_id, pwd_hash FROM tb_member_auth_t WHERE provider='LOCAL' AND provider_user_id=%s",
+            """
+            SELECT member_id, pwd_hash
+            FROM tb_member_basic_m
+            WHERE login_id=%s AND join_channel='LOCAL'
+            """,
             (req.email,),
         )
         row = cur.fetchone()
@@ -172,7 +248,20 @@ def login_local_user(req: LocalLoginRequest):
         if not pwd_context.verify(req.password, row["pwd_hash"]):
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
-        return {"member_id": str(row["member_id"])}
+        status_check = _check_withdraw_status(cur, row["member_id"])
+        if status_check["status"] == "WITHDRAW_REQ":
+            return {
+                "member_id": str(row["member_id"]),
+                "withdraw_pending": True,
+            }
+        if status_check["status"] == "DELETED":
+            conn.commit()
+            raise HTTPException(status_code=410, detail="Account deleted")
+
+        return {
+            "member_id": str(row["member_id"]),
+            "is_admin": _is_admin_email(req.email),
+        }
 
     except HTTPException:
         raise
@@ -210,13 +299,6 @@ def register_local_user(req: LocalRegisterRequest):
         if cur.fetchone():
             raise HTTPException(status_code=409, detail="Login ID already exists")
 
-        cur.execute(
-            "SELECT auth_id FROM tb_member_auth_t WHERE provider='LOCAL' AND provider_user_id=%s",
-            (req.email,),
-        )
-        if cur.fetchone():
-            raise HTTPException(status_code=409, detail="Local account already exists")
-
         pwd_hash = pwd_context.hash(password)
 
         sql_basic = """
@@ -234,13 +316,6 @@ def register_local_user(req: LocalRegisterRequest):
             VALUES (%s, %s, %s, %s, %s)
         """
         cur.execute(sql_profile, (member_id, req.name, req.name, req.sex, req.email))
-
-        sql_auth = """
-            INSERT INTO tb_member_auth_t
-            (member_id, provider, provider_user_id, email, pwd_hash)
-            VALUES (%s, 'LOCAL', %s, %s, %s)
-        """
-        cur.execute(sql_auth, (member_id, req.email, req.email, pwd_hash))
 
         sql_status = """
             INSERT INTO tb_member_status_t
@@ -278,13 +353,17 @@ def get_profile(member_id: int):
             SELECT
                 b.member_id,
                 b.join_channel,
+                b.sns_join_yn,
                 b.email_alarm_yn,
                 b.sns_alarm_yn,
                 p.name,
                 p.nickname,
                 p.sex,
+                p.phone_no,
+                p.address,
                 p.email,
-                p.sub_email
+                p.sub_email,
+                p.profile_image_url
             FROM tb_member_basic_m b
             LEFT JOIN tb_member_profile_t p ON b.member_id = p.member_id
             WHERE b.member_id = %s
@@ -349,6 +428,18 @@ def update_profile(member_id: int, req: UpdateProfileRequest):
         if not cur.fetchone():
             raise HTTPException(status_code=404, detail="Member not found")
 
+        if req.sex and req.sex not in ("M", "F"):
+            raise HTTPException(status_code=400, detail="Invalid sex value")
+
+        if req.sns_join_yn and req.sns_join_yn not in ("Y", "N"):
+            raise HTTPException(status_code=400, detail="Invalid sns_join_yn value")
+
+        if req.email_alarm_yn and req.email_alarm_yn not in ("Y", "N"):
+            raise HTTPException(status_code=400, detail="Invalid email_alarm_yn value")
+
+        if req.sns_alarm_yn and req.sns_alarm_yn not in ("Y", "N"):
+            raise HTTPException(status_code=400, detail="Invalid sns_alarm_yn value")
+
         nickname = req.nickname
         if nickname is not None:
             if not re.fullmatch(r"[A-Za-z0-9가-힣]{2,12}", nickname):
@@ -363,6 +454,14 @@ def update_profile(member_id: int, req: UpdateProfileRequest):
             if cur.fetchone():
                 raise HTTPException(status_code=409, detail="Nickname already exists")
 
+        if req.email is not None:
+            cur.execute(
+                "SELECT member_id FROM tb_member_basic_m WHERE login_id=%s AND member_id<>%s",
+                (req.email, member_id),
+            )
+            if cur.fetchone():
+                raise HTTPException(status_code=409, detail="Email already exists")
+
         cur.execute(
             "SELECT member_id FROM tb_member_profile_t WHERE member_id=%s",
             (member_id,),
@@ -372,29 +471,71 @@ def update_profile(member_id: int, req: UpdateProfileRequest):
                 """
                 UPDATE tb_member_profile_t
                 SET nickname = COALESCE(%s, nickname),
-                    sub_email = COALESCE(%s, sub_email)
+                    name = COALESCE(%s, name),
+                    sex = COALESCE(%s, sex),
+                    phone_no = COALESCE(%s, phone_no),
+                    address = COALESCE(%s, address),
+                    email = COALESCE(%s, email),
+                    sub_email = COALESCE(%s, sub_email),
+                    profile_image_url = COALESCE(%s, profile_image_url)
                 WHERE member_id = %s
                 """,
-                (req.nickname, req.sub_email, member_id),
+                (
+                    req.nickname,
+                    req.name,
+                    req.sex,
+                    req.phone_no,
+                    req.address,
+                    req.email,
+                    req.sub_email,
+                    req.profile_image_url,
+                    member_id,
+                ),
             )
         else:
             cur.execute(
                 """
-                INSERT INTO tb_member_profile_t (member_id, nickname, sub_email)
-                VALUES (%s, %s, %s)
+                INSERT INTO tb_member_profile_t
+                (member_id, nickname, name, sex, phone_no, address, email, sub_email, profile_image_url)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
-                (member_id, req.nickname, req.sub_email),
+                (
+                    member_id,
+                    req.nickname,
+                    req.name,
+                    req.sex,
+                    req.phone_no,
+                    req.address,
+                    req.email,
+                    req.sub_email,
+                    req.profile_image_url,
+                ),
             )
 
-        if req.email_alarm_yn in ("Y", "N") or req.sns_alarm_yn in ("Y", "N"):
+        if req.email is not None:
+            cur.execute(
+                """
+                UPDATE tb_member_basic_m
+                SET login_id = %s
+                WHERE member_id = %s AND join_channel = 'LOCAL'
+                """,
+                (req.email, member_id),
+            )
+
+        if (
+            req.email_alarm_yn in ("Y", "N")
+            or req.sns_alarm_yn in ("Y", "N")
+            or req.sns_join_yn in ("Y", "N")
+        ):
             cur.execute(
                 """
                 UPDATE tb_member_basic_m
                 SET email_alarm_yn = COALESCE(%s, email_alarm_yn),
-                    sns_alarm_yn = COALESCE(%s, sns_alarm_yn)
+                    sns_alarm_yn = COALESCE(%s, sns_alarm_yn),
+                    sns_join_yn = COALESCE(%s, sns_join_yn)
                 WHERE member_id = %s
                 """,
-                (req.email_alarm_yn, req.sns_alarm_yn, member_id),
+                (req.email_alarm_yn, req.sns_alarm_yn, req.sns_join_yn, member_id),
             )
 
         conn.commit()
@@ -433,7 +574,7 @@ def update_password(member_id: int, req: UpdatePasswordRequest):
             raise HTTPException(status_code=404, detail="Member not found")
 
         cur.execute(
-            "SELECT pwd_hash FROM tb_member_auth_t WHERE provider='LOCAL' AND member_id=%s",
+            "SELECT pwd_hash, join_channel FROM tb_member_basic_m WHERE member_id=%s",
             (member_id,),
         )
         row = cur.fetchone()
@@ -441,18 +582,13 @@ def update_password(member_id: int, req: UpdatePasswordRequest):
         if not row or not row.get("pwd_hash"):
             raise HTTPException(status_code=400, detail="Password login not enabled")
 
+        if row.get("join_channel") != "LOCAL":
+            raise HTTPException(status_code=400, detail="Password login not enabled")
+
         if not pwd_context.verify(req.current_password, row["pwd_hash"]):
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
         new_hash = pwd_context.hash(req.new_password)
-        cur.execute(
-            """
-            UPDATE tb_member_auth_t
-            SET pwd_hash=%s
-            WHERE provider='LOCAL' AND member_id=%s
-            """,
-            (new_hash, member_id),
-        )
         cur.execute(
             """
             UPDATE tb_member_basic_m
@@ -465,6 +601,241 @@ def update_password(member_id: int, req: UpdatePasswordRequest):
         conn.commit()
         return {"status": "ok"}
 
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        conn.close()
+
+
+@router.post("/profile/{member_id}/withdraw")
+def request_withdraw(member_id: int):
+    conn = get_user_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    try:
+        cur.execute(
+            "SELECT member_id FROM tb_member_basic_m WHERE member_id=%s",
+            (member_id,),
+        )
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Member not found")
+
+        cur.execute(
+            """
+            INSERT INTO tb_member_status_t (member_id, member_status)
+            VALUES (%s, 'WITHDRAW_REQ')
+            ON CONFLICT (member_id)
+            DO UPDATE SET member_status = EXCLUDED.member_status, alter_dt = CURRENT_TIMESTAMP
+            """,
+            (member_id,),
+        )
+        conn.commit()
+        return {"status": "ok"}
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        conn.close()
+
+
+@router.post("/recover")
+def recover_account(member_id: int):
+    conn = get_user_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    try:
+        cur.execute(
+            "SELECT member_status FROM tb_member_status_t WHERE member_id=%s",
+            (member_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Member not found")
+
+        if row.get("member_status") != "WITHDRAW_REQ":
+            raise HTTPException(status_code=400, detail="Account is not pending withdrawal")
+
+        cur.execute(
+            """
+            UPDATE tb_member_status_t
+            SET member_status='NORMAL', alter_dt=CURRENT_TIMESTAMP
+            WHERE member_id=%s
+            """,
+            (member_id,),
+        )
+        conn.commit()
+        return {"status": "ok"}
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        conn.close()
+
+
+@router.post("/profile/{member_id}/image")
+def upload_profile_image(member_id: int, file: UploadFile = File(...)):
+    if file.content_type not in ("image/png", "image/jpeg", "image/webp", "image/gif"):
+        raise HTTPException(status_code=400, detail="Unsupported image type")
+
+    conn = get_user_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    try:
+        _ensure_profile_columns(cur)
+        cur.execute(
+            "SELECT member_id FROM tb_member_basic_m WHERE member_id=%s",
+            (member_id,),
+        )
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Member not found")
+
+        cur.execute(
+            "SELECT profile_image_url FROM tb_member_profile_t WHERE member_id=%s",
+            (member_id,),
+        )
+        existing = cur.fetchone()
+
+        uploads_dir = os.path.join(os.getcwd(), "uploads")
+        os.makedirs(uploads_dir, exist_ok=True)
+        ext = os.path.splitext(file.filename or "")[1].lower()
+        if ext not in (".png", ".jpg", ".jpeg", ".webp", ".gif"):
+            ext = ".png"
+        filename = f"profile_{member_id}_{uuid.uuid4().hex}{ext}"
+        file_path = os.path.join(uploads_dir, filename)
+
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        public_url = f"/uploads/{filename}"
+
+        cur.execute(
+            "SELECT member_id FROM tb_member_profile_t WHERE member_id=%s",
+            (member_id,),
+        )
+        if cur.fetchone():
+            cur.execute(
+                """
+                UPDATE tb_member_profile_t
+                SET profile_image_url=%s
+                WHERE member_id=%s
+                """,
+                (public_url, member_id),
+            )
+        else:
+            cur.execute(
+                """
+                INSERT INTO tb_member_profile_t (member_id, profile_image_url)
+                VALUES (%s, %s)
+                """,
+                (member_id, public_url),
+            )
+
+        if existing and existing.get("profile_image_url"):
+            old_path = existing["profile_image_url"]
+            if old_path.startswith("/uploads/"):
+                old_file = os.path.join(uploads_dir, os.path.basename(old_path))
+                if os.path.exists(old_file):
+                    try:
+                        os.remove(old_file)
+                    except OSError:
+                        pass
+
+        conn.commit()
+        return {"profile_image_url": public_url}
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        conn.close()
+
+
+@router.get("/admin/members")
+def admin_list_members(admin_member_id: int):
+    conn = get_user_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    try:
+        _ensure_admin_by_member_id(cur, admin_member_id)
+
+        cur.execute(
+            """
+            SELECT
+                b.member_id,
+                p.email,
+                p.nickname,
+                b.join_dt,
+                s.member_status,
+                b.join_channel
+            FROM tb_member_basic_m b
+            LEFT JOIN tb_member_profile_t p ON b.member_id = p.member_id
+            LEFT JOIN tb_member_status_t s ON b.member_id = s.member_id
+            ORDER BY b.member_id DESC
+            """
+        )
+        return {"members": cur.fetchall()}
+    finally:
+        cur.close()
+        conn.close()
+
+
+@router.patch("/admin/members/{member_id}/status")
+def admin_update_member_status(member_id: int, admin_member_id: int, status: str):
+    if status not in ("NORMAL", "LOCK", "DORMANT", "WITHDRAW_REQ", "WITHDRAW"):
+        raise HTTPException(status_code=400, detail="Invalid status")
+
+    conn = get_user_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    try:
+        _ensure_admin_by_member_id(cur, admin_member_id)
+
+        cur.execute(
+            "SELECT member_id FROM tb_member_basic_m WHERE member_id=%s",
+            (member_id,),
+        )
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Member not found")
+
+        cur.execute(
+            """
+            INSERT INTO tb_member_status_t (member_id, member_status)
+            VALUES (%s, %s)
+            ON CONFLICT (member_id)
+            DO UPDATE SET member_status = EXCLUDED.member_status
+            """,
+            (member_id, status),
+        )
+        conn.commit()
+        return {"status": "ok"}
     except HTTPException:
         conn.rollback()
         raise

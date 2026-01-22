@@ -52,6 +52,10 @@ export default function LoginPage() {
         return;
       }
       const data = await response.json().catch(() => null);
+        if (data?.withdraw_pending && data?.member_id) {
+          window.location.href = `/recover?memberId=${data.member_id}`;
+          return;
+        }
       let nickname = null;
       if (data?.member_id) {
         const profileResponse = await fetch(`${apiBaseUrl}/users/profile/${data.member_id}`);
@@ -67,6 +71,7 @@ export default function LoginPage() {
             memberId: data?.member_id ?? null,
             email: loginId.trim(),
             nickname,
+            isAdmin: Boolean(data?.is_admin),
             loggedInAt: new Date().toISOString(),
           })
         );

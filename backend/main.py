@@ -4,6 +4,8 @@ from typing import Generator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
+import os
 from langchain_core.messages import HumanMessage
 
 # 모듈 임포트
@@ -14,6 +16,10 @@ from agent.graph import app_graph
 from routers import users
 
 app = FastAPI(title="Perfume Re-Act Chatbot")
+
+uploads_dir = os.path.join(os.getcwd(), "uploads")
+os.makedirs(uploads_dir, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 
 # [추가됨] 유저 라우터 등록 (로그인/회원가입 기능 활성화)
 app.include_router(users.router)

@@ -1,14 +1,9 @@
 "use client";
 
-// import "./vis-network.css";
+import "./vis-network.css";
 import Link from "next/link";
-// import Script from "next/script";
+import Script from "next/script";
 import { useEffect, useMemo, useRef, useState } from "react";
-
-// ✅ 라이브러리 직접 import (안정성 확보)
-import { Network } from "vis-network";
-import { DataSet } from "vis-data";
-import "vis-network/styles/vis-network.css"; // CSS도 여기서 불러옴 
 
 type NetworkNode = {
   id: string;
@@ -96,10 +91,9 @@ export default function PerfumeNetworkPage() {
   }, [requestUrl]);
 
   useEffect(() => {
-    if (!payload || !containerRef.current) return;
-    // if (!scriptReady || !payload || !containerRef.current) return;
-    // const vis = (window as any).vis;
-    // if (!vis) return;
+    if (!scriptReady || !payload || !containerRef.current) return;
+    const vis = (window as any).vis;
+    if (!vis) return;
 
     if (networkRef.current) {
       networkRef.current.destroy();
@@ -113,8 +107,9 @@ export default function PerfumeNetworkPage() {
           label: node.label,
           shape: "circularImage",
           image: node.image || undefined,
-          title: `${node.label}\n${node.brand ?? ""}\n대표 어코드: ${node.primary_accord ?? "Unknown"
-            }`,
+          title: `${node.label}\n${node.brand ?? ""}\n대표 어코드: ${
+            node.primary_accord ?? "Unknown"
+          }`,
           borderWidth: 2,
           color: {
             border: "#f0abfc",
@@ -123,7 +118,6 @@ export default function PerfumeNetworkPage() {
           font: { color: "#f8fafc", size: 12 },
         };
       }
-      // 어코드 노드
       return {
         id: node.id,
         label: node.label,
@@ -145,8 +139,6 @@ export default function PerfumeNetworkPage() {
           smooth: true,
         };
       }
-
-      // HAS_ACCORD
       return {
         from: edge.from,
         to: edge.to,
@@ -156,7 +148,6 @@ export default function PerfumeNetworkPage() {
       };
     });
 
-    // DataSet으로 변환
     const data = { nodes, edges };
     const options = {
       interaction: { hover: true, navigationButtons: true },
@@ -168,12 +159,8 @@ export default function PerfumeNetworkPage() {
       edges: { smooth: { type: "continuous" } },
     };
 
-    // networkRef.current = new vis.Network(containerRef.current, data, options);
-    // }, [scriptReady, payload]);
-
-    // ✅ window.vis 대신 import한 Network 클래스 사용
-    networkRef.current = new Network(containerRef.current, data, options);
-  }, [payload]);
+    networkRef.current = new vis.Network(containerRef.current, data, options);
+  }, [scriptReady, payload]);
 
   const handleReset = () => {
     if (networkRef.current) {
@@ -183,11 +170,11 @@ export default function PerfumeNetworkPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 px-6 py-10 space-y-6">
-      {/* <Script
+      <Script
         src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"
         strategy="afterInteractive"
         onLoad={() => setScriptReady(true)}
-      /> */}
+      />
 
       <header className="space-y-2">
         <div className="flex items-center justify-between">
@@ -206,8 +193,6 @@ export default function PerfumeNetworkPage() {
 
       <section className="grid gap-6 lg:grid-cols-[320px_1fr]">
         <div className="space-y-5 rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-
-          {/* 왼쪽 컨트롤 패널 */}
           <div className="space-y-2">
             <p className="text-sm font-semibold">시각화 파라미터</p>
             <label className="block text-xs text-slate-400">
@@ -278,13 +263,7 @@ export default function PerfumeNetworkPage() {
         </div>
 
         <div className="space-y-3">
-          {/* 우측 그래프 컨테이너 */}
-          <div className="h-[70vh] rounded-2xl border border-slate-800 bg-slate-900/40 p-4 relative">
-            {/* 
-                중요: vis-network 캔버스가 부모 div 크기를 상속받도록 
-                style이나 class를 명시적으로 주는 것이 좋습니다. 
-             */}
-            {/* </div><div className="h-[70vh] rounded-2xl border border-slate-800 bg-slate-900/40 p-4"> */}
+          <div className="h-[70vh] rounded-2xl border border-slate-800 bg-slate-900/40 p-4">
             <div ref={containerRef} className="h-full w-full" />
           </div>
           <div className="text-xs text-slate-500">

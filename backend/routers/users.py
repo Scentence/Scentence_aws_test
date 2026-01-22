@@ -36,6 +36,8 @@ class LocalRegisterRequest(BaseModel):
     name: Optional[str] = None
     sex: Optional[str] = None  # 'M' or 'F'
     req_agr_yn: Optional[str] = "N"
+    email_alarm_yn: Optional[str] = "N"
+    sns_alarm_yn: Optional[str] = "N"
 
 
 class LocalLoginRequest(BaseModel):
@@ -72,6 +74,9 @@ def login_with_kakao(req: KakaoLoginRequest):
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     try:
+        _ensure_profile_columns(cur)
+        nickname = req.nickname or "향수초보"
+        profile_image_url = req.profile_image or None
         # [1단계] 가입 이력 조회
         # TB_MEMBER_PROFILE_T.sns_id + TB_MEMBER_BASIC_M.join_channel 조합으로 확인합니다.
         cur.execute(
@@ -103,6 +108,24 @@ def login_with_kakao(req: KakaoLoginRequest):
                 conn.commit()
                 raise HTTPException(status_code=410, detail="Account deleted")
 
+            if nickname or profile_image_url:
+                cur.execute(
+                    "SELECT nickname, profile_image_url FROM tb_member_profile_t WHERE member_id=%s",
+                    (member_id,),
+                )
+                profile_row = cur.fetchone()
+                if profile_row:
+                    if not profile_row.get("nickname") and nickname:
+                        cur.execute(
+                            "UPDATE tb_member_profile_t SET nickname=%s WHERE member_id=%s",
+                            (nickname, member_id),
+                        )
+                    if not profile_row.get("profile_image_url") and profile_image_url:
+                        cur.execute(
+                            "UPDATE tb_member_profile_t SET profile_image_url=%s WHERE member_id=%s",
+                            (profile_image_url, member_id),
+                        )
+
         else:
             # [B] 신규 회원가입 (3단계 Insert)
             # 우리 DB는 데이터 정규화를 위해 3개의 테이블로 쪼개져 있습니다.
@@ -123,10 +146,10 @@ def login_with_kakao(req: KakaoLoginRequest):
             # - 역할: 닉네임, 이메일 등 사용자에게 보여지는 정보 저장
             sql_profile = """
                 INSERT INTO tb_member_profile_t
-                (member_id, nickname, email, sns_id)
-                VALUES (%s, %s, %s, %s)
+                (member_id, nickname, email, sns_id, profile_image_url)
+                VALUES (%s, %s, %s, %s, %s)
             """
-            cur.execute(sql_profile, (member_id, req.nickname, req.email, req.kakao_id))
+            cur.execute(sql_profile, (member_id, nickname, req.email, req.kakao_id, profile_image_url))
 
             sql_status = """
                 INSERT INTO tb_member_status_t
@@ -140,7 +163,7 @@ def login_with_kakao(req: KakaoLoginRequest):
         conn.commit()  # 모든 DB 변경사항 확정 (저장)
         return {
             "member_id": str(member_id),
-            "nickname": req.nickname,
+            "nickname": nickname,
             "is_admin": _is_admin_email(req.email),
         }
 
@@ -286,6 +309,12 @@ def register_local_user(req: LocalRegisterRequest):
     if req.sex and req.sex not in ("M", "F"):
         raise HTTPException(status_code=400, detail="Invalid sex value")
 
+    if req.email_alarm_yn not in ("Y", "N"):
+        raise HTTPException(status_code=400, detail="Invalid email alarm value")
+
+    if req.sns_alarm_yn not in ("Y", "N"):
+        raise HTTPException(status_code=400, detail="Invalid sns alarm value")
+
     password = req.password
     _validate_password(password)
 
@@ -304,10 +333,10 @@ def register_local_user(req: LocalRegisterRequest):
         sql_basic = """
             INSERT INTO tb_member_basic_m
             (login_id, pwd_hash, join_channel, sns_join_yn, email_alarm_yn, sns_alarm_yn)
-            VALUES (%s, %s, 'LOCAL', 'N', 'N', 'N')
+            VALUES (%s, %s, 'LOCAL', 'N', %s, %s)
             RETURNING member_id
         """
-        cur.execute(sql_basic, (req.email, pwd_hash))
+        cur.execute(sql_basic, (req.email, pwd_hash, req.email_alarm_yn, req.sns_alarm_yn))
         member_id = cur.fetchone()["member_id"]
 
         sql_profile = """

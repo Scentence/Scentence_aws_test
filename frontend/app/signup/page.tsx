@@ -10,6 +10,8 @@ export default function SignupPage() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [termsAgree, setTermsAgree] = useState(false);
   const [privacyAgree, setPrivacyAgree] = useState(false);
+  const [emailAlarmAgree, setEmailAlarmAgree] = useState(false);
+  const [snsAlarmAgree, setSnsAlarmAgree] = useState(false);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [sex, setSex] = useState<"M" | "F" | "">("");
@@ -93,6 +95,8 @@ export default function SignupPage() {
           name: name.trim() || null,
           sex: sex || null,
           req_agr_yn: termsAgree && privacyAgree ? "Y" : "N",
+          email_alarm_yn: emailAlarmAgree ? "Y" : "N",
+          sns_alarm_yn: snsAlarmAgree ? "Y" : "N",
         }),
       });
 
@@ -303,6 +307,24 @@ export default function SignupPage() {
                 onChange={(event) => handlePrivacyChange(event.target.checked)}
               />
               개인정보 수집 및 이용 동의
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="accent-black"
+                checked={emailAlarmAgree}
+                onChange={(event) => setEmailAlarmAgree(event.target.checked)}
+              />
+              이메일 수신 동의
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="accent-black"
+                checked={snsAlarmAgree}
+                onChange={(event) => setSnsAlarmAgree(event.target.checked)}
+              />
+              SNS 수신 동의
             </label>
           </div>
 

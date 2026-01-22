@@ -34,7 +34,6 @@ export default function MyPage() {
   const [address, setAddress] = useState("");
   const [email, setEmail] = useState("");
   const [subEmail, setSubEmail] = useState("");
-  const [snsJoin, setSnsJoin] = useState(false);
   const [emailMarketing, setEmailMarketing] = useState(false);
   const [snsMarketing, setSnsMarketing] = useState(false);
   const [nicknameStatus, setNicknameStatus] = useState<"idle" | "checking" | "available" | "unavailable" | "invalid">("idle");
@@ -129,7 +128,6 @@ export default function MyPage() {
         setAddress(data.address || "");
         setEmail(data.email || "");
         setSubEmail(data.sub_email || "");
-        setSnsJoin(data.sns_join_yn === "Y");
         setEmailMarketing(data.email_alarm_yn === "Y");
         setSnsMarketing(data.sns_alarm_yn === "Y");
       } catch (error) {
@@ -199,7 +197,6 @@ export default function MyPage() {
           address: address.trim() || null,
           email: email.trim() || null,
           sub_email: subEmail.trim() || null,
-          sns_join_yn: snsJoin ? "Y" : "N",
           email_alarm_yn: emailMarketing ? "Y" : "N",
           sns_alarm_yn: snsMarketing ? "Y" : "N",
         }),
@@ -519,15 +516,6 @@ export default function MyPage() {
               <input
                 type="checkbox"
                 className="accent-black"
-                checked={snsJoin}
-                onChange={(event) => setSnsJoin(event.target.checked)}
-              />
-              SNS 가입 여부
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="accent-black"
                 checked={emailMarketing}
                 onChange={(event) => setEmailMarketing(event.target.checked)}
               />
@@ -540,7 +528,7 @@ export default function MyPage() {
                 checked={snsMarketing}
                 onChange={(event) => setSnsMarketing(event.target.checked)}
               />
-              카톡 알림 수신
+              SNS 알림 수신
             </label>
           </div>
 

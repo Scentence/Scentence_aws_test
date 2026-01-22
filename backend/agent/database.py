@@ -368,21 +368,43 @@ def rerank_perfumes(
 
     try:
         # 1. [번역 & 임베딩] 한글 쿼리 -> 영문 번역 (매칭 정확도 향상)
+        system_prompt = """
+        You are a Perfume Data Analyst.
+        Your task is to convert the user's **Korean Strategic Intention** into a **Descriptive English Perfume Summary** that matches our database style.
+
+        [Input Context]
+        The input is a logical strategy (e.g., "To emphasize masculine charm...").
+        
+        [Output Goal]
+        Transform this logic into a sensory description of a perfume that would fulfill that strategy.
+        
+        [Rules]
+        1. **Translate & Adapt**: Translate the Korean input into English, changing the tone from "Planning" (Future tense) to "Describing" (Present tense).
+           - BAD: "I will recommend a woody scent..."
+           - GOOD: "This fragrance features woody notes..."
+        2. **Style Matching**: Use the exact 3rd-person style found in perfume databases.
+           - Start with: "This fragrance features...", "It evokes...", "It presents..."
+        3. **Keyword Integration**: Naturally weave the provided keywords (e.g., Wedding, Date) into the description.
+        4. **Length**: Keep it concise (2-3 sentences).
+
+        [Example]
+        Input: "결혼식 하객으로 참석하는 20대 여성을 위해, 튀지 않으면서도 우아한 플로럴 향을 추천함. Keywords: Wedding, Elegant"
+        Output: "This fragrance presents an elegant floral bouquet that is subtle yet memorable. It evokes a sophisticated vibe, making it perfect for a wedding guest who wants to maintain a polished presence."
+        """
+
         translation_response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {
-                    "role": "system",
-                    "content": "Translate the following Korean text into English for perfume review search. Only return the translated text.",
-                },
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": query_text},
             ],
-            temperature=0,
+            temperature=0, # 스타일 일관성을 위해 0 설정
         )
-        translated_query = translation_response.choices[0].message.content.strip()
-        print(f"   🔤 Query Translation: '{query_text}' -> '{translated_query}'")
+        
+        # 변수명을 의미에 맞게 'stylized_query'로 변경하여 사용
+        stylized_query = translation_response.choices[0].message.content.strip()
 
-        query_vector = get_embedding(translated_query)
+        query_vector = get_embedding(stylized_query)
         if not query_vector:
             return candidates[:top_k]
 
@@ -433,7 +455,7 @@ def rerank_perfumes(
 
         # [★로그 추가] 상위 5개 결과의 유사도와 리뷰 요약 출력
         print(
-            f"\n   📊 [Review Reranking] Top Matches (Query: {translated_query[:30]}...):",
+            f"\n   📊 [Review Reranking] Top Matches (Query: {stylized_query[:30]}...):",
             flush=True,
         )
         for i, p in enumerate(reranked_results[:5]):  # 상위 5개만 로그 출력

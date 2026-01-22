@@ -124,6 +124,14 @@ export default function ScentCardCreatePage() {
             <h3 className="text-base font-bold text-[#2B2B2B]">분위기 간단 입력</h3>
             <div className="space-y-3">
               <div className="space-y-1">
+                <p className="text-xs text-[#666] font-semibold">이미지 입력(선택)</p>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="w-full rounded-xl border border-[#E0E0E0] px-4 py-3 text-xs text-[#666]"
+                />
+              </div>
+              <div className="space-y-1">
                 <p className="text-xs text-[#666] font-semibold">분위기 한 줄</p>
                 <input
                   type="text"
@@ -177,73 +185,31 @@ export default function ScentCardCreatePage() {
                   ))}
                 </div>
               </div>
-              <div className="space-y-1">
-                <p className="text-xs text-[#666] font-semibold">이미지 입력(선택)</p>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="w-full rounded-xl border border-[#E0E0E0] px-4 py-3 text-xs text-[#666]"
-                />
+              <div className="space-y-2">
+                <p className="text-xs text-[#666] font-semibold">성별 키워드</p>
+                <div className="flex flex-wrap gap-2">
+                  {genders.map((gender) => (
+                    <button
+                      key={gender.value}
+                      type="button"
+                      onClick={() =>
+                        setSelectedGender((prev) =>
+                          prev === gender.value ? null : gender.value
+                        )
+                      }
+                      className={`px-3 py-2 rounded-full text-xs font-semibold transition ${
+                        selectedGender === gender.value
+                          ? "bg-[#2B2B2B] text-white"
+                          : "bg-[#F4F2EE] text-[#6B5A2B] hover:bg-[#EAE4D8]"
+                      }`}
+                    >
+                      {gender.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </section>
-
-          {cardMode === "recommend" && (
-            <section className="grid gap-4">
-              <div className="rounded-2xl bg-white border border-[#E6E6E6] p-5 space-y-4">
-                <h3 className="text-base font-bold text-[#2B2B2B]">원하는 향 입력</h3>
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <p className="text-xs text-[#666] font-semibold">사용 목적</p>
-                    <input
-                      type="text"
-                      placeholder="예: 출근, 데이트, 집중"
-                      className="w-full rounded-xl border border-[#E0E0E0] px-4 py-3 text-sm outline-none focus:border-[#C8A24D]"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs text-[#666] font-semibold">선호/비선호 향</p>
-                    <input
-                      type="text"
-                      placeholder="예: 플로럴 선호, 파우더리 비선호"
-                      className="w-full rounded-xl border border-[#E0E0E0] px-4 py-3 text-sm outline-none focus:border-[#C8A24D]"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs text-[#666] font-semibold">보유한 향</p>
-                    <input
-                      type="text"
-                      placeholder="예: Philosykos, Bal d'Afrique"
-                      className="w-full rounded-xl border border-[#E0E0E0] px-4 py-3 text-sm outline-none focus:border-[#C8A24D]"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-xs text-[#666] font-semibold">성별 키워드</p>
-                    <div className="flex flex-wrap gap-2">
-                      {genders.map((gender) => (
-                        <button
-                          key={gender.value}
-                          type="button"
-                          onClick={() =>
-                            setSelectedGender((prev) =>
-                              prev === gender.value ? null : gender.value
-                            )
-                          }
-                          className={`px-3 py-2 rounded-full text-xs font-semibold transition ${
-                            selectedGender === gender.value
-                              ? "bg-[#2B2B2B] text-white"
-                              : "bg-[#F4F2EE] text-[#6B5A2B] hover:bg-[#EAE4D8]"
-                          }`}
-                        >
-                          {gender.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </section>
-          )}
 
           <button className="w-full py-3 rounded-xl bg-[#2B2B2B] text-white font-bold hover:bg-black transition">
             카드 생성하기

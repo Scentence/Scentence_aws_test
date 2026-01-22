@@ -24,11 +24,13 @@ export default function SignupPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "";
 
-  const allAgree = termsAgree && privacyAgree;
+  const allAgree = termsAgree && privacyAgree && emailAlarmAgree && snsAlarmAgree;
 
   const handleAllAgreeChange = (checked: boolean) => {
     setTermsAgree(checked);
     setPrivacyAgree(checked);
+    setEmailAlarmAgree(checked);
+    setSnsAlarmAgree(checked);
   };
 
   const handleTermsChange = (checked: boolean) => {

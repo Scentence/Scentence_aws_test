@@ -9,6 +9,7 @@ import os
 import uuid
 import shutil
 from datetime import datetime, timedelta
+from agent.database import add_my_perfume
 
 # 이 라우터는 '/users'로 시작하는 모든 요청을 처리합니다.
 router = APIRouter(prefix="/users", tags=["users"])
@@ -81,7 +82,7 @@ def login_with_kakao(req: KakaoLoginRequest):
             JOIN tb_member_profile_t p ON b.member_id = p.member_id
             WHERE b.join_channel = 'KAKAO' AND p.sns_id = %s
             """,
-            (req.kakao_id,)
+            (req.kakao_id,),
         )
         existing_auth = cur.fetchone()
 
@@ -192,7 +193,9 @@ def _check_withdraw_status(cur, member_id: int):
     alter_dt = status_row.get("alter_dt")
     if alter_dt and isinstance(alter_dt, datetime):
         if alter_dt < datetime.utcnow() - timedelta(days=7):
-            cur.execute("DELETE FROM tb_member_basic_m WHERE member_id=%s", (member_id,))
+            cur.execute(
+                "DELETE FROM tb_member_basic_m WHERE member_id=%s", (member_id,)
+            )
             return {"status": "DELETED"}
 
     return {"status": "WITHDRAW_REQ"}
@@ -558,7 +561,9 @@ def update_profile(member_id: int, req: UpdateProfileRequest):
 @router.post("/profile/{member_id}/password")
 def update_password(member_id: int, req: UpdatePasswordRequest):
     if req.new_password != req.confirm_password:
-        raise HTTPException(status_code=400, detail="Password confirmation does not match")
+        raise HTTPException(
+            status_code=400, detail="Password confirmation does not match"
+        )
 
     _validate_password(req.new_password)
 
@@ -668,7 +673,9 @@ def recover_account(member_id: int):
             raise HTTPException(status_code=404, detail="Member not found")
 
         if row.get("member_status") != "WITHDRAW_REQ":
-            raise HTTPException(status_code=400, detail="Account is not pending withdrawal")
+            raise HTTPException(
+                status_code=400, detail="Account is not pending withdrawal"
+            )
 
         cur.execute(
             """
@@ -848,3 +855,28 @@ def admin_update_member_status(member_id: int, admin_member_id: int, status: str
     finally:
         cur.close()
         conn.close()
+
+
+class SavePerfumeRequest(BaseModel):
+    member_id: int  # 로그인된 사용자 ID (프론트에서 세션 정보로 보냄)
+    perfume_id: int
+    perfume_name: str
+
+
+@router.post("/me/perfumes")
+def save_my_perfume(req: SavePerfumeRequest):
+    """
+    사용자가 '저장하기' 버튼을 눌렀을 때 호출되는 API입니다.
+    TB_MEMBER_MY_PERFUME_T 테이블에 향수를 저장합니다.
+    """
+    if not req.member_id:
+        raise HTTPException(status_code=401, detail="로그인이 필요합니다.")
+
+    # DB 저장 함수 호출
+    result = add_my_perfume(req.member_id, req.perfume_id, req.perfume_name)
+
+    if result["status"] == "error":
+        raise HTTPException(status_code=500, detail=result["message"])
+
+    # 이미 저장된 경우도 성공(200)으로 처리하되 메시지만 다르게 줄 수 있음
+    return result

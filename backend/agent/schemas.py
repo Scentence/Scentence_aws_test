@@ -10,6 +10,7 @@ from langchain_core.messages import BaseMessage
 class ChatRequest(BaseModel):
     user_query: str = Field(description="사용자가 입력한 질문 텍스트")
     thread_id: Optional[str] = Field(None, description="세션 관리를 위한 스레드 ID")
+    member_id: int = Field(0, description="로그인한 사용자 ID")
 
 
 class AgentState(Dict):
@@ -23,6 +24,7 @@ class AgentState(Dict):
     next_step: Optional[str]
     user_preferences: Optional[Dict]
     research_results: Optional[List]
+    member_id: Optional[int]
 
 
 # =================================================================
@@ -98,6 +100,7 @@ class PerfumeNotes(BaseModel):
 
 
 class PerfumeDetail(BaseModel):
+    id: int = Field(description="향수 고유 ID (DB Primary Key)")
     perfume_name: str = Field(description="향수 이름")
     perfume_brand: str = Field(description="향수 브랜드")
     accord: str = Field(description="주요 어코드")

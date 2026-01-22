@@ -42,6 +42,7 @@ from .prompts import (
     WRITER_RECOMMENDATION_PROMPT,
     NOTE_SELECTION_PROMPT,
 )
+from .database import save_recommendation_log
 
 load_dotenv()
 
@@ -177,7 +178,7 @@ def log_filters(h_filters: dict, s_filters: dict):
     # Hard Filter 포맷팅
     h_items = [f"{k.capitalize()}: {v}" for k, v in h_filters.items() if v]
     h_str = " | ".join(h_items) if h_items else "None"
-    
+
     # Soft Filter 포맷팅
     s_items = []
     for k, v in s_filters.items():
@@ -190,16 +191,15 @@ def log_filters(h_filters: dict, s_filters: dict):
     print(f"       🔒 [Hard] {h_str}", flush=True)
     print(f"       ✨ [Soft] {s_str}", flush=True)
 
+
 # ==========================================
 # [Helper] 스마트 검색 및 재시도 로직 (조합형 시도)
 # ==========================================
 # backend/graph.py
 
+
 def smart_search_with_retry(
-    h_filters: dict, 
-    s_filters: dict, 
-    exclude_ids: list = None,
-    query_text: str = "" 
+    h_filters: dict, s_filters: dict, exclude_ids: list = None, query_text: str = ""
 ):
 
     # 중요도 순서: Note > Accord > Occasion
@@ -209,7 +209,10 @@ def smart_search_with_retry(
     # ---------------------------------------------------------
     # 1. [Attempt 1] Full Conditions (로그 유지)
     # ---------------------------------------------------------
-    print(f"\n      📍 [Attempt 1] Full Conditions ({len(active_keys)} filters)", flush=True)
+    print(
+        f"\n      📍 [Attempt 1] Full Conditions ({len(active_keys)} filters)",
+        flush=True,
+    )
     log_filters(h_filters, s_filters)
 
     results = advanced_perfume_search_tool.invoke(
@@ -231,13 +234,13 @@ def smart_search_with_retry(
     for r in range(len(active_keys) - 1, 0, -1):
         # 중요도 순서대로 조합 생성
         combinations = list(itertools.combinations(active_keys, r))
-        
+
         # [수정] "Trying..." 로그 제거 (조용히 시도)
-        
+
         for combo_keys in combinations:
             temp_filters = {k: s_filters[k] for k in combo_keys}
             combo_str = "+".join([k.upper() for k in combo_keys])
-            
+
             # [수정] "Testing..." 로그 제거 (조용히 시도)
 
             results = advanced_perfume_search_tool.invoke(
@@ -253,19 +256,24 @@ def smart_search_with_retry(
                 # [수정] 성공 시 Level과 조합명(Combo)을 명시
                 level = len(active_keys) - r
                 match_type = f"Relaxed (Level {level} - [{combo_str}])"
-                print(f"      ✅ Found {len(results)} perfumes ({match_type})", flush=True)
+                print(
+                    f"      ✅ Found {len(results)} perfumes ({match_type})", flush=True
+                )
                 return results, match_type
 
     return [], "No Results"
+
 
 # ==========================================
 # 6. Researcher노드 정의
 # ==========================================
 # backend/graph.py
 
+
 def researcher_node(state: AgentState):
     print(f"\n🧠 [Researcher] 전략 수립 및 DB 검색...", flush=True)
-
+    current_member_id = state.get("member_id", 0)
+    print(f"   🆔 Received Member ID: {current_member_id}", flush=True)
     user_prefs = state.get("user_preferences", {})
     current_context = json.dumps(user_prefs, ensure_ascii=False)
     print(f"   👤 User Context: {current_context}", flush=True)
@@ -302,7 +310,7 @@ def researcher_node(state: AgentState):
             print(f"   👉 [Strategy {plan.priority}] {plan.strategy_name}", flush=True)
 
             current_reason = plan.reason
-            
+
             # 리랭킹용 쿼리 텍스트 구성 (기본값)
             search_query_text = (
                 f"{current_reason}. Keywords: {', '.join(plan.strategy_keyword)}"
@@ -315,9 +323,12 @@ def researcher_node(state: AgentState):
             )
 
             # [안전장치] 기본 매핑
-            if h_filters.get("season") == "봄": h_filters["season"] = "Spring"
-            if h_filters.get("gender") == "남성": h_filters["gender"] = "Men"
-            if refined_hard_note: h_filters["note"] = refined_hard_note
+            if h_filters.get("season") == "봄":
+                h_filters["season"] = "Spring"
+            if h_filters.get("gender") == "남성":
+                h_filters["gender"] = "Men"
+            if refined_hard_note:
+                h_filters["note"] = refined_hard_note
 
             # =================================================================
             # [★수정 포인트] Occasion 이원화 전략 (Dual-Track Strategy)
@@ -326,21 +337,30 @@ def researcher_node(state: AgentState):
             if target_occasion:
                 # DB 메타데이터 로드 (유효성 검사를 위해 필요)
                 from .database import fetch_meta_data
+
                 meta = fetch_meta_data()
-                
+
                 # DB에 있는 유효한 상황 목록 (소문자 변환하여 비교)
-                valid_occasions = [o.strip().lower() for o in meta.get("occasions", "").split(",")]
-                
+                valid_occasions = [
+                    o.strip().lower() for o in meta.get("occasions", "").split(",")
+                ]
+
                 if target_occasion.lower() in valid_occasions:
                     # Case A: DB에 있는 값 (예: Office, Date) -> Hard Filter 유지
-                    print(f"      🔒 Occasion '{target_occasion}' is valid. Keeping Hard Filter.", flush=True)
+                    print(
+                        f"      🔒 Occasion '{target_occasion}' is valid. Keeping Hard Filter.",
+                        flush=True,
+                    )
                 else:
                     # Case B: DB에 없는 값 (예: Wedding, Gym) -> Hard Filter 제거 & 쿼리에 추가
-                    print(f"      ⚠️ Occasion '{target_occasion}' not in DB. Moving to Query Text.", flush=True)
-                    
+                    print(
+                        f"      ⚠️ Occasion '{target_occasion}' not in DB. Moving to Query Text.",
+                        flush=True,
+                    )
+
                     # 1. SQL 조건에서 삭제 (0건 방지)
                     del h_filters["occasion"]
-                    
+
                     # 2. 리뷰 검색어(Query)에 추가하여 리랭킹으로 찾음
                     search_query_text += f". It is perfect for {target_occasion}."
             # =================================================================
@@ -382,9 +402,10 @@ def researcher_node(state: AgentState):
                             ),
                         ]
                         selected_response = SMART_LLM.invoke(selection_messages).content
-                        
+
                         llm_selected = [
-                            c for c in candidates
+                            c
+                            for c in candidates
                             if c.lower() in selected_response.lower()
                         ]
 
@@ -426,13 +447,13 @@ def researcher_node(state: AgentState):
                     else new_plan.strategy_filters.dict(exclude_none=True)
                 )
                 current_reason = new_plan.reason
-                
+
                 # 재시도 시에도 쿼리 업데이트
                 search_query_text = f"{current_reason}. Keywords: {', '.join(new_plan.strategy_keyword)}"
-                
+
                 # 재시도 시에도 Occasion이 쿼리에 반영되어야 한다면 추가 (선택사항)
                 if target_occasion and target_occasion.lower() not in valid_occasions:
-                     search_query_text += f". It is perfect for {target_occasion}."
+                    search_query_text += f". It is perfect for {target_occasion}."
 
                 # 노트 재검색 로직
                 if s_filters.get("note"):
@@ -457,7 +478,16 @@ def researcher_node(state: AgentState):
             # [6] 결과 정리
             perfume_details = []
             if db_perfumes:
-                p = db_perfumes[0]
+                best_match = db_perfumes[0]
+
+                save_recommendation_log(
+                    member_id=current_member_id,
+                    perfumes=[
+                        best_match
+                    ],  # <--- 이렇게 리스트로 감싸서 하나만 보냅니다
+                    reason=current_reason,
+                )
+                p = best_match
                 collected_ids.append(p["id"])
                 print(
                     f"      ✅ 최종 선정: {p.get('brand')} - {p.get('name')} ({match_type})",
@@ -473,6 +503,7 @@ def researcher_node(state: AgentState):
                     base=p.get("base_notes") or "정보 없음",
                 )
                 detail = PerfumeDetail(
+                    id=p.get("id"),
                     perfume_name=p.get("name", "Unknown"),
                     perfume_brand=p.get("brand", "Unknown"),
                     accord=accord_with_review,

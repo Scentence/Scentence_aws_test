@@ -12,8 +12,9 @@ interface SidebarProps {
 
 export default function Sidebar({ isOpen, onClose, context }: SidebarProps) {
     const { data: session } = useSession(); // 로그인 상태 확인
-    const [localUser, setLocalUser] = useState<{ memberId?: string | null; email?: string | null; nickname?: string | null; isAdmin?: boolean } | null>(null);
+    const [localUser, setLocalUser] = useState<{ memberId?: string | null; email?: string | null; nickname?: string | null; roleType?: string | null; isAdmin?: boolean } | null>(null);
     const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
+    const [profileRoleType, setProfileRoleType] = useState<string | null>(null);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -51,18 +52,22 @@ export default function Sidebar({ isOpen, onClose, context }: SidebarProps) {
                 } else {
                     setProfileImageUrl(null);
                 }
+                if (data?.role_type) {
+                    setProfileRoleType(data.role_type);
+                }
             })
             .catch(() => setProfileImageUrl(null));
     }, [isOpen, localUser, session]);
 
     const isLoggedIn = Boolean(session || localUser);
     const displayName = session?.user?.name || localUser?.nickname || localUser?.email || "회원";
-    const adminEmails = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "")
-        .split(",")
-        .map((email) => email.trim().toLowerCase())
-        .filter(Boolean);
-    const currentEmail = session?.user?.email || localUser?.email || "";
-    const isAdmin = localUser?.isAdmin || (currentEmail ? adminEmails.includes(currentEmail.toLowerCase()) : false);
+    const resolvedRoleType = (
+        localUser?.roleType ||
+        (localUser?.isAdmin ? "ADMIN" : "") ||
+        profileRoleType ||
+        ""
+    ).toUpperCase();
+    const isAdmin = resolvedRoleType === "ADMIN";
 
     if (!isOpen) return null;
 
@@ -122,7 +127,7 @@ export default function Sidebar({ isOpen, onClose, context }: SidebarProps) {
                                         <Link href="/admin" className="block text-lg font-medium hover:text-blue-600">🛠️ 관리자 페이지</Link>
                                     )}
                                     <Link href="/archives" className="block text-lg font-medium hover:text-blue-600">📂 나만의 아카이브</Link>
-                                    <Link href="/map" className="block text-lg font-medium hover:text-blue-600">🗺️ 향수 관계맵</Link>
+                                    <Link href="/perfume-network" className="block text-lg font-medium hover:text-blue-600">🗺️ 향수 관계맵</Link>
                                     <Link href="/contact" className="block text-gray-600">📞 문의하기</Link>
                                     <button
                                         onClick={() => {

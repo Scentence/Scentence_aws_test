@@ -57,11 +57,13 @@ export default function LoginPage() {
           return;
         }
       let nickname = null;
+      let roleType = data?.role_type ?? null;
       if (data?.member_id) {
         const profileResponse = await fetch(`${apiBaseUrl}/users/profile/${data.member_id}`);
         if (profileResponse.ok) {
           const profileData = await profileResponse.json().catch(() => null);
           nickname = profileData?.nickname ?? null;
+          roleType = profileData?.role_type ?? roleType;
         }
       }
       if (typeof window !== "undefined") {
@@ -71,7 +73,7 @@ export default function LoginPage() {
             memberId: data?.member_id ?? null,
             email: loginId.trim(),
             nickname,
-            isAdmin: Boolean(data?.is_admin),
+            roleType: roleType,
             loggedInAt: new Date().toISOString(),
           })
         );

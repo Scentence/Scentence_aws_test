@@ -1,8 +1,9 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional
 import re
 import psycopg2.extras
+import psycopg2.errors
 from .user import get_user_db_connection
 from passlib.context import CryptContext
 import os
@@ -14,13 +15,6 @@ from datetime import datetime, timedelta
 router = APIRouter(prefix="/users", tags=["users"])
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
-
-ADMIN_EMAILS: List[str] = [
-    email.strip().lower()
-    for email in os.getenv("ADMIN_EMAILS", "").split(",")
-    if email.strip()
-]
-
 
 # [요청 모델] 프론트엔드(NextAuth)에서 보내주는 데이터 형식 정의
 class KakaoLoginRequest(BaseModel):
@@ -36,6 +30,8 @@ class LocalRegisterRequest(BaseModel):
     name: Optional[str] = None
     sex: Optional[str] = None  # 'M' or 'F'
     req_agr_yn: Optional[str] = "N"
+    email_alarm_yn: Optional[str] = "N"
+    sns_alarm_yn: Optional[str] = "N"
 
 
 class LocalLoginRequest(BaseModel):
@@ -72,6 +68,9 @@ def login_with_kakao(req: KakaoLoginRequest):
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     try:
+        _ensure_profile_columns(cur)
+        nickname = req.nickname or "향수초보"
+        profile_image_url = req.profile_image or None
         # [1단계] 가입 이력 조회
         # TB_MEMBER_PROFILE_T.sns_id + TB_MEMBER_BASIC_M.join_channel 조합으로 확인합니다.
         cur.execute(
@@ -103,6 +102,24 @@ def login_with_kakao(req: KakaoLoginRequest):
                 conn.commit()
                 raise HTTPException(status_code=410, detail="Account deleted")
 
+            if nickname or profile_image_url:
+                cur.execute(
+                    "SELECT nickname, profile_image_url FROM tb_member_profile_t WHERE member_id=%s",
+                    (member_id,),
+                )
+                profile_row = cur.fetchone()
+                if profile_row:
+                    if not profile_row.get("nickname") and nickname:
+                        cur.execute(
+                            "UPDATE tb_member_profile_t SET nickname=%s WHERE member_id=%s",
+                            (nickname, member_id),
+                        )
+                    if not profile_row.get("profile_image_url") and profile_image_url:
+                        cur.execute(
+                            "UPDATE tb_member_profile_t SET profile_image_url=%s WHERE member_id=%s",
+                            (profile_image_url, member_id),
+                        )
+
         else:
             # [B] 신규 회원가입 (3단계 Insert)
             # 우리 DB는 데이터 정규화를 위해 3개의 테이블로 쪼개져 있습니다.
@@ -123,10 +140,10 @@ def login_with_kakao(req: KakaoLoginRequest):
             # - 역할: 닉네임, 이메일 등 사용자에게 보여지는 정보 저장
             sql_profile = """
                 INSERT INTO tb_member_profile_t
-                (member_id, nickname, email, sns_id)
-                VALUES (%s, %s, %s, %s)
+                (member_id, nickname, email, sns_id, profile_image_url)
+                VALUES (%s, %s, %s, %s, %s)
             """
-            cur.execute(sql_profile, (member_id, req.nickname, req.email, req.kakao_id))
+            cur.execute(sql_profile, (member_id, nickname, req.email, req.kakao_id, profile_image_url))
 
             sql_status = """
                 INSERT INTO tb_member_status_t
@@ -137,11 +154,12 @@ def login_with_kakao(req: KakaoLoginRequest):
 
             print(f"🎉 신규 회원가입 완료: 회원번호 {member_id}")
 
+        role_type = _get_role_type(cur, member_id)
         conn.commit()  # 모든 DB 변경사항 확정 (저장)
         return {
             "member_id": str(member_id),
-            "nickname": req.nickname,
-            "is_admin": _is_admin_email(req.email),
+            "nickname": nickname,
+            "role_type": role_type,
         }
 
     except Exception as e:
@@ -164,19 +182,27 @@ def _ensure_profile_columns(cur):
     )
 
 
-def _is_admin_email(email: Optional[str]) -> bool:
-    if not email:
-        return False
-    return email.strip().lower() in ADMIN_EMAILS
+def _get_role_type(cur, member_id: int) -> str:
+    try:
+        cur.execute(
+            "SELECT role_type FROM tb_member_basic_m WHERE member_id=%s",
+            (member_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return "USER"
+        role_type = row.get("role_type")
+        return (role_type or "USER").upper()
+    except psycopg2.errors.UndefinedColumn:
+        return "USER"
+
+
+def _is_admin_member(cur, member_id: int) -> bool:
+    return _get_role_type(cur, member_id) == "ADMIN"
 
 
 def _ensure_admin_by_member_id(cur, member_id: int):
-    cur.execute(
-        "SELECT p.email FROM tb_member_profile_t p WHERE p.member_id=%s",
-        (member_id,),
-    )
-    row = cur.fetchone()
-    if not row or not _is_admin_email(row.get("email")):
+    if not _is_admin_member(cur, member_id):
         raise HTTPException(status_code=403, detail="Admin access required")
 
 
@@ -231,7 +257,7 @@ def login_local_user(req: LocalLoginRequest):
     try:
         cur.execute(
             """
-            SELECT member_id, pwd_hash
+            SELECT member_id, pwd_hash, role_type
             FROM tb_member_basic_m
             WHERE login_id=%s AND join_channel='LOCAL'
             """,
@@ -260,7 +286,7 @@ def login_local_user(req: LocalLoginRequest):
 
         return {
             "member_id": str(row["member_id"]),
-            "is_admin": _is_admin_email(req.email),
+            "role_type": (row.get("role_type") or "USER").upper(),
         }
 
     except HTTPException:
@@ -286,6 +312,12 @@ def register_local_user(req: LocalRegisterRequest):
     if req.sex and req.sex not in ("M", "F"):
         raise HTTPException(status_code=400, detail="Invalid sex value")
 
+    if req.email_alarm_yn not in ("Y", "N"):
+        raise HTTPException(status_code=400, detail="Invalid email alarm value")
+
+    if req.sns_alarm_yn not in ("Y", "N"):
+        raise HTTPException(status_code=400, detail="Invalid sns alarm value")
+
     password = req.password
     _validate_password(password)
 
@@ -304,10 +336,10 @@ def register_local_user(req: LocalRegisterRequest):
         sql_basic = """
             INSERT INTO tb_member_basic_m
             (login_id, pwd_hash, join_channel, sns_join_yn, email_alarm_yn, sns_alarm_yn)
-            VALUES (%s, %s, 'LOCAL', 'N', 'N', 'N')
+            VALUES (%s, %s, 'LOCAL', 'N', %s, %s)
             RETURNING member_id
         """
-        cur.execute(sql_basic, (req.email, pwd_hash))
+        cur.execute(sql_basic, (req.email, pwd_hash, req.email_alarm_yn, req.sns_alarm_yn))
         member_id = cur.fetchone()["member_id"]
 
         sql_profile = """
@@ -352,6 +384,7 @@ def get_profile(member_id: int):
             """
             SELECT
                 b.member_id,
+                b.role_type,
                 b.join_channel,
                 b.sns_join_yn,
                 b.email_alarm_yn,

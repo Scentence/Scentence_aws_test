@@ -112,10 +112,10 @@ export default function PerfumeNetworkPage() {
           }`,
           borderWidth: 2,
           color: {
-            border: "#f0abfc",
-            background: "#1f2937",
+            border: "#C8A24D",
+            background: "#F8F4EC",
           },
-          font: { color: "#f8fafc", size: 12 },
+          font: { color: "#4D463A", size: 12 },
         };
       }
       return {
@@ -123,8 +123,8 @@ export default function PerfumeNetworkPage() {
         label: node.label,
         shape: "dot",
         size: 14,
-        color: { background: "#38bdf8", border: "#0ea5e9" },
-        font: { color: "#e2e8f0", size: 11 },
+        color: { background: "#E8DDCA", border: "#BFA67A" },
+        font: { color: "#5C5448", size: 11 },
       };
     });
 
@@ -134,7 +134,7 @@ export default function PerfumeNetworkPage() {
           from: edge.from,
           to: edge.to,
           value: edge.weight ?? 0.1,
-          color: { color: "#f472b6", opacity: 0.6 },
+          color: { color: "#B89138", opacity: 0.6 },
           width: edge.weight ? Math.max(1, edge.weight * 4) : 1,
           smooth: true,
         };
@@ -143,7 +143,7 @@ export default function PerfumeNetworkPage() {
         from: edge.from,
         to: edge.to,
         value: edge.weight ?? 0.1,
-        color: { color: "#94a3b8", opacity: 0.4 },
+        color: { color: "#9C8D7A", opacity: 0.4 },
         dashes: true,
       };
     });
@@ -169,33 +169,47 @@ export default function PerfumeNetworkPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 px-6 py-10 space-y-6">
+    <div className="min-h-screen bg-[#F5F2EA] text-[#1F1F1F] px-6 py-12 space-y-8">
       <Script
         src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"
         strategy="afterInteractive"
         onLoad={() => setScriptReady(true)}
       />
 
-      <header className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">전체 향수 관계 네트워크</h1>
+      <header className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="space-y-1">
+            <p className="text-xs uppercase tracking-[0.3em] text-[#7A6B57]">
+              perfume network
+            </p>
+            <h1 className="text-2xl font-semibold text-[#1F1F1F]">
+              전체 향수 관계 네트워크
+            </h1>
+          </div>
           <Link
             href="/"
-            className="text-sm text-slate-300 hover:text-white transition"
+            className="rounded-full border border-[#E2D7C5] bg-white/80 px-4 py-2 text-xs font-semibold text-[#5C5448] transition hover:bg-white"
           >
             메인으로
           </Link>
         </div>
-        <p className="text-sm text-slate-400">
+        <p className="text-sm text-[#5C5448]">
           perfume_db 전체 데이터를 기반으로 관계 맵을 시각화합니다.
         </p>
       </header>
 
       <section className="grid gap-6 lg:grid-cols-[320px_1fr]">
-        <div className="space-y-5 rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-          <div className="space-y-2">
-            <p className="text-sm font-semibold">시각화 파라미터</p>
-            <label className="block text-xs text-slate-400">
+        <div className="space-y-6 rounded-3xl bg-white/80 border border-[#E2D7C5] p-5 shadow-sm">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-[#1F1F1F]">
+                시각화 파라미터
+              </p>
+              <span className="rounded-full bg-[#F2EBDD] px-2.5 py-1 text-[11px] text-[#7A6B57]">
+                Layering
+              </span>
+            </div>
+            <label className="block text-xs text-[#7A6B57]">
               유사도 임계치 ({minSimilarity.toFixed(2)})
             </label>
             <input
@@ -205,16 +219,16 @@ export default function PerfumeNetworkPage() {
               step="0.05"
               value={minSimilarity}
               onChange={(e) => setMinSimilarity(Number(e.target.value))}
-              className="w-full"
+              className="w-full accent-[#C8A24D]"
             />
 
-            <label className="block text-xs text-slate-400 mt-3">
+            <label className="block text-xs text-[#7A6B57] mt-4">
               연결할 상위 어코드 수
             </label>
             <select
               value={topAccords}
               onChange={(e) => setTopAccords(Number(e.target.value))}
-              className="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm"
+              className="w-full rounded-xl border border-[#E1D7C8] bg-white px-3 py-2 text-sm text-[#1F1F1F] focus:outline-none focus:ring-2 focus:ring-[#C8A24D]/40"
             >
               {[1, 2, 3, 4, 5].map((count) => (
                 <option key={count} value={count}>
@@ -223,7 +237,7 @@ export default function PerfumeNetworkPage() {
               ))}
             </select>
 
-            <label className="block text-xs text-slate-400 mt-3">
+            <label className="block text-xs text-[#7A6B57] mt-4">
               최대 향수 수 (디버깅용)
             </label>
             <input
@@ -232,13 +246,13 @@ export default function PerfumeNetworkPage() {
               placeholder="전체"
               value={maxPerfumes}
               onChange={(e) => setMaxPerfumes(e.target.value)}
-              className="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm"
+              className="w-full rounded-xl border border-[#E1D7C8] bg-white px-3 py-2 text-sm text-[#1F1F1F] focus:outline-none focus:ring-2 focus:ring-[#C8A24D]/40"
             />
           </div>
 
-          <div className="space-y-2 text-xs text-slate-400">
+          <div className="space-y-2 rounded-2xl border border-[#E6DDCF] bg-[#F8F4EC] p-4 text-xs text-[#4D463A]">
             <p>상태: {status}</p>
-            {error && <p className="text-rose-300">오류: {error}</p>}
+            {error && <p className="text-[#B13C2E]">오류: {error}</p>}
             {payload && (
               <>
                 <p>향수: {payload.meta.perfume_count}개</p>
@@ -251,22 +265,22 @@ export default function PerfumeNetworkPage() {
 
           <button
             onClick={handleReset}
-            className="w-full rounded-lg bg-pink-600/80 py-2 text-sm font-semibold hover:bg-pink-500 transition"
+            className="w-full rounded-xl bg-[#2E2B28] py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-[#1E1C1A]"
           >
             화면 맞춤
           </button>
 
-          <div className="space-y-2 text-xs text-slate-500">
+          <div className="space-y-2 text-xs text-[#7A6B57]">
             <p>요청 URL</p>
-            <p className="break-all text-slate-400">{lastRequest}</p>
+            <p className="break-all text-[#5C5448]">{lastRequest}</p>
           </div>
         </div>
 
         <div className="space-y-3">
-          <div className="h-[70vh] rounded-2xl border border-slate-800 bg-slate-900/40 p-4">
+          <div className="h-[70vh] rounded-3xl border border-[#E2D7C5] bg-white/90 p-4 shadow-sm">
             <div ref={containerRef} className="h-full w-full" />
           </div>
-          <div className="text-xs text-slate-500">
+          <div className="text-xs text-[#7A6B57]">
             선 굵기는 유사도, 점선은 향수-어코드 연결입니다.
           </div>
         </div>

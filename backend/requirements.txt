@@ -13,3 +13,4 @@ langsmith
 openai
 Levenshtein
 passlib[bcrypt]
+python-multipart

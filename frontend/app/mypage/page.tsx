@@ -7,6 +7,7 @@ import Sidebar from "@/components/common/sidebar";
 
 interface ProfileData {
   member_id: string;
+  role_type: string | null;
   join_channel: string | null;
   sns_join_yn: string | null;
   email_alarm_yn: string | null;
@@ -34,7 +35,6 @@ export default function MyPage() {
   const [address, setAddress] = useState("");
   const [email, setEmail] = useState("");
   const [subEmail, setSubEmail] = useState("");
-  const [snsJoin, setSnsJoin] = useState(false);
   const [emailMarketing, setEmailMarketing] = useState(false);
   const [snsMarketing, setSnsMarketing] = useState(false);
   const [nicknameStatus, setNicknameStatus] = useState<"idle" | "checking" | "available" | "unavailable" | "invalid">("idle");
@@ -54,6 +54,7 @@ export default function MyPage() {
       ? profileImageUrl
       : `${apiBaseUrl}${profileImageUrl}`
     : "/default_profile.png";
+  const showPasswordSection = profile?.sns_join_yn !== "Y";
 
   useEffect(() => {
     if (session?.user?.id) {
@@ -74,29 +75,27 @@ export default function MyPage() {
   }, [session]);
 
   useEffect(() => {
-    const adminEmails = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "")
-      .split(",")
-      .map((email) => email.trim().toLowerCase())
-      .filter(Boolean);
-    const currentEmail = session?.user?.email || null;
-    if (currentEmail && adminEmails.includes(currentEmail.toLowerCase())) {
+    if (typeof window === "undefined") return;
+    const stored = localStorage.getItem("localAuth");
+    if (!stored) return;
+    try {
+      const parsed = JSON.parse(stored);
+      const roleType = parsed?.roleType || (parsed?.isAdmin ? "ADMIN" : "");
+      if ((roleType || "").toUpperCase() === "ADMIN") {
+        window.location.href = "/admin";
+      }
+    } catch (error) {
+      return;
+    }
+  }, []);
+
+  useEffect(() => {
+    if ((profile?.role_type || "").toUpperCase() === "ADMIN") {
       if (typeof window !== "undefined") {
         window.location.href = "/admin";
       }
     }
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("localAuth");
-      if (!stored) return;
-      try {
-        const parsed = JSON.parse(stored);
-        if (parsed?.isAdmin) {
-          window.location.href = "/admin";
-        }
-      } catch (error) {
-        return;
-      }
-    }
-  }, [session]);
+  }, [profile]);
 
   useEffect(() => {
     if (!memberId) return;
@@ -129,7 +128,6 @@ export default function MyPage() {
         setAddress(data.address || "");
         setEmail(data.email || "");
         setSubEmail(data.sub_email || "");
-        setSnsJoin(data.sns_join_yn === "Y");
         setEmailMarketing(data.email_alarm_yn === "Y");
         setSnsMarketing(data.sns_alarm_yn === "Y");
       } catch (error) {
@@ -199,7 +197,6 @@ export default function MyPage() {
           address: address.trim() || null,
           email: email.trim() || null,
           sub_email: subEmail.trim() || null,
-          sns_join_yn: snsJoin ? "Y" : "N",
           email_alarm_yn: emailMarketing ? "Y" : "N",
           sns_alarm_yn: snsMarketing ? "Y" : "N",
         }),
@@ -519,15 +516,6 @@ export default function MyPage() {
               <input
                 type="checkbox"
                 className="accent-black"
-                checked={snsJoin}
-                onChange={(event) => setSnsJoin(event.target.checked)}
-              />
-              SNS 가입 여부
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="accent-black"
                 checked={emailMarketing}
                 onChange={(event) => setEmailMarketing(event.target.checked)}
               />
@@ -540,7 +528,7 @@ export default function MyPage() {
                 checked={snsMarketing}
                 onChange={(event) => setSnsMarketing(event.target.checked)}
               />
-              카톡 알림 수신
+              SNS 알림 수신
             </label>
           </div>
 
@@ -561,64 +549,66 @@ export default function MyPage() {
           </button>
         </form>
 
-        <form className="space-y-5 rounded-2xl border border-[#EEE] p-6" onSubmit={handlePasswordSubmit}>
-          <h3 className="text-lg font-semibold">비밀번호 변경</h3>
+        {showPasswordSection && (
+          <form className="space-y-5 rounded-2xl border border-[#EEE] p-6" onSubmit={handlePasswordSubmit}>
+            <h3 className="text-lg font-semibold">비밀번호 변경</h3>
 
-          <div className="space-y-2">
-            <label htmlFor="currentPassword" className="text-sm font-medium text-[#333]">현재 비밀번호</label>
-            <input
-              id="currentPassword"
-              name="currentPassword"
-              type="password"
-              value={currentPassword}
-              onChange={(event) => setCurrentPassword(event.target.value)}
-              placeholder="현재 비밀번호를 입력하세요"
-              className="w-full rounded-xl border border-[#DDD] px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/20"
-            />
-          </div>
+            <div className="space-y-2">
+              <label htmlFor="currentPassword" className="text-sm font-medium text-[#333]">현재 비밀번호</label>
+              <input
+                id="currentPassword"
+                name="currentPassword"
+                type="password"
+                value={currentPassword}
+                onChange={(event) => setCurrentPassword(event.target.value)}
+                placeholder="현재 비밀번호를 입력하세요"
+                className="w-full rounded-xl border border-[#DDD] px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/20"
+              />
+            </div>
 
-          <div className="space-y-2">
-            <label htmlFor="newPassword" className="text-sm font-medium text-[#333]">새 비밀번호</label>
-            <input
-              id="newPassword"
-              name="newPassword"
-              type="password"
-              value={newPassword}
-              onChange={(event) => setNewPassword(event.target.value)}
-              placeholder="새 비밀번호를 입력하세요"
-              className="w-full rounded-xl border border-[#DDD] px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/20"
-            />
-          </div>
+            <div className="space-y-2">
+              <label htmlFor="newPassword" className="text-sm font-medium text-[#333]">새 비밀번호</label>
+              <input
+                id="newPassword"
+                name="newPassword"
+                type="password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                placeholder="새 비밀번호를 입력하세요"
+                className="w-full rounded-xl border border-[#DDD] px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/20"
+              />
+            </div>
 
-          <div className="space-y-2">
-            <label htmlFor="confirmPassword" className="text-sm font-medium text-[#333]">새 비밀번호 확인</label>
-            <input
-              id="confirmPassword"
-              name="confirmPassword"
-              type="password"
-              value={confirmPassword}
-              onChange={(event) => setConfirmPassword(event.target.value)}
-              placeholder="새 비밀번호를 다시 입력하세요"
-              className="w-full rounded-xl border border-[#DDD] px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/20"
-            />
-          </div>
+            <div className="space-y-2">
+              <label htmlFor="confirmPassword" className="text-sm font-medium text-[#333]">새 비밀번호 확인</label>
+              <input
+                id="confirmPassword"
+                name="confirmPassword"
+                type="password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                placeholder="새 비밀번호를 다시 입력하세요"
+                className="w-full rounded-xl border border-[#DDD] px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/20"
+              />
+            </div>
 
-          {passwordMessage && (
-            <p className="text-xs text-red-600">{passwordMessage}</p>
-          )}
+            {passwordMessage && (
+              <p className="text-xs text-red-600">{passwordMessage}</p>
+            )}
 
-          <button
-            type="submit"
-            disabled={isSubmittingPassword}
-            className={`w-full py-3 rounded-xl font-bold transition ${
-              isSubmittingPassword
-                ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                : "bg-black text-white hover:opacity-90"
-            }`}
-          >
-            비밀번호 변경
-          </button>
-        </form>
+            <button
+              type="submit"
+              disabled={isSubmittingPassword}
+              className={`w-full py-3 rounded-xl font-bold transition ${
+                isSubmittingPassword
+                  ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  : "bg-black text-white hover:opacity-90"
+              }`}
+            >
+              비밀번호 변경
+            </button>
+          </form>
+        )}
 
         <section className="space-y-4 rounded-2xl border border-[#F4DADA] p-6">
           <h3 className="text-lg font-semibold text-red-600">회원탈퇴</h3>

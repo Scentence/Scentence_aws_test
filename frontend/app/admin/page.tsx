@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import Sidebar from "@/components/common/sidebar";
@@ -20,23 +20,14 @@ export default function AdminPage() {
   const { data: session } = useSession();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [memberId, setMemberId] = useState<string | null>(null);
-  const [adminEmail, setAdminEmail] = useState<string | null>(null);
+  const [roleType, setRoleType] = useState<string | null>(null);
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "";
-  const adminEmails = useMemo(() => {
-    const raw = process.env.NEXT_PUBLIC_ADMIN_EMAILS || "";
-    return raw
-      .split(",")
-      .map((email) => email.trim().toLowerCase())
-      .filter(Boolean);
-  }, []);
-
   useEffect(() => {
     if (session?.user?.id) {
       setMemberId(String(session.user.id));
-      setAdminEmail(session.user?.email ?? null);
       return;
     }
     if (typeof window === "undefined") return;
@@ -47,15 +38,41 @@ export default function AdminPage() {
       if (parsed?.memberId) {
         setMemberId(String(parsed.memberId));
       }
-      if (parsed?.email) {
-        setAdminEmail(parsed.email);
+      if (parsed?.roleType) {
+        setRoleType(parsed.roleType);
+      } else if (parsed?.isAdmin) {
+        setRoleType("ADMIN");
       }
     } catch (error) {
       return;
     }
   }, [session]);
 
-  const isAdmin = adminEmail ? adminEmails.includes(adminEmail.toLowerCase()) : false;
+  const isAdmin = (roleType || "").toUpperCase() === "ADMIN";
+
+  useEffect(() => {
+    if (!memberId || roleType) return;
+    const controller = new AbortController();
+
+    const loadRole = async () => {
+      try {
+        const response = await fetch(`${apiBaseUrl}/users/profile/${memberId}`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) return;
+        const data = await response.json().catch(() => null);
+        if (data?.role_type) {
+          setRoleType(data.role_type);
+        }
+      } catch (error) {
+        return;
+      }
+    };
+
+    loadRole();
+
+    return () => controller.abort();
+  }, [apiBaseUrl, memberId, roleType]);
 
   useEffect(() => {
     if (!memberId || !isAdmin) return;

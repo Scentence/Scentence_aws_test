@@ -1,11 +1,59 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { useSession, signOut } from "next-auth/react";
+
 interface ArchiveSidebarProps {
     isOpen: boolean;
     onClose: () => void;
 }
 
 export default function ArchiveSidebar({ isOpen, onClose }: ArchiveSidebarProps) {
+    const { data: session } = useSession();
+    const [localUser, setLocalUser] = useState<{ memberId?: string | null; email?: string | null; nickname?: string | null } | null>(null);
+    const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
+    const displayName = session?.user?.name || localUser?.nickname || localUser?.email || "회원";
+
+    useEffect(() => {
+        if (!isOpen) return;
+        if (typeof window === "undefined") return;
+        const stored = localStorage.getItem("localAuth");
+        if (!stored) {
+            setLocalUser(null);
+            return;
+        }
+        try {
+            const parsed = JSON.parse(stored);
+            setLocalUser(parsed);
+        } catch (error) {
+            setLocalUser(null);
+        }
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        if (typeof window === "undefined") return;
+        const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "";
+        const memberId = session?.user?.id || localUser?.memberId;
+        if (!memberId) {
+            setProfileImageUrl(null);
+            return;
+        }
+        fetch(`${apiBaseUrl}/users/profile/${memberId}`)
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+                if (data?.profile_image_url) {
+                    const url = data.profile_image_url.startsWith("http")
+                        ? data.profile_image_url
+                        : `${apiBaseUrl}${data.profile_image_url}`;
+                    setProfileImageUrl(url);
+                } else {
+                    setProfileImageUrl(null);
+                }
+            })
+            .catch(() => setProfileImageUrl(null));
+    }, [isOpen, localUser, session]);
+
     if (!isOpen) return null;
 
     return (
@@ -23,13 +71,35 @@ export default function ArchiveSidebar({ isOpen, onClose }: ArchiveSidebarProps)
                     </svg>
                 </button>
 
-                {/* 1. 유저 프로필 영역 (u1 이미지) */}
+                {/* 1. 유저 프로필 영역 */}
                 <div className="pt-24 px-8 pb-10 flex flex-col items-center border-b border-gray-100 bg-[#FAFAFA]">
-                    <div className="w-32 h-32 rounded-full overflow-hidden mb-5 shadow-lg border-4 border-white">
-                        <img src="/perfumes/archive_u1.png" alt="User Profile" className="w-full h-full object-cover" />
+                    <div className="w-32 h-32 rounded-full overflow-hidden mb-5 shadow-lg border-4 border-white bg-[#F2F2F2]">
+                        <img
+                            src={profileImageUrl || "/default_profile.png"}
+                            alt="User Profile"
+                            className="w-full h-full object-cover"
+                            onError={(event) => {
+                                event.currentTarget.src = "/default_profile.png";
+                            }}
+                        />
                     </div>
-                    <h2 className="text-xl font-bold text-gray-900 mb-1">김성욱님</h2>
+                    <h2 className="text-xl font-bold text-gray-900 mb-1">{displayName}님</h2>
                     <p className="text-sm text-gray-500 font-medium tracking-wide">환영합니다!</p>
+                    <button
+                        onClick={() => {
+                            if (session) {
+                                signOut({ callbackUrl: "/login" });
+                                return;
+                            }
+                            if (typeof window !== "undefined") {
+                                localStorage.removeItem("localAuth");
+                                window.location.href = "/login";
+                            }
+                        }}
+                        className="mt-4 text-sm text-gray-400 hover:text-red-500 underline decoration-gray-300 hover:decoration-red-300 underline-offset-4 transition-colors"
+                    >
+                        로그아웃
+                    </button>
                 </div>
 
                 {/* 2. 메뉴 섹션 (s1, s2, s3 이미지) */}
@@ -48,11 +118,7 @@ export default function ArchiveSidebar({ isOpen, onClose }: ArchiveSidebarProps)
                         <img src="/perfumes/archive_s3.png" alt="문의하기" className="w-full h-auto group-hover:scale-105 transition-transform duration-500" />
                     </div>
 
-                    <div className="pt-8 text-center">
-                        <button className="text-sm text-gray-400 hover:text-red-500 underline decoration-gray-300 hover:decoration-red-300 underline-offset-4 transition-colors">
-                            로그아웃
-                        </button>
-                    </div>
+                    <div className="pt-8 text-center" />
                 </div>
 
             </div>

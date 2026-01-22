@@ -39,10 +39,14 @@ def calculate_advanced_layering(
     target_vector: Sequence[float],
 ) -> LayeringComputationResult:
     penalty, clash_detected = _clash_penalty(base.dominant_accords, candidate.dominant_accords)
-    harmony = _harmony_score(base.base_note_vector, candidate.base_note_vector)
+    harmony = _harmony_score(base.base_notes, candidate.base_notes)
     bridge = _bridge_bonus(base.vector, candidate.vector)
     target_score = _target_match_score(base.vector, candidate.vector, target_vector)
     feasible, reason = _feasibility_guard(base.vector, target_vector, target_score)
+    layered_vector = [
+        (base_value + candidate_value) / 2
+        for base_value, candidate_value in zip(base.vector, candidate.vector)
+    ]
     total_score = 1.0 + harmony + bridge + penalty + target_score
     score_breakdown = ScoreBreakdown(
         harmony=harmony,
@@ -59,6 +63,7 @@ def calculate_advanced_layering(
         clash_detected=clash_detected,
         spray_order=spray_order,
         score_breakdown=score_breakdown,
+        layered_vector=layered_vector,
     )
 
 
@@ -80,6 +85,19 @@ def rank_recommendations(
     return candidates[:3], total_available
 
 
+def evaluate_pair(
+    base_perfume_id: str,
+    candidate_perfume_id: str,
+    keywords: Sequence[str],
+    repository: PerfumeRepository,
+) -> LayeringCandidate:
+    base = repository.get_perfume(base_perfume_id)
+    candidate = repository.get_perfume(candidate_perfume_id)
+    target_vector = get_target_vector(keywords)
+    result = calculate_advanced_layering(base, candidate, target_vector)
+    return _result_to_candidate(result)
+
+
 def _clash_penalty(
     base_dominant: Iterable[str],
     candidate_dominant: Iterable[str],
@@ -92,8 +110,14 @@ def _clash_penalty(
     return 0.0, False
 
 
-def _harmony_score(base_notes: Sequence[float], candidate_notes: Sequence[float]) -> float:
-    similarity = _cosine_similarity(base_notes, candidate_notes)
+def _harmony_score(base_notes: Sequence[str], candidate_notes: Sequence[str]) -> float:
+    base_set = {note.strip().lower() for note in base_notes if note}
+    candidate_set = {note.strip().lower() for note in candidate_notes if note}
+    if not base_set or not candidate_set:
+        return 0.0
+    intersection = base_set & candidate_set
+    union = base_set | candidate_set
+    similarity = len(intersection) / len(union) if union else 0.0
     if similarity == 0.0:
         return 0.0
     if 0.4 <= similarity <= 0.7:
@@ -203,6 +227,7 @@ def _result_to_candidate(result: LayeringComputationResult) -> LayeringCandidate
         score_breakdown=result.score_breakdown,
         clash_detected=result.clash_detected,
         analysis=analysis,
+        layered_vector=result.layered_vector,
     )
 
 

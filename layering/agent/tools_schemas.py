@@ -24,3 +24,4 @@ class LayeringComputationResult(BaseModel):
     clash_detected: bool
     spray_order: List[str]
     score_breakdown: ScoreBreakdown
+    layered_vector: List[float]

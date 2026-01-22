@@ -6,7 +6,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
-from .constants import ACCORDS, BASE_NOTE_INDEXES
+from .constants import ACCORDS
 
 
 class PerfumeAccord(BaseModel):
@@ -32,6 +32,7 @@ class PerfumeRecord(BaseModel):
 
     perfume: PerfumeBasic
     accords: List[PerfumeAccord]
+    base_notes: List[str] = Field(default_factory=list)
 
 
 class PerfumeVector(BaseModel):
@@ -42,7 +43,7 @@ class PerfumeVector(BaseModel):
     total_intensity: float
     persistence_score: float
     dominant_accords: List[str]
-    base_note_vector: List[float]
+    base_notes: List[str] = Field(default_factory=list)
 
     @field_validator("vector")
     @classmethod
@@ -51,17 +52,19 @@ class PerfumeVector(BaseModel):
             raise ValueError("Vector length mismatch with ACCORDS")
         return value
 
-    @field_validator("base_note_vector")
+    @field_validator("base_notes")
     @classmethod
-    def validate_base_vector(cls, value: List[float]) -> List[float]:
-        if len(value) != len(BASE_NOTE_INDEXES):
-            raise ValueError("Base note vector length mismatch")
-        return value
+    def validate_base_notes(cls, value: List[str]) -> List[str]:
+        return [note for note in value if note]
 
 
 class LayeringRequest(BaseModel):
     base_perfume_id: str = Field(..., description="Base perfume identifier")
     keywords: List[str] = Field(default_factory=list)
+
+
+class UserQueryRequest(BaseModel):
+    user_text: str = Field(..., description="Free-form user question")
 
 
 class ScoreBreakdown(BaseModel):
@@ -83,6 +86,7 @@ class LayeringCandidate(BaseModel):
     score_breakdown: ScoreBreakdown
     clash_detected: bool
     analysis: str
+    layered_vector: List[float] = Field(default_factory=list)
 
 
 class LayeringResponse(BaseModel):
@@ -90,4 +94,40 @@ class LayeringResponse(BaseModel):
     keywords: List[str]
     total_available: int
     recommendations: List[LayeringCandidate]
+    note: Optional[str] = None
+
+
+class DetectedPerfume(BaseModel):
+    perfume_id: str
+    perfume_name: str
+    perfume_brand: str
+    match_score: float
+    matched_text: str
+
+
+class DetectedPair(BaseModel):
+    base_perfume_id: Optional[str]
+    candidate_perfume_id: Optional[str]
+
+
+class PairingAnalysis(BaseModel):
+    base_perfume_id: str
+    candidate_perfume_id: str
+    result: LayeringCandidate
+
+
+class UserQueryAnalysis(BaseModel):
+    raw_text: str
+    detected_perfumes: List[DetectedPerfume]
+    detected_pair: Optional[DetectedPair] = None
+    pairing_analysis: Optional[PairingAnalysis] = None
+
+
+class UserQueryResponse(BaseModel):
+    raw_text: str
+    keywords: List[str]
+    base_perfume_id: Optional[str] = None
+    detected_perfumes: List[DetectedPerfume]
+    detected_pair: Optional[DetectedPair] = None
+    recommendation: Optional[LayeringCandidate] = None
     note: Optional[str] = None

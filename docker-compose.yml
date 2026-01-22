@@ -7,6 +7,9 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: scentence-backend
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     ports:
       - "8000:8000"
     volumes:
@@ -26,6 +29,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: scentence-frontend
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     ports:
       - "3000:3000"
     volumes:
@@ -43,6 +49,9 @@ services:
       context: .
       dockerfile: ./scentmap/Dockerfile
     container_name: scentmap-service
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     ports:
       - "8001:8001"
     volumes:
@@ -70,6 +79,9 @@ services:
       context: ./layering
       dockerfile: Dockerfile
     container_name: scentence-layering
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     ports:
       - "8002:8002"
     volumes:

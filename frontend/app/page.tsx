@@ -13,6 +13,10 @@ export default function LandingPage() {
     router.push("/chat");
   };
 
+  const handleCreateScentCard = () => {
+    router.push("/scent-card");
+  };
+
   return (
     <div className="flex h-screen bg-white overflow-hidden text-black relative font-sans">
 
@@ -201,7 +205,10 @@ export default function LandingPage() {
               ))}
             </div>
 
-            <button className="w-full py-3 rounded-xl bg-[#C8A24D] text-white font-bold shadow-[0_6px_16px_rgba(200,162,77,0.35)] hover:bg-[#B89138] transition">
+            <button
+              onClick={handleCreateScentCard}
+              className="w-full py-3 rounded-xl bg-[#C8A24D] text-white font-bold shadow-[0_6px_16px_rgba(200,162,77,0.35)] hover:bg-[#B89138] transition"
+            >
               나도 향수 카드 만들러가기
             </button>
           </section>

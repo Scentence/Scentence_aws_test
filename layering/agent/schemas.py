@@ -1,0 +1,93 @@
+"""Pydantic schemas for the layering service domain objects."""
+
+from __future__ import annotations
+
+from typing import List, Optional
+
+from pydantic import BaseModel, Field, field_validator
+
+from .constants import ACCORDS, BASE_NOTE_INDEXES
+
+
+class PerfumeAccord(BaseModel):
+    accord: str = Field(description="Accord name aligned with ACCORDS order")
+    ratio: float = Field(ge=0, description="Numeric contribution of the accord")
+
+    @field_validator("accord")
+    @classmethod
+    def validate_accord(cls, value: str) -> str:  # noqa: D401
+        if value not in ACCORDS:
+            raise ValueError(f"Accord '{value}' not recognised")
+        return value
+
+
+class PerfumeBasic(BaseModel):
+    perfume_id: str
+    perfume_name: str
+    perfume_brand: str
+
+
+class PerfumeRecord(BaseModel):
+    """Raw perfume information prior to vectorization."""
+
+    perfume: PerfumeBasic
+    accords: List[PerfumeAccord]
+
+
+class PerfumeVector(BaseModel):
+    perfume_id: str
+    perfume_name: str
+    perfume_brand: str
+    vector: List[float]
+    total_intensity: float
+    persistence_score: float
+    dominant_accords: List[str]
+    base_note_vector: List[float]
+
+    @field_validator("vector")
+    @classmethod
+    def validate_vector_length(cls, value: List[float]) -> List[float]:
+        if len(value) != len(ACCORDS):
+            raise ValueError("Vector length mismatch with ACCORDS")
+        return value
+
+    @field_validator("base_note_vector")
+    @classmethod
+    def validate_base_vector(cls, value: List[float]) -> List[float]:
+        if len(value) != len(BASE_NOTE_INDEXES):
+            raise ValueError("Base note vector length mismatch")
+        return value
+
+
+class LayeringRequest(BaseModel):
+    base_perfume_id: str = Field(..., description="Base perfume identifier")
+    keywords: List[str] = Field(default_factory=list)
+
+
+class ScoreBreakdown(BaseModel):
+    base: float = Field(default=1.0)
+    harmony: float
+    bridge: float
+    penalty: float
+    target: float
+
+
+class LayeringCandidate(BaseModel):
+    perfume_id: str
+    perfume_name: str
+    perfume_brand: str
+    total_score: float
+    feasible: bool = True
+    feasibility_reason: Optional[str]
+    spray_order: List[str]
+    score_breakdown: ScoreBreakdown
+    clash_detected: bool
+    analysis: str
+
+
+class LayeringResponse(BaseModel):
+    base_perfume_id: str
+    keywords: List[str]
+    total_available: int
+    recommendations: List[LayeringCandidate]
+    note: Optional[str] = None

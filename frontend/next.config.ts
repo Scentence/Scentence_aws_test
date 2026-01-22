@@ -1,4 +1,4 @@
-import type { NextConfig } from "next"; // 이 줄이 꼭 있어야 합니다
+import type { NextConfig } from "next";
 
 const backendUrl =
   process.env.BACKEND_INTERNAL_URL ??
@@ -6,6 +6,15 @@ const backendUrl =
   "http://localhost:8000";
 
 const nextConfig: NextConfig = {
+  // [추가] 윈도우 Docker 환경에서 Hot Reload가 안 될 때를 위한 강제 설정
+  webpack: (config) => {
+    config.watchOptions = {
+      poll: 300,      // 300ms마다 변경 사항 확인
+      aggregateTimeout: 300,
+    }
+    return config
+  },
+
   async rewrites() {
     return [
       {

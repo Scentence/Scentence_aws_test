@@ -12,8 +12,10 @@ const handler = NextAuth({
         async signIn({ user, account }) {
             if (account?.provider === 'kakao') {
                 try {
-                    // [변경] Docker 내부망 주소로 백엔드 호출
-                    const BACKEND_URL = "http://fastapi-backend:8000";
+                    const BACKEND_URL =
+                        process.env.BACKEND_INTERNAL_URL ??
+                        process.env.NEXT_PUBLIC_API_URL ??
+                        "http://backend:8000";
 
                     const response = await fetch(`${BACKEND_URL}/users/login`, {
                         method: 'POST',
@@ -31,6 +33,9 @@ const handler = NextAuth({
                     }
 
                     const data = await response.json();
+                    if (data?.withdraw_pending && data?.member_id) {
+                        return `/recover?memberId=${data.member_id}`;
+                    }
                     user.id = data.member_id; // DB의 진짜 회원번호(PK) 가져오기
                     return true;
                 } catch (error) {

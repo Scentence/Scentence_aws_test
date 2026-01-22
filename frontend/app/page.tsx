@@ -13,6 +13,10 @@ export default function LandingPage() {
     router.push("/chat");
   };
 
+  const handleCreateScentCard = () => {
+    router.push("/scent-card");
+  };
+
   return (
     <div className="flex h-screen bg-white overflow-hidden text-black relative font-sans">
 
@@ -128,40 +132,33 @@ export default function LandingPage() {
               {[
                 {
                   serial: "SC-001",
-                  user: "민지",
-                  handle: "@minji",
-                  title: "비 오는 날의 홍차",
-                  desc: "젖은 우디와 바닐라가 포근하게 남는 향",
+                  imageLabel: "향 캐릭터 이름",                  
                   mood: "#데이트 #무드",
-                  notes: { top: "블랙티", middle: "바닐라", base: "웻우드" },
+                  title: "비 오는 날의 홍차",
+                  user: "@minji"
                 },
                 {
-                  serial: "SC-014",
-                  user: "현우",
-                  handle: "@hyunwoo",
-                  title: "밤하늘의 머스크",
-                  desc: "은은한 머스크에 스파이스 한 방울",
-                  mood: "#퇴근 #도시",
-                  notes: { top: "핑크페퍼", middle: "머스크", base: "앰버" },
+                  serial: "SC-GUEST",
+                  imageLabel: "향 캐릭터 이름",      
+                  mood: "#랜덤 #체험",     
+                  title: "어코드 표현 문장",
+                  user: "@GUEST"                 
                 },
                 {
                   serial: "SC-026",
-                  user: "유나",
-                  handle: "@yuna",
-                  title: "햇살 머랭",
-                  desc: "시트러스와 크리미함이 공존하는 오후",
+                  imageLabel: "향 캐릭터 이름",           
                   mood: "#휴일 #산책",
-                  notes: { top: "레몬제스트", middle: "머랭크림", base: "머스키우드" },
+                  title: "어코드 표현 문장",                  
+                  user: "@yuna"
                 },
                 {
                   serial: "SC-041",
-                  user: "준서",
-                  handle: "@junseo",
-                  title: "차분한 가죽 서재",
-                  desc: "레더와 시더우드에 로즈가 잔잔히",
+                  imageLabel: "향 캐릭터 이름",       
                   mood: "#집중 #야간",
-                  notes: { top: "베르가못", middle: "레더", base: "시더우드" },
+                  title: "어코드 표현 문장",
+                  user: "@junseo"
                 },
+
               ].map((card, idx) => (
                 <article
                   key={idx}
@@ -171,6 +168,7 @@ export default function LandingPage() {
                     <div className="absolute inset-0 bg-black/10" />
                     <div className="absolute top-3 left-3 right-3 flex items-center justify-between text-[10px] font-semibold text-[#8C6A1D]">
                       <span className="px-2 py-1 rounded-full bg-white/85">SCENTENCE CARD</span>
+                      {/* serial: 카드드생성번호 */}
                       <span className="px-2 py-1 rounded-full bg-white/85">{card.serial}</span>
                     </div>
                     <div className="absolute inset-0">
@@ -179,24 +177,26 @@ export default function LandingPage() {
                       <div className="absolute bottom-16 right-6 w-10 h-10 rounded-full bg-white/35" />
                     </div>
                     <div className="absolute bottom-4 left-4 right-4 text-white">
-                      <p className="text-base font-bold leading-snug">Scent Mood Graphic</p>
+                      {/* imageLabel: 카드 이미지 라벨=향 캐릭터 이름 */}
+                      <p className="text-base font-bold leading-snug">{card.imageLabel}</p>
+                      {/* mood: 카드 무드=향 캐릭터 무드 */}
                       <p className="text-[11px] opacity-90 mt-1">{card.mood}</p>
                     </div>
                   </div>
 
                   <div className="px-4 pb-4 space-y-3">
                     <div>
+                      {/* title: 카드 제목=대표 어코드 표현 문장 */}
                       <p className="text-sm font-bold text-[#2B2B2B]">“{card.title}”</p>
-                      <p className="text-xs text-[#555] mt-1">{card.desc}</p>
                     </div>
 
                     <div className="flex items-center gap-2">
                       <div className="w-6 h-6 rounded-full bg-[#F1E3C2] text-[#8C6A1D] text-[10px] font-bold flex items-center justify-center">
-                        {card.user[0]}
+                        {card.user[1]}
                       </div>
                       <div className="text-xs">
-                        <p className="font-semibold text-[#222]">{card.user} 님의 향기 문장</p>
-                        <p className="text-[#777]">{card.handle}</p>
+                        {/* handle: 카드 생성자 닉네임 */}
+                        <p className="text-[#777]">{card.user}</p>
                       </div>
                     </div>
 
@@ -205,7 +205,10 @@ export default function LandingPage() {
               ))}
             </div>
 
-            <button className="w-full py-3 rounded-xl bg-[#C8A24D] text-white font-bold shadow-[0_6px_16px_rgba(200,162,77,0.35)] hover:bg-[#B89138] transition">
+            <button
+              onClick={handleCreateScentCard}
+              className="w-full py-3 rounded-xl bg-[#C8A24D] text-white font-bold shadow-[0_6px_16px_rgba(200,162,77,0.35)] hover:bg-[#B89138] transition"
+            >
               나도 향수 카드 만들러가기
             </button>
           </section>

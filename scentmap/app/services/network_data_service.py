@@ -1,13 +1,11 @@
-import math
 import time
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 
 from psycopg2.extras import RealDictCursor
-
 from scentmap.db import get_db_connection
 
-
+# 캐시는 기존과 동일하게 유지
 CACHE = {
     "data": None,
     "built_at": None,
@@ -15,62 +13,40 @@ CACHE = {
 }
 
 
-def calculate_similarity(profile1: Dict[str, float], profile2: Dict[str, float]) -> float:
-    keys = set(profile1.keys()) | set(profile2.keys())
-    if not keys:
-        return 0.0
-
-    vec1 = [profile1.get(k, 0.0) for k in keys]
-    vec2 = [profile2.get(k, 0.0) for k in keys]
-
-    dot = sum(a * b for a, b in zip(vec1, vec2))
-    mag1 = math.sqrt(sum(a * a for a in vec1))
-    mag2 = math.sqrt(sum(b * b for b in vec2))
-
-    if mag1 * mag2 == 0:
-        return 0.0
-
-    return dot / (mag1 * mag2)
-
-
+# [변경 없음] 향수 기본 정보 가져오기 (Legacy 로직 유지)
 def _fetch_perfume_basic(max_perfumes: Optional[int]) -> List[Dict]:
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    try:
-        sql = """
-            SELECT perfume_id, perfume_name, perfume_brand, img_link
-            FROM TB_PERFUME_BASIC_M
-            ORDER BY perfume_id
-        """
-        params = []
-        if max_perfumes:
-            sql += " LIMIT %s"
-            params.append(max_perfumes)
-        cur.execute(sql, params)
-        return [dict(row) for row in cur.fetchall()]
-    finally:
-        cur.close()
-        conn.close()
+    # Context Manager 사용으로 안전성 강화
+    with get_db_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            sql = """
+                SELECT perfume_id, perfume_name, perfume_brand, img_link
+                FROM TB_PERFUME_BASIC_M
+                ORDER BY perfume_id
+            """
+            params = []
+            if max_perfumes:
+                sql += " LIMIT %s"
+                params.append(max_perfumes)
+            cur.execute(sql, params)
+            return [dict(row) for row in cur.fetchall()]
 
 
+# [변경 없음] 어코드 정보 가져오기 (Legacy 로직 유지)
 def _fetch_perfume_accords(perfume_ids: List[int]) -> List[Dict]:
     if not perfume_ids:
         return []
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    try:
-        sql = """
-            SELECT perfume_id, accord, vote
-            FROM TB_PERFUME_ACCORD_M
-            WHERE perfume_id = ANY(%s)
-        """
-        cur.execute(sql, (perfume_ids,))
-        return [dict(row) for row in cur.fetchall()]
-    finally:
-        cur.close()
-        conn.close()
+    with get_db_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            sql = """
+                SELECT perfume_id, accord, vote
+                FROM TB_PERFUME_ACCORD_M
+                WHERE perfume_id = ANY(%s)
+            """
+            cur.execute(sql, (perfume_ids,))
+            return [dict(row) for row in cur.fetchall()]
 
 
+# [변경 없음] 프로필 구축 (Legacy 로직 유지)
 def _build_profiles(
     perfume_rows: List[Dict], accord_rows: List[Dict]
 ) -> Dict[int, Dict]:
@@ -100,10 +76,34 @@ def _build_profiles(
             "accord_profile": accord_profile,
             "primary_accord": primary_accord or "Unknown",
         }
-
     return perfume_map
 
 
+# [핵심 변경] DB에서 미리 계산된 유사도를 가져오는 함수
+def _fetch_similarity_edges_from_db(
+    perfume_ids: List[int], min_similarity: float
+) -> List[Dict]:
+    if not perfume_ids:
+        return []
+
+    with get_db_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # 선택된 향수들(perfume_ids) 끼리의 연결만 가져옵니다.
+            # 배치로 미리 계산된 테이블(TB_PERFUME_SIMILARITY)을 조회하므로 매우 빠릅니다.
+            sql = """
+                SELECT perfume_id_a, perfume_id_b, score
+                FROM TB_PERFUME_SIMILARITY
+                WHERE score >= %s
+                  AND perfume_id_a = ANY(%s)
+                  AND perfume_id_b = ANY(%s)
+            """
+            cur.execute(sql, (min_similarity, perfume_ids, perfume_ids))
+            rows = cur.fetchall()
+
+    return rows
+
+
+# [로직 유지 + 연산 교체] 네트워크 구축
 def _build_network(
     perfume_map: Dict[int, Dict],
     min_similarity: float,
@@ -113,8 +113,8 @@ def _build_network(
     nodes: List[Dict] = []
     edges: List[Dict] = []
     accord_nodes: Dict[str, None] = {}
-    accord_to_perfumes: Dict[str, List[int]] = defaultdict(list)
 
+    # 1. 향수 노드 생성 (Legacy 로직과 100% 동일)
     for perfume in perfume_map.values():
         accord_profile = perfume["accord_profile"]
         sorted_accords = sorted(
@@ -125,8 +125,8 @@ def _build_network(
 
         for acc in top_accord_list:
             accord_nodes[acc] = None
-            accord_to_perfumes[acc].append(perfume["perfume_id"])
 
+        # [Legacy 스키마 준수] type, label, brand 등 모든 필드 유지
         nodes.append(
             {
                 "id": str(perfume["perfume_id"]),
@@ -139,9 +139,11 @@ def _build_network(
             }
         )
 
+    # 2. 어코드 노드 생성 (Legacy 로직과 100% 동일)
     for acc in sorted(accord_nodes.keys()):
         nodes.append({"id": f"accord_{acc}", "type": "accord", "label": acc})
 
+    # 3. 향수-어코드(HAS_ACCORD) 엣지 생성 (Legacy 로직과 100% 동일)
     accord_edge_count = 0
     for perfume in perfume_map.values():
         sorted_accords = sorted(
@@ -158,35 +160,31 @@ def _build_network(
             )
             accord_edge_count += 1
 
-    candidate_pairs = set()
-    for perfume_ids in accord_to_perfumes.values():
-        size = len(perfume_ids)
-        for i in range(size):
-            for j in range(i + 1, size):
-                a = perfume_ids[i]
-                b = perfume_ids[j]
-                if a != b:
-                    candidate_pairs.add((min(a, b), max(a, b)))
+    # 4. [수술 부위] 향수-향수(SIMILAR_TO) 엣지 생성
+    # 기존: 이중 for문으로 직접 계산 (서버 다운 원인)
+    # 변경: DB에서 정답지 조회 (부하 없음)
+
+    perfume_ids_list = list(perfume_map.keys())
+    similarity_rows = _fetch_similarity_edges_from_db(perfume_ids_list, min_similarity)
 
     similarity_edges = 0
     high_similarity_edges = 0
-    for pid1, pid2 in candidate_pairs:
-        p1 = perfume_map[pid1]
-        p2 = perfume_map[pid2]
-        sim = calculate_similarity(p1["accord_profile"], p2["accord_profile"])
-        if sim >= min_similarity:
-            edges.append(
-                {
-                    "from": str(pid1),
-                    "to": str(pid2),
-                    "type": "SIMILAR_TO",
-                    "weight": sim,
-                }
-            )
-            similarity_edges += 1
-            if sim >= 0.8:
-                high_similarity_edges += 1
 
+    for row in similarity_rows:
+        sim = row["score"]
+        edges.append(
+            {
+                "from": str(row["perfume_id_a"]),
+                "to": str(row["perfume_id_b"]),
+                "type": "SIMILAR_TO",
+                "weight": sim,
+            }
+        )
+        similarity_edges += 1
+        if sim >= 0.8:
+            high_similarity_edges += 1
+
+    # 5. Meta 정보 채우기 (Legacy 스키마 요구사항 충족)
     meta = {
         "perfume_count": len(perfume_map),
         "accord_count": len(accord_nodes),
@@ -196,7 +194,7 @@ def _build_network(
         "similarity_edges_high": high_similarity_edges,
         "min_similarity": min_similarity,
         "top_accords": top_accords,
-        "candidate_pairs": len(candidate_pairs),
+        "candidate_pairs": len(similarity_rows),  # 이제는 DB 조회 건수가 후보군임
     }
 
     if debug:
@@ -215,6 +213,7 @@ def get_perfume_network(
     refresh: bool = False,
     debug: bool = False,
 ) -> Dict:
+    # 파라미터가 같으면 캐시된 데이터 반환 (Legacy 로직 유지)
     params = (min_similarity, top_accords, max_perfumes)
     if (
         not refresh
@@ -225,15 +224,24 @@ def get_perfume_network(
         return CACHE["data"]
 
     started_at = time.time()
-    perfume_rows = _fetch_perfume_basic(max_perfumes)
+    safe_max_perfumes = max_perfumes if max_perfumes is not None else 100
+    # 1. 데이터 가져오기 (Legacy 로직)
+    perfume_rows = _fetch_perfume_basic(safe_max_perfumes)
     perfume_ids = [int(row["perfume_id"]) for row in perfume_rows]
     accord_rows = _fetch_perfume_accords(perfume_ids)
+
+    # 2. 프로필 빌드 (Legacy 로직)
     perfume_map = _build_profiles(perfume_rows, accord_rows)
+
+    # 3. 네트워크 빌드 (DB 조회 방식 적용됨)
     network = _build_network(perfume_map, min_similarity, top_accords, debug)
+
+    # 4. Meta 정보 마무리
     network["meta"]["built_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
     network["meta"]["build_seconds"] = round(time.time() - started_at, 3)
-    network["meta"]["max_perfumes"] = max_perfumes
+    network["meta"]["max_perfumes"] = safe_max_perfumes
 
+    # 캐시 갱신
     CACHE["data"] = network
     CACHE["built_at"] = network["meta"]["built_at"]
     CACHE["params"] = params

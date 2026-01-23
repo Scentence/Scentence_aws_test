@@ -591,3 +591,119 @@ def add_my_perfume(member_id: int, perfume_id: int, perfume_name: str):
     finally:
         if conn:
             conn.close()
+
+
+# ==========================================
+# 7. 채팅 시스템 관리 (Thread & Message)
+# ==========================================
+
+
+def save_chat_message(
+    thread_id: str, member_id: int, role: str, message: str, meta: dict = None
+):
+    """
+    [Upsert 로직]
+    1. 채팅방(Thread)이 없으면 생성, 있으면 마지막 대화 시간 갱신
+    2. 메시지(Message)를 해당 스레드에 귀속시켜 저장
+    """
+    conn = None
+    try:
+        conn = get_recom_db_connection()
+        cur = conn.cursor()
+
+        # [1] Thread Upsert (채팅방 관리)
+        # 제목(TITLE)은 첫 메시지의 앞부분을 추출하여 자동 생성
+        title_snippet = message[:30] + "..." if len(message) > 30 else message
+
+        upsert_thread_sql = """
+            INSERT INTO TB_CHAT_THREAD_T (THREAD_ID, MEMBER_ID, TITLE, LAST_CHAT_DT)
+            VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (THREAD_ID) 
+            DO UPDATE SET 
+                LAST_CHAT_DT = CURRENT_TIMESTAMP,
+                TITLE = CASE WHEN TB_CHAT_THREAD_T.TITLE IS NULL OR TB_CHAT_THREAD_T.TITLE = '' 
+                             THEN EXCLUDED.TITLE ELSE TB_CHAT_THREAD_T.TITLE END
+        """
+        cur.execute(upsert_thread_sql, (thread_id, member_id, title_snippet))
+
+        # [2] Message Insert (개별 메시지 저장)
+        insert_msg_sql = """
+            INSERT INTO TB_CHAT_MESSAGE_T (THREAD_ID, MEMBER_ID, ROLE, MESSAGE, META_DATA)
+            VALUES (%s, %s, %s, %s, %s)
+        """
+        meta_json = json.dumps(meta, ensure_ascii=False) if meta else None
+        cur.execute(insert_msg_sql, (thread_id, member_id, role, message, meta_json))
+
+        conn.commit()
+        # print(f"   💾 [Chat-DB] Saved {role} message to thread: {thread_id}", flush=True)
+
+    except Exception as e:
+        print(f"   🔥 [Error] Chat Save Failure: {e}", flush=True)
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_chat_history(thread_id: str) -> List[Dict[str, Any]]:
+    """
+    특정 스레드의 대화 내역을 시간순으로 조회 (AI 문맥 복원용)
+    """
+    conn = None
+    try:
+        conn = get_recom_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        sql = """
+            SELECT ROLE as role, MESSAGE as text, META_DATA as metadata
+            FROM TB_CHAT_MESSAGE_T
+            WHERE THREAD_ID = %s
+            ORDER BY CREATED_DT ASC
+        """
+        cur.execute(sql, (thread_id,))
+        return [dict(row) for row in cur.fetchall()]
+    except Exception as e:
+        print(f"   ⚠️ [Error] Get History Failure: {e}", flush=True)
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_user_chat_list(member_id: int) -> List[Dict[str, Any]]:
+    """
+    사용자의 채팅방 목록 조회 (사이드바 히스토리용)
+    """
+    if not member_id:
+        return []
+
+    conn = None
+    try:
+        conn = get_recom_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        sql = """
+            SELECT THREAD_ID as thread_id, TITLE as title, LAST_CHAT_DT as last_chat_dt
+            FROM TB_CHAT_THREAD_T
+            WHERE MEMBER_ID = %s AND IS_DELETED = 'N'
+            ORDER BY LAST_CHAT_DT DESC
+            LIMIT 30
+        """
+        cur.execute(sql, (member_id,))
+        rows = cur.fetchall()
+
+        # JSON 직렬화를 위해 datetime 객체를 ISO 포맷 문자열로 변환
+        results = []
+        for r in rows:
+            res = dict(r)
+            if res["last_chat_dt"]:
+                res["last_chat_dt"] = res["last_chat_dt"].isoformat()
+            results.append(res)
+        return results
+    except Exception as e:
+        print(f"   ⚠️ [Error] Get Chat List Failure: {e}", flush=True)
+        return []
+    finally:
+        if conn:
+            conn.close()

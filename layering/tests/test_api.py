@@ -77,6 +77,8 @@ def test_analyze_endpoint_handles_no_match():
     payload = response.json()
     assert payload["recommendation"] is None
     assert payload["note"]
+    assert payload["clarification_prompt"]
+    assert isinstance(payload["clarification_options"], list)
 
 
 def test_analyze_endpoint_handles_empty_text():

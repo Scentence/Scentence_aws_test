@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-import csv
 import os
 import re
-from pathlib import Path
 from typing import Dict, Iterable, List, Optional
+
+import psycopg2
+from dotenv import load_dotenv
+from psycopg2.extras import RealDictCursor
 
 from . import schemas
 from .constants import ACCORDS, ACCORD_INDEX, MATCH_SCORE_THRESHOLD, PERSISTENCE_MAP
@@ -17,6 +19,17 @@ except ImportError:  # pragma: no cover
     Levenshtein = None
 
 
+<<<<<<< HEAD
+load_dotenv()
+
+DB_CONFIG = {
+    "dbname": os.getenv("DB_NAME", "perfume_db"),
+    "user": os.getenv("DB_USER", "scentence"),
+    "password": os.getenv("DB_PASSWORD", "scentence"),
+    "host": os.getenv("DB_HOST", "host.docker.internal"),
+    "port": os.getenv("DB_PORT", "5432"),
+}
+=======
 _env_db_root = os.getenv("LAYERING_DB_ROOT")
 if _env_db_root:
     DEFAULT_DB_ROOT = Path(_env_db_root)
@@ -34,10 +47,11 @@ else:
 DEFAULT_ACCORDS_PATH = DEFAULT_DB_ROOT / "routputs" / "TB_PERFUME_ACCORD_R.csv"
 DEFAULT_NOTES_PATH = DEFAULT_DB_ROOT / "outputs" / "TB_PERFUME_NOTES_M.csv"
 DEFAULT_BASIC_PATH = DEFAULT_DB_ROOT / "outputs" / "TB_PERFUME_BASIC_M.csv"
+>>>>>>> 2b10de3872436c9251da242ef18242b359fa722d
 
 
-def _normalize_row(row: Dict[str, str]) -> Dict[str, str]:
-    return {str(key).strip().upper(): (value or "").strip() for key, value in row.items()}
+def get_db_connection(db_config: Optional[Dict[str, str]] = None):
+    return psycopg2.connect(**(db_config or DB_CONFIG))
 
 
 def _normalize_text(text: str) -> str:
@@ -45,98 +59,88 @@ def _normalize_text(text: str) -> str:
     return " ".join(cleaned.split())
 
 
-def _load_perfume_basics(data_path: Path) -> Dict[str, schemas.PerfumeBasic]:
+def _load_perfume_basics(conn) -> Dict[str, schemas.PerfumeBasic]:
     basics: Dict[str, schemas.PerfumeBasic] = {}
-    with data_path.open("r", encoding="utf-8-sig") as handle:
-        reader = csv.DictReader(handle)
-        for row in reader:
-            normalized = _normalize_row(row)
-            perfume_id = normalized.get("PERFUME_ID", "")
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(
+            """
+            SELECT perfume_id, perfume_name, perfume_brand
+            FROM TB_PERFUME_BASIC_M
+            """
+        )
+        for row in cur.fetchall():
+            perfume_id = str(row.get("perfume_id") or "").strip()
             if not perfume_id:
                 continue
+            perfume_name = str(row.get("perfume_name") or perfume_id).strip() or perfume_id
+            perfume_brand = str(row.get("perfume_brand") or "Unknown").strip() or "Unknown"
             basics[perfume_id] = schemas.PerfumeBasic(
                 perfume_id=perfume_id,
-                perfume_name=normalized.get("PERFUME_NAME", perfume_id) or perfume_id,
-                perfume_brand=normalized.get("PERFUME_BRAND", "Unknown") or "Unknown",
+                perfume_name=perfume_name,
+                perfume_brand=perfume_brand,
             )
     return basics
 
 
-def _load_perfume_accords(data_path: Path) -> Dict[str, Dict[str, float]]:
+def _load_perfume_accords(conn) -> Dict[str, Dict[str, float]]:
     accords: Dict[str, Dict[str, float]] = {}
-    with data_path.open("r", encoding="utf-8-sig") as handle:
-        reader = csv.DictReader(handle)
-        fieldnames = [name.strip().upper() for name in (reader.fieldnames or [])]
-        has_type = "TYPE" in fieldnames
-        if has_type:
-            staged: Dict[str, Dict[str, Dict[str, float]]] = {}
-            for row in reader:
-                normalized = _normalize_row(row)
-                perfume_id = normalized.get("PERFUME_ID", "")
-                accord = normalized.get("ACCORD", "")
-                ratio_value = normalized.get("RATIO", "")
-                if not perfume_id or not accord:
-                    continue
-                if accord not in ACCORDS:
-                    continue
-                try:
-                    ratio = float(ratio_value)
-                except ValueError:
-                    continue
-                row_type = normalized.get("TYPE", "").upper()
-                buckets = staged.setdefault(perfume_id, {"base": {}, "all": {}})
-                all_bucket = buckets["all"]
-                all_bucket[accord] = all_bucket.get(accord, 0.0) + ratio
-                if row_type == "BASE":
-                    base_bucket = buckets["base"]
-                    base_bucket[accord] = base_bucket.get(accord, 0.0) + ratio
-            for perfume_id, buckets in staged.items():
-                selected = buckets["base"] or buckets["all"]
-                accords[perfume_id] = selected
-        else:
-            for row in reader:
-                normalized = _normalize_row(row)
-                perfume_id = normalized.get("PERFUME_ID", "")
-                accord = normalized.get("ACCORD", "")
-                ratio_value = normalized.get("RATIO", "")
-                if not perfume_id or not accord:
-                    continue
-                if accord not in ACCORDS:
-                    continue
-                try:
-                    ratio = float(ratio_value)
-                except ValueError:
-                    continue
-                perfume_entry = accords.setdefault(perfume_id, {})
-                perfume_entry[accord] = perfume_entry.get(accord, 0.0) + ratio
+    staged: Dict[str, Dict[str, Dict[str, float]]] = {}
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(
+            """
+            SELECT perfume_id, accord, ratio, type
+            FROM TB_PERFUME_ACCORD_R
+            """
+        )
+        for row in cur.fetchall():
+            perfume_id = str(row.get("perfume_id") or "").strip()
+            accord = str(row.get("accord") or "").strip()
+            ratio_value = row.get("ratio")
+            if not perfume_id or not accord:
+                continue
+            if accord not in ACCORDS:
+                continue
+            try:
+                ratio = float(ratio_value)
+            except (TypeError, ValueError):
+                continue
+            row_type = str(row.get("type") or "").strip().upper()
+            buckets = staged.setdefault(perfume_id, {"base": {}, "all": {}})
+            all_bucket = buckets["all"]
+            all_bucket[accord] = all_bucket.get(accord, 0.0) + ratio
+            if row_type == "BASE":
+                base_bucket = buckets["base"]
+                base_bucket[accord] = base_bucket.get(accord, 0.0) + ratio
+
+    for perfume_id, buckets in staged.items():
+        selected = buckets["base"] or buckets["all"]
+        accords[perfume_id] = selected
     return accords
 
 
-def _load_perfume_base_notes(data_path: Path) -> Dict[str, List[str]]:
+def _load_perfume_base_notes(conn) -> Dict[str, List[str]]:
     base_notes: Dict[str, List[str]] = {}
-    with data_path.open("r", encoding="utf-8-sig") as handle:
-        reader = csv.DictReader(handle)
-        for row in reader:
-            normalized = _normalize_row(row)
-            row_type = normalized.get("TYPE", "").upper()
-            if row_type != "BASE":
-                continue
-            perfume_id = normalized.get("PERFUME_ID", "")
-            note = normalized.get("NOTE", "")
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(
+            """
+            SELECT perfume_id, note
+            FROM TB_PERFUME_NOTES_M
+            WHERE type = 'BASE'
+            """
+        )
+        for row in cur.fetchall():
+            perfume_id = str(row.get("perfume_id") or "").strip()
+            note = str(row.get("note") or "").strip()
             if not perfume_id or not note:
                 continue
             base_notes.setdefault(perfume_id, []).append(note)
     return base_notes
 
 
-def _load_perfume_records(
-    accord_path: Path,
-    notes_path: Path,
-    basic_path: Path,
-) -> List[schemas.PerfumeRecord]:
-    basics = _load_perfume_basics(basic_path)
-    accord_map = _load_perfume_accords(accord_path)
-    base_notes = _load_perfume_base_notes(notes_path)
+def _load_perfume_records(conn) -> List[schemas.PerfumeRecord]:
+    basics = _load_perfume_basics(conn)
+    accord_map = _load_perfume_accords(conn)
+    base_notes = _load_perfume_base_notes(conn)
 
     perfumes: List[schemas.PerfumeRecord] = []
     for perfume_id, accord_entries in accord_map.items():
@@ -199,20 +203,9 @@ class PerfumeRepository:
 
     def __init__(
         self,
-        data_root: Optional[os.PathLike[str] | str] = None,
-        accord_path: Optional[os.PathLike[str] | str] = None,
-        notes_path: Optional[os.PathLike[str] | str] = None,
-        basic_path: Optional[os.PathLike[str] | str] = None,
+        db_config: Optional[Dict[str, str]] = None,
     ):
-        self._accord_path, self._notes_path, self._basic_path = self._resolve_paths(
-            data_root,
-            accord_path,
-            notes_path,
-            basic_path,
-        )
-        for path in (self._accord_path, self._notes_path, self._basic_path):
-            if not path.exists():
-                raise FileNotFoundError(f"Perfume data file not found: {path}")
+        self._db_config = db_config
         self._vectors = self._load_vectors()
         self._name_index = self._build_name_index()
 
@@ -231,45 +224,12 @@ class PerfumeRepository:
                 index.setdefault(normalized, []).append(perfume)
         return index
 
-    def _resolve_paths(
-        self,
-        data_root: Optional[os.PathLike[str] | str],
-        accord_path: Optional[os.PathLike[str] | str],
-        notes_path: Optional[os.PathLike[str] | str],
-        basic_path: Optional[os.PathLike[str] | str],
-    ) -> tuple[Path, Path, Path]:
-        root = Path(data_root) if data_root else None
-        if env_root := os.getenv("LAYERING_DB_ROOT"):
-            root = Path(env_root)
-        if root is None:
-            root = DEFAULT_DB_ROOT
-
-        resolved_accord = Path(accord_path) if accord_path else None
-        resolved_notes = Path(notes_path) if notes_path else None
-        resolved_basic = Path(basic_path) if basic_path else None
-
-        if env_accord := os.getenv("LAYERING_ACCORDS_CSV"):
-            resolved_accord = Path(env_accord)
-        if env_notes := os.getenv("LAYERING_NOTES_CSV"):
-            resolved_notes = Path(env_notes)
-        if env_basic := os.getenv("LAYERING_BASIC_CSV"):
-            resolved_basic = Path(env_basic)
-
-        if resolved_accord is None:
-            resolved_accord = root / "routputs" / "TB_PERFUME_ACCORD_R.csv"
-        if resolved_notes is None:
-            resolved_notes = root / "outputs" / "TB_PERFUME_NOTES_M.csv"
-        if resolved_basic is None:
-            resolved_basic = root / "outputs" / "TB_PERFUME_BASIC_M.csv"
-
-        return resolved_accord, resolved_notes, resolved_basic
-
     def _load_vectors(self) -> Dict[str, schemas.PerfumeVector]:
-        records = _load_perfume_records(
-            self._accord_path,
-            self._notes_path,
-            self._basic_path,
-        )
+        conn = get_db_connection(self._db_config)
+        try:
+            records = _load_perfume_records(conn)
+        finally:
+            conn.close()
         return {record.perfume.perfume_id: _vectorize(record) for record in records}
 
     def reload(self) -> None:
@@ -280,12 +240,13 @@ class PerfumeRepository:
         self,
         query: str,
         limit: int = 5,
+        min_score: float | None = None,
     ) -> List[tuple[schemas.PerfumeVector, float, str]]:
         normalized_query = _normalize_text(query)
         if not normalized_query:
             return []
 
-        min_fuzzy_score = MATCH_SCORE_THRESHOLD
+        min_fuzzy_score = min_score if min_score is not None else MATCH_SCORE_THRESHOLD
 
         matches: Dict[str, tuple[float, str]] = {}
         for key, perfumes in self._name_index.items():
@@ -298,8 +259,8 @@ class PerfumeRepository:
                 score = 0.9
             elif Levenshtein is not None:
                 score = Levenshtein.ratio(normalized_query, key)
-                if score < min_fuzzy_score:
-                    score = 0.0
+            if score < min_fuzzy_score:
+                continue
             if score <= 0.0:
                 continue
             for perfume in perfumes:

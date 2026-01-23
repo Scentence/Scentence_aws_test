@@ -31,28 +31,34 @@ type UserQueryResponse = {
     candidate_perfume_id?: string | null;
   } | null;
   recommendation?: LayeringCandidate | null;
+  clarification_prompt?: string | null;
+  clarification_options?: string[];
   note?: string | null;
 };
 
-const apiBase =
-  process.env.NEXT_PUBLIC_LAYERING_API_URL ?? "http://localhost:8002";
+const apiHost = process.env.NEXT_PUBLIC_LAYERING_API_URL;
+const normalizedApiHost = apiHost?.replace(/\/+$/, "");
+const trimmedApiHost = normalizedApiHost?.endsWith("/layering")
+  ? normalizedApiHost.slice(0, -"/layering".length)
+  : normalizedApiHost;
+const apiBase = trimmedApiHost
+  ? `${trimmedApiHost}/layering`
+  : "/api/layering";
 
 export default function LayeringPage() {
   const [queryText, setQueryText] = useState(
     "CK One이 있는데 이거랑 레이어링해서 좀 더 시트러스하고 시원한 느낌이 나게하는 향수를 추천해줘",
   );
-  const [basePerfumeId, setBasePerfumeId] = useState("8701");
-  const [keywordsInput, setKeywordsInput] = useState("fresh, citrus");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<LayeringResponse | null>(null);
+  const [result, setResult] = useState<UserQueryResponse | null>(null);
 
   const handleAnalyze = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const response = await fetch(`${apiBase}/layering/analyze`, {
+      const response = await fetch(`${apiBase}/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_text: queryText }),
@@ -64,65 +70,10 @@ export default function LayeringPage() {
 
       const payload = (await response.json()) as UserQueryResponse;
       const recommendation = payload.recommendation ?? null;
-      const baseId =
-        payload.base_perfume_id ?? payload.detected_pair?.base_perfume_id ?? basePerfumeId;
-      const keywords = payload.keywords ?? [];
-
-      if (recommendation) {
-        setResult({
-          base_perfume_id: baseId,
-          keywords,
-          total_available: 1,
-          recommendations: [recommendation],
-          note: payload.note ?? null,
-        });
-      } else {
-        setResult({
-          base_perfume_id: baseId,
-          keywords,
-          total_available: 0,
-          recommendations: [],
-          note: payload.note ?? "추천 결과가 없어요.",
-        });
-      }
-
-      if (payload.keywords?.length) {
-        setKeywordsInput(payload.keywords.join(", "));
-      }
-      if (payload.base_perfume_id || payload.detected_pair?.base_perfume_id) {
-        setBasePerfumeId(
-          payload.base_perfume_id ?? payload.detected_pair?.base_perfume_id ?? basePerfumeId,
-        );
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "알 수 없는 오류가 발생했어요.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSubmit = async () => {
-    setLoading(true);
-    setError(null);
-
-    const keywords = keywordsInput
-      .split(",")
-      .map((item) => item.trim().toLowerCase())
-      .filter(Boolean);
-
-    try {
-      const response = await fetch(`${apiBase}/layering/recommend`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ base_perfume_id: basePerfumeId, keywords }),
+      setResult({
+        ...payload,
+        recommendation,
       });
-
-      if (!response.ok) {
-        throw new Error("레이어링 결과를 불러오지 못했어요.");
-      }
-
-      const payload = (await response.json()) as LayeringResponse;
-      setResult(payload);
     } catch (err) {
       setError(err instanceof Error ? err.message : "알 수 없는 오류가 발생했어요.");
     } finally {
@@ -130,7 +81,7 @@ export default function LayeringPage() {
     }
   };
 
-  const candidate = result?.recommendations?.[0];
+  const candidate = result?.recommendation ?? null;
   const vector = candidate?.layered_vector ?? [];
   const vectorReady = vector.length === BACKEND_ACCORDS.length;
 
@@ -167,33 +118,20 @@ export default function LayeringPage() {
                   {loading ? "분석 중..." : "자연어로 추천받기"}
                 </button>
               </div>
-              <div>
-                <label className="text-xs font-semibold text-[#7A6B57]">Base perfume ID</label>
-                <input
-                  value={basePerfumeId}
-                  onChange={(event) => setBasePerfumeId(event.target.value)}
-                  className="mt-2 w-full rounded-xl border border-[#E1D7C8] bg-white px-4 py-3 text-sm"
-                  placeholder="예: 8701"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-[#7A6B57]">Keywords</label>
-                <input
-                  value={keywordsInput}
-                  onChange={(event) => setKeywordsInput(event.target.value)}
-                  className="mt-2 w-full rounded-xl border border-[#E1D7C8] bg-white px-4 py-3 text-sm"
-                  placeholder="fresh, citrus"
-                />
-              </div>
-              <button
-                onClick={handleSubmit}
-                className="w-full rounded-xl bg-[#C8A24D] px-4 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-[#B89138]"
-                disabled={loading}
-              >
-                {loading ? "불러오는 중..." : "레이어링 결과 보기"}
-              </button>
               {error && <p className="text-xs text-[#B13C2E]">{error}</p>}
-              {result?.note && (
+              {result?.clarification_prompt && (
+                <div className="rounded-xl border border-[#E6DDCF] bg-[#F8F4EC] p-3 text-xs text-[#5C5448]">
+                  <p className="font-semibold">{result.clarification_prompt}</p>
+                  {result.clarification_options?.length ? (
+                    <ul className="mt-2 space-y-1">
+                      {result.clarification_options.map((option) => (
+                        <li key={option}>• {option}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              )}
+              {result?.note && !result?.clarification_prompt && (
                 <p className="text-xs text-[#7A6B57]">{result.note}</p>
               )}
             </div>

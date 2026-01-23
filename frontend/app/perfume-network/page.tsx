@@ -48,7 +48,6 @@ type NetworkPayload = {
 
 const API_BASE =
   process.env.NEXT_PUBLIC_SCENTMAP_API_URL ??
-  process.env.NEXT_PUBLIC_API_URL ??
   "http://127.0.0.1:8001";
 
 // 어코드별 기본 색상 매핑

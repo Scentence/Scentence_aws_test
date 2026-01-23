@@ -212,6 +212,28 @@ def analyze_user_query(
     )
 
 
+def suggest_perfume_options(user_text: str, repository: PerfumeRepository, limit: int = 5) -> list[str]:
+    normalized_text = _apply_aliases(user_text)
+    segments = _split_query_segments(normalized_text)
+    search_inputs = segments[:] or [normalized_text]
+    if normalized_text not in search_inputs:
+        search_inputs.append(normalized_text)
+
+    options: list[str] = []
+    for segment in search_inputs:
+        for perfume, _, _ in repository.find_perfume_candidates(
+            segment,
+            limit=limit,
+            min_score=0.5,
+        ):
+            label = f"{perfume.perfume_name} ({perfume.perfume_brand})"
+            if label not in options:
+                options.append(label)
+            if len(options) >= limit:
+                return options
+    return options
+
+
 def preview_layering_paths(
     base_perfume_id: str,
     user_text: str,

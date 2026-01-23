@@ -130,4 +130,6 @@ class UserQueryResponse(BaseModel):
     detected_perfumes: List[DetectedPerfume]
     detected_pair: Optional[DetectedPair] = None
     recommendation: Optional[LayeringCandidate] = None
+    clarification_prompt: Optional[str] = None
+    clarification_options: List[str] = Field(default_factory=list)
     note: Optional[str] = None

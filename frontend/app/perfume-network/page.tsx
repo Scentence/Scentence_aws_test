@@ -750,12 +750,6 @@ export default function PerfumeNetworkPage() {
     });
   }, [scriptReady, visiblePayload, selectedAccords, selectedPerfumeId]);
 
-  const handleReset = () => {
-    if (networkRef.current) {
-      networkRef.current.fit({ animation: true });
-    }
-  };
-
   const toggleHiddenPerfume = (id: string) => {
     setHiddenPerfumeIds((prev) =>
       prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
@@ -792,10 +786,12 @@ export default function PerfumeNetworkPage() {
               perfume network
             </p>
             <h1 className="text-3xl font-semibold">향수 지도</h1>
-            <div className="space-y-1 text-sm text-[#5C5448]">
-              <p>향수와 향수 사이의 닮음을 한눈에 보는 지도예요.</p>
-              <p>향수의 대표 분위기를 중심으로 자연스럽게 연결돼 있어요.</p>
-              <p>가까이 있는 향수일수록 비슷한 분위기를 가지고 있어요.</p>
+            <div className="mt-3 rounded-2xl border border-[#E6DDCF] bg-white/70 p-3 text-sm text-[#5C5448]">
+              <ul className="space-y-1">
+                <li>향수와 향수 사이의 닮음을 한눈에 보는 지도예요.</li>
+                <li>향수의 대표 분위기를 중심으로 자연스럽게 연결돼 있어요.</li>
+                <li>가까이 있는 향수일수록 비슷한 분위기를 가지고 있어요.</li>
+              </ul>
             </div>
           </div>
           <Link href="/" className="rounded-full border border-[#E2D7C5] bg-white/80 px-4 py-2 text-xs font-semibold text-[#5C5448] transition hover:bg-white">
@@ -811,9 +807,31 @@ export default function PerfumeNetworkPage() {
                   지도 설정
                 </p>
               </div>
-              <label className="block text-xs text-[#7A6B57]">
-                향수가 닮은 정도 ({minSimilarity.toFixed(2)})
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="block text-xs text-[#7A6B57]">
+                  향수가 닮은 정도 ({minSimilarity.toFixed(2)})
+                </label>
+                <div className="group relative">
+                  <button
+                    type="button"
+                    className="flex h-5 w-5 items-center justify-center rounded-full border border-[#D7CBB8] bg-white text-[11px] text-[#7A6B57] shadow-sm transition hover:bg-[#F8F4EC]"
+                    aria-label="향수가 닮은 정도 안내"
+                  >
+                    i
+                  </button>
+                  <div className="pointer-events-none absolute right-0 top-6 z-20 w-64 rounded-xl border border-[#E6DDCF] bg-white p-3 text-[11px] text-[#5C5448] shadow-lg opacity-0 transition group-hover:opacity-100">
+                    <p className="font-semibold text-[#4D463A]">
+                      향수가 닮은 정도 안내
+                    </p>
+                    <p className="mt-1">
+                      비슷한 계열의 향수를 보고 싶다면 0.9 이상을 권장해요.
+                    </p>
+                    <p className="mt-1">
+                      유사하지만 색다른 향수가 고민된다면 0.7 정도를 추천해요.
+                    </p>
+                  </div>
+                </div>
+              </div>
               <input
                 type="range"
                 min="0.2"
@@ -1091,8 +1109,12 @@ export default function PerfumeNetworkPage() {
                 )}
               </div>
 
+              <div className="border-t border-[#E6DDCF] pt-4">
+                <p className="text-sm font-semibold text-[#1F1F1F]">
+                  내 향수 관리
+                </p>
+              </div>
               <div className="rounded-2xl border border-[#E6DDCF] bg-[#F8F4EC] p-3 text-xs text-[#5C5448]">
-                <p className="font-semibold text-[#4D463A]">내 향수 관리</p>
                 <p className="mt-1">
                   보유/보유했음 상태를 기준으로 내 향수만 모아서 볼 수 있어요.
                 </p>
@@ -1224,13 +1246,6 @@ export default function PerfumeNetworkPage() {
               </>
             )}
           </div>
-
-          <button
-            onClick={handleReset}
-            className="w-full rounded-xl bg-[#2E2B28] py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-[#1E1C1A]"
-          >
-            그래프 정렬하기
-          </button>
 
           <div className="space-y-2 text-xs text-[#7A6B57]">
             <p>데이터 요청 주소 (문의/공유용)</p>

@@ -16,6 +16,7 @@ type NetworkNode = {
   seasons?: string[];
   occasions?: string[];
   genders?: string[];
+  member_status?: string | null;
 };
 
 type NetworkEdge = {
@@ -78,11 +79,26 @@ const ACCORD_COLORS: Record<string, string> = {
 const getAccordColor = (accord?: string) =>
   (accord && ACCORD_COLORS[accord]) || "#E8DDCA";
 
+// 회원 상태 라벨 (DB 값 변경시 수정 필요)
+const MEMBER_STATUS_LABELS: Record<string, string> = {
+  HAVE: "보유",
+  HAD: "보유했음",
+  RECOMMENDED: "추천",
+  WANT: "관심",
+  NONE: "미지정",
+};
+
+const formatMemberStatus = (status: string) =>
+  MEMBER_STATUS_LABELS[status]
+    ? `${MEMBER_STATUS_LABELS[status]} (${status})`
+    : status;
+
 export default function PerfumeNetworkPage() {
   // 네트워크 요청 파라미터
   const [minSimilarity, setMinSimilarity] = useState(0.45);
   const [topAccords, setTopAccords] = useState(2);
   const [maxPerfumes, setMaxPerfumes] = useState<string>("");
+  const [memberId, setMemberId] = useState<string | null>(null);
   // API 응답 및 상태 표시
   const [payload, setPayload] = useState<NetworkPayload | null>(null);
   const [status, setStatus] = useState("대기 중");
@@ -95,6 +111,7 @@ export default function PerfumeNetworkPage() {
   const [selectedSeasons, setSelectedSeasons] = useState<string[]>([]);
   const [selectedOccasions, setSelectedOccasions] = useState<string[]>([]);
   const [selectedGenders, setSelectedGenders] = useState<string[]>([]);
+  const [selectedMemberStatuses, setSelectedMemberStatuses] = useState<string[]>([]);
   // 선택된 향수 노드 강조
   const [selectedPerfumeId, setSelectedPerfumeId] = useState<string | null>(
     null
@@ -105,6 +122,7 @@ export default function PerfumeNetworkPage() {
   const [seasonOpen, setSeasonOpen] = useState(false);
   const [occasionOpen, setOccasionOpen] = useState(false);
   const [genderOpen, setGenderOpen] = useState(false);
+  const [memberStatusOpen, setMemberStatusOpen] = useState(false);
 
   // vis-network 렌더링용 참조
   const containerRef = useRef<HTMLDivElement>(null);
@@ -120,8 +138,26 @@ export default function PerfumeNetworkPage() {
     if (maxPerfumes.trim()) {
       params.set("max_perfumes", maxPerfumes.trim());
     }
+    if (memberId) {
+      params.set("member_id", memberId);
+    }
     return `${API_BASE}/network/perfumes?${params.toString()}`;
-  }, [minSimilarity, topAccords, maxPerfumes]);
+  }, [minSimilarity, topAccords, maxPerfumes, memberId]);
+
+  useEffect(() => {
+    // 로그인 정보에서 memberId 로드
+    if (typeof window === "undefined") return;
+    const stored = localStorage.getItem("localAuth");
+    if (!stored) return;
+    try {
+      const parsed = JSON.parse(stored) as { memberId?: number | string };
+      if (parsed?.memberId) {
+        setMemberId(String(parsed.memberId));
+      }
+    } catch (error) {
+      return;
+    }
+  }, []);
 
   const toggleSelection = (
     value: string,
@@ -154,6 +190,7 @@ export default function PerfumeNetworkPage() {
         seasons: [] as string[],
         occasions: [] as string[],
         genders: [] as string[],
+        memberStatuses: [] as string[],
       };
     }
 
@@ -166,6 +203,7 @@ export default function PerfumeNetworkPage() {
     const seasonSet = new Set<string>();
     const occasionSet = new Set<string>();
     const genderSet = new Set<string>();
+    const memberStatusSet = new Set<string>();
 
     for (const node of perfumeNodes) {
       if (node.primary_accord) {
@@ -177,6 +215,9 @@ export default function PerfumeNetworkPage() {
       node.seasons?.forEach((season) => seasonSet.add(season));
       node.occasions?.forEach((occasion) => occasionSet.add(occasion));
       node.genders?.forEach((gender) => genderSet.add(gender));
+      if (node.member_status) {
+        memberStatusSet.add(node.member_status);
+      }
     }
 
     return {
@@ -185,6 +226,7 @@ export default function PerfumeNetworkPage() {
       seasons: Array.from(seasonSet).sort(),
       occasions: Array.from(occasionSet).sort(),
       genders: Array.from(genderSet).sort(),
+      memberStatuses: Array.from(memberStatusSet).sort(),
     };
   }, [payload]);
 
@@ -228,6 +270,13 @@ export default function PerfumeNetworkPage() {
       ) {
         return false;
       }
+      if (
+        selectedMemberStatuses.length > 0 &&
+        (!node.member_status ||
+          !selectedMemberStatuses.includes(node.member_status))
+      ) {
+        return false;
+      }
       return true;
     };
 
@@ -262,6 +311,7 @@ export default function PerfumeNetworkPage() {
     selectedSeasons,
     selectedOccasions,
     selectedGenders,
+    selectedMemberStatuses,
   ]);
 
   const visiblePayload = filteredPayload ?? payload;
@@ -313,6 +363,9 @@ export default function PerfumeNetworkPage() {
       if (node.type === "perfume") {
         const borderColor = getAccordColor(node.primary_accord);
         const isAccordSelected = selectedAccords.length > 0;
+        const statusLine = node.member_status
+          ? `\n회원 상태: ${formatMemberStatus(node.member_status)}`
+          : "";
         return {
           id: node.id,
           label: node.label,
@@ -320,7 +373,7 @@ export default function PerfumeNetworkPage() {
           image: node.image || undefined,
           title: `${node.label}\n${node.brand ?? ""}\n대표 어코드: ${
             node.primary_accord ?? "Unknown"
-          }`,
+          }${statusLine}`,
           borderWidth: isAccordSelected ? 4 : 2,
           color: {
             border: borderColor,
@@ -542,6 +595,7 @@ export default function PerfumeNetworkPage() {
                   setSelectedSeasons([]);
                   setSelectedOccasions([]);
                   setSelectedGenders([]);
+                  setSelectedMemberStatuses([]);
                 }}
                 className="text-[11px] text-[#7A6B57] hover:text-[#5C5448]"
               >
@@ -589,6 +643,55 @@ export default function PerfumeNetworkPage() {
               서브 필터
             </label>
             <div className="grid gap-2">
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setMemberStatusOpen((prev) => !prev)}
+                  className="flex w-full items-center justify-between rounded-xl border border-[#E1D7C8] bg-white px-3 py-2 text-sm text-[#1F1F1F] focus:outline-none focus:ring-2 focus:ring-[#C8A24D]/40"
+                >
+                  <span>
+                    {formatSelection(selectedMemberStatuses, "회원 상태 전체")}
+                  </span>
+                  <span className="text-xs text-[#7A6B57]">
+                    {memberStatusOpen ? "닫기" : "선택"}
+                  </span>
+                </button>
+                {memberStatusOpen && (
+                  <div className="absolute z-10 mt-2 w-full space-y-1 rounded-xl border border-[#E1D7C8] bg-white p-2 text-sm shadow-md">
+                    <p className="px-2 text-[11px] text-[#7A6B57]">
+                      현재 DB 기준 값 (변경 가능)
+                    </p>
+                    <div className="max-h-44 overflow-y-auto">
+                      {filterOptions.memberStatuses.length === 0 && (
+                        <p className="px-2 py-2 text-xs text-[#9A8E7C]">
+                          로그인 후 상태가 포함된 데이터가 표시됩니다.
+                        </p>
+                      )}
+                      {filterOptions.memberStatuses.map((statusKey) => (
+                        <label
+                          key={statusKey}
+                          className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-[#F5F2EA]"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedMemberStatuses.includes(statusKey)}
+                            onChange={() =>
+                              toggleSelection(
+                                statusKey,
+                                selectedMemberStatuses,
+                                setSelectedMemberStatuses
+                              )
+                            }
+                            className="accent-[#C8A24D]"
+                          />
+                          <span>{formatMemberStatus(statusKey)}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="relative">
                 <button
                   type="button"

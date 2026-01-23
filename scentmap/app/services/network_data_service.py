@@ -4,7 +4,7 @@ import time
 
 # 결과를 dict 형태로 받기 위해 RealDictCursor 사용
 from psycopg2.extras import RealDictCursor
-from scentmap.db import get_db_connection
+from scentmap.db import get_db_connection, get_recom_db_connection
 
 
 # 향수 기본 정보 가져오기
@@ -104,6 +104,32 @@ def _fetch_perfume_tags(perfume_ids: List[int]) -> Dict[int, Dict[str, List[str]
         for perfume_id, tags in tags_by_perfume.items()
     }
 
+# 회원별 향수 상태 조회
+def _fetch_member_statuses(member_id: Optional[int], perfume_ids: List[int]) -> Dict[int, str]:
+
+    if not member_id or not perfume_ids:
+        return {}
+
+    # 회원 향수 상태는 recom_db에서 조회
+    with get_recom_db_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT perfume_id, register_status
+                FROM TB_MEMBER_MY_PERFUME_T
+                WHERE member_id = %s
+                  AND perfume_id = ANY(%s)
+                """,
+                (member_id, perfume_ids),
+            )
+            rows = cur.fetchall()
+
+    return {
+        int(row["perfume_id"]): row["register_status"]
+        for row in rows
+        if row.get("register_status")
+    }
+
 
 # 향수 기본 정보와 어코드(투표수) 데이터를 결합하여
 # 향수별 어코드(비중)와 대표 어코드를 생성
@@ -111,7 +137,9 @@ def _build_profiles(
     perfume_rows: List[Dict],
     accord_rows: List[Dict],
     tags_by_perfume: Dict[int, Dict[str, List[str]]],
+    member_status_by_perfume: Dict[int, str],
 ) -> Dict[int, Dict]:
+    # 회원별 상태(member_status) 향수 프로필에 포함
 
     accords_by_perfume: Dict[int, List[Tuple[str, int]]] = defaultdict(list)
     for row in accord_rows:
@@ -157,6 +185,7 @@ def _build_profiles(
             "seasons": tags["seasons"],
             "occasions": tags["occasions"],
             "genders": tags["genders"],
+            "member_status": member_status_by_perfume.get(perfume_id),
         }
     return perfume_map
 
@@ -294,6 +323,7 @@ def get_perfume_network(
     min_similarity: float = 0.45,
     top_accords: int = 2,
     max_perfumes: Optional[int] = None,
+    member_id: Optional[int] = None,
     debug: bool = False,
 ) -> Dict:
     started_at = time.time()
@@ -308,7 +338,14 @@ def get_perfume_network(
 
     # 2. 향수별 어코드 프로필 생성
     tags_by_perfume = _fetch_perfume_tags(perfume_ids)
-    perfume_map = _build_profiles(perfume_rows, accord_rows, tags_by_perfume)
+    # member_id 있으면 회원 상태 포함
+    member_status_by_perfume = _fetch_member_statuses(member_id, perfume_ids)
+    perfume_map = _build_profiles(
+        perfume_rows,
+        accord_rows,
+        tags_by_perfume,
+        member_status_by_perfume,
+    )
 
     # 3. 노드, 엣지 기반 네트워크 그래프 구성
     network = _build_network(perfume_map, min_similarity, top_accords, debug)

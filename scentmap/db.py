@@ -13,16 +13,18 @@ logger = logging.getLogger(__name__)
 
 # 환경변수 로드
 DATABASE_URL = os.getenv("PERFUME_DATABASE_URL", "")
+RECOM_DATABASE_URL = os.getenv("RECOM_DATABASE_URL", "")
 
 DB_CONFIG = {
     "dbname": os.getenv("DB_NAME", "perfume_db"),
     "user": os.getenv("DB_USER", "scentence"),
     "password": os.getenv("DB_PASSWORD", "scentence"),
     "host": os.getenv("DB_HOST", "host.docker.internal"),
-    "port": os.getenv("DB_PORT", "5432"),
+    "port": os.getenv("DB_PORT", "5435"),
 }
 
 _pg_pool = None
+_recom_pg_pool = None
 
 
 def initialize_pool():
@@ -44,11 +46,44 @@ def initialize_pool():
         logger.error(f"❌ Error while connecting to PostgreSQL: {error}")
 
 
+def initialize_recom_pool():
+    global _recom_pg_pool
+    try:
+        if not _recom_pg_pool:
+            if RECOM_DATABASE_URL:
+                logger.info("🔌 Connecting via RECOM_DATABASE_URL...")
+                _recom_pg_pool = psycopg2.pool.ThreadedConnectionPool(
+                    minconn=1, maxconn=10, dsn=RECOM_DATABASE_URL
+                )
+            else:
+                recom_db_config = {
+                    "dbname": os.getenv("RECOM_DB_NAME", "recom_db"),
+                    "user": os.getenv("RECOM_DB_USER", DB_CONFIG["user"]),
+                    "password": os.getenv("RECOM_DB_PASSWORD", DB_CONFIG["password"]),
+                    "host": os.getenv("RECOM_DB_HOST", DB_CONFIG["host"]),
+                    "port": os.getenv("RECOM_DB_PORT", DB_CONFIG["port"]),
+                }
+                logger.info("🔌 Connecting via RECOM_DB_CONFIG...")
+                _recom_pg_pool = psycopg2.pool.ThreadedConnectionPool(
+                    minconn=1, maxconn=10, **recom_db_config
+                )
+            logger.info("✅ Recom DB Connection Pool created successfully")
+    except (Exception, psycopg2.DatabaseError) as error:
+        logger.error(f"❌ Error while connecting to Recom DB: {error}")
+
+
 def close_pool():
     global _pg_pool
     if _pg_pool:
         _pg_pool.closeall()
         logger.info("🛑 DB Connection Pool closed")
+
+
+def close_recom_pool():
+    global _recom_pg_pool
+    if _recom_pg_pool:
+        _recom_pg_pool.closeall()
+        logger.info("🛑 Recom DB Connection Pool closed")
 
 
 @contextmanager
@@ -61,6 +96,18 @@ def get_db_connection():
         yield conn
     finally:
         _pg_pool.putconn(conn)
+
+
+@contextmanager
+def get_recom_db_connection():
+    global _recom_pg_pool
+    if not _recom_pg_pool:
+        initialize_recom_pool()
+    conn = _recom_pg_pool.getconn()
+    try:
+        yield conn
+    finally:
+        _recom_pg_pool.putconn(conn)
 
 
 # [추가됨] 테이블 자동 생성 함수

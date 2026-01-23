@@ -294,7 +294,6 @@ def get_perfume_network(
     min_similarity: float = 0.45,
     top_accords: int = 2,
     max_perfumes: Optional[int] = None,
-    refresh: bool = False,
     debug: bool = False,
 ) -> Dict:
     started_at = time.time()

@@ -12,7 +12,6 @@ def perfume_network(
     min_similarity: float = Query(0.45, ge=0.0, le=1.0),
     top_accords: int = Query(2, ge=1, le=5),
     max_perfumes: int | None = Query(None, ge=1),
-    refresh: bool = False,
     debug: bool = False,
 ):
     try:
@@ -20,7 +19,6 @@ def perfume_network(
             min_similarity=min_similarity,
             top_accords=top_accords,
             max_perfumes=max_perfumes,
-            refresh=refresh,
             debug=debug,
         )
     except Exception as exc:

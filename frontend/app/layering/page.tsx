@@ -37,6 +37,19 @@ type UserQueryResponse = {
   note?: string | null;
 };
 
+type LayeringError = {
+  code: string;
+  message: string;
+  step: string;
+  retriable?: boolean;
+  details?: string | null;
+};
+
+type LayeringErrorResponse = {
+  error?: LayeringError;
+  detail?: { error?: LayeringError };
+};
+
 const apiHost = process.env.NEXT_PUBLIC_LAYERING_API_URL;
 const normalizedApiHost = apiHost?.replace(/\/+$/, "");
 const trimmedApiHost = normalizedApiHost?.endsWith("/layering")
@@ -45,6 +58,62 @@ const trimmedApiHost = normalizedApiHost?.endsWith("/layering")
 const apiBase = trimmedApiHost
   ? `${trimmedApiHost}/layering`
   : "/api/layering";
+
+const errorStepLabels: Record<string, string> = {
+  db_connect: "DB 연결 실패",
+  data_load: "데이터 로딩 실패",
+  analysis: "자연어 분석 실패",
+  perfume_lookup: "향수 식별 실패",
+  ranking: "추천 계산 실패",
+  response: "응답 처리 실패",
+};
+
+const errorStepHints: Record<string, string> = {
+  db_connect: "레이어링 서버와 DB 연결 상태를 확인해주세요.",
+  data_load: "DB 데이터 적재 상태를 확인해주세요.",
+  analysis: "질문을 조금 더 구체적으로 입력해보세요.",
+  perfume_lookup: "향수 이름을 정확히 입력했는지 확인해주세요.",
+  ranking: "잠시 후 다시 시도해주세요.",
+  response: "잠시 후 다시 시도해주세요.",
+};
+
+const defaultErrorMessage = "자연어 분석 결과를 불러오지 못했어요.";
+const showErrorDetails =
+  process.env.NODE_ENV !== "production" ||
+  process.env.NEXT_PUBLIC_LAYERING_DEBUG_ERRORS === "true";
+
+const buildErrorMessage = (error?: LayeringError) => {
+  if (!error) {
+    return defaultErrorMessage;
+  }
+  const label = errorStepLabels[error.step] ?? "처리 실패";
+  const message = error.message || defaultErrorMessage;
+  const hint = errorStepHints[error.step];
+  const codeSuffix = error.code ? ` (${error.code})` : "";
+  const hintSuffix = hint ? ` ${hint}` : "";
+  const detailsSuffix =
+    showErrorDetails && error.details ? ` (${error.details})` : "";
+  return `${label}: ${message}${codeSuffix}${hintSuffix}${detailsSuffix}`;
+};
+
+const parseErrorResponse = async (response: Response) => {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    const text = await response.text().catch(() => "");
+    return text || defaultErrorMessage;
+  }
+  const payload = (await response.json().catch(() => null)) as
+    | LayeringErrorResponse
+    | null;
+  if (typeof payload?.detail === "string") {
+    return payload.detail;
+  }
+  if (Array.isArray(payload?.detail)) {
+    return "입력값을 확인해주세요.";
+  }
+  const error = payload?.error ?? payload?.detail?.error;
+  return buildErrorMessage(error);
+};
 
 export default function LayeringPage() {
   const [queryText, setQueryText] = useState(
@@ -57,19 +126,33 @@ export default function LayeringPage() {
   const handleAnalyze = async () => {
     setLoading(true);
     setError(null);
+    setResult(null);
+
+    const trimmedQuery = queryText.trim();
+    if (!trimmedQuery) {
+      setError("질문을 입력해주세요.");
+      setLoading(false);
+      return;
+    }
 
     try {
       const response = await fetch(`${apiBase}/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_text: queryText }),
+        body: JSON.stringify({ user_text: trimmedQuery }),
       });
 
       if (!response.ok) {
-        throw new Error("자연어 분석 결과를 불러오지 못했어요.");
+        const errorMessage = await parseErrorResponse(response);
+        throw new Error(errorMessage);
       }
 
-      const payload = (await response.json()) as UserQueryResponse;
+      let payload: UserQueryResponse;
+      try {
+        payload = (await response.json()) as UserQueryResponse;
+      } catch (parseError) {
+        throw new Error(defaultErrorMessage);
+      }
       const recommendation = payload.recommendation ?? null;
       setResult({
         ...payload,
@@ -84,7 +167,16 @@ export default function LayeringPage() {
 
   const candidate = result?.recommendation ?? null;
   const vector = candidate?.layered_vector ?? [];
-  const vectorReady = vector.length === BACKEND_ACCORDS.length;
+  const vectorReady =
+    vector.length === BACKEND_ACCORDS.length &&
+    vector.every((value) => Number.isFinite(value));
+  const sprayOrder =
+    candidate && Array.isArray(candidate.spray_order) && candidate.spray_order.length
+      ? candidate.spray_order.join(" → ")
+      : "정보 없음";
+  const totalScore = Number.isFinite(candidate?.total_score)
+    ? candidate?.total_score.toFixed(3)
+    : "-";
 
   return (
     <div className="min-h-screen bg-[#F5F2EA] text-[#1F1F1F]">
@@ -159,14 +251,14 @@ export default function LayeringPage() {
                 <div className="w-full rounded-2xl bg-[#F8F4EC] border border-[#E6DDCF] p-4 text-xs text-[#4D463A] space-y-2">
                   <div className="flex justify-between">
                     <span className="font-semibold">추천 향수</span>
-                    <span>{candidate.total_score.toFixed(3)}</span>
+                    <span>{totalScore}</span>
                   </div>
                   <p className="text-sm font-semibold">
                     {candidate.perfume_name} · {candidate.perfume_brand}
                   </p>
                   <p className="text-[11px] text-[#7A6B57]">{candidate.analysis}</p>
                   <div className="text-[11px] text-[#7A6B57]">
-                    분사 순서: {candidate.spray_order.join(" → ")}
+                    분사 순서: {sprayOrder}
                   </div>
                 </div>
               )}

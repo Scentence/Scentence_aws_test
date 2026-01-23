@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from typing import Any
@@ -14,6 +15,9 @@ from .database import PerfumeRepository
 from .prompts import USER_PREFERENCE_PROMPT
 from .schemas import DetectedPair, DetectedPerfume, PairingAnalysis, UserQueryAnalysis
 from .tools import evaluate_pair, rank_recommendations
+
+
+logger = logging.getLogger(__name__)
 
 
 class PreferenceSummary(BaseModel):
@@ -62,6 +66,7 @@ def analyze_user_input(user_text: str) -> PreferenceSummary:
     if not user_text or not user_text.strip():
         return PreferenceSummary(raw_text=user_text or "")
     if not os.getenv("OPENAI_API_KEY"):
+        logger.info("OpenAI API key missing; using heuristic preferences.")
         return _heuristic_preferences(user_text)
 
     try:
@@ -69,6 +74,7 @@ def analyze_user_input(user_text: str) -> PreferenceSummary:
         from langchain_core.prompts import ChatPromptTemplate
         from langchain_openai import ChatOpenAI
     except ImportError:
+        logger.warning("Langchain dependencies missing; using heuristic preferences.")
         return _heuristic_preferences(user_text)
 
     prompt = ChatPromptTemplate.from_template(USER_PREFERENCE_PROMPT)
@@ -85,8 +91,10 @@ def analyze_user_input(user_text: str) -> PreferenceSummary:
             if start != -1 and end != -1:
                 payload = json.loads(response[start : end + 1])
             else:
+                logger.warning("LLM response not JSON; falling back to heuristics.")
                 return _heuristic_preferences(user_text)
         except Exception:
+            logger.warning("Failed to parse LLM response; falling back to heuristics.")
             return _heuristic_preferences(user_text)
 
     raw_keywords = payload.get("keywords", []) if isinstance(payload, dict) else []

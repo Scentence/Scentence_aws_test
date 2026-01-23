@@ -4,54 +4,86 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 import psycopg2
 from dotenv import load_dotenv
 from psycopg2.extras import RealDictCursor
+from psycopg2.extensions import connection as PGConnection
 
 from . import schemas
 from .constants import ACCORDS, ACCORD_INDEX, MATCH_SCORE_THRESHOLD, PERSISTENCE_MAP
 
 try:  # pragma: no cover - optional dependency
-    import Levenshtein
+    import Levenshtein  # type: ignore[import-not-found]
 except ImportError:  # pragma: no cover
     Levenshtein = None
 
 
-<<<<<<< HEAD
 load_dotenv()
 
-DB_CONFIG = {
+DB_CONFIG: Dict[str, Any] = {
     "dbname": os.getenv("DB_NAME", "perfume_db"),
     "user": os.getenv("DB_USER", "scentence"),
     "password": os.getenv("DB_PASSWORD", "scentence"),
     "host": os.getenv("DB_HOST", "host.docker.internal"),
     "port": os.getenv("DB_PORT", "5432"),
 }
-=======
-_env_db_root = os.getenv("LAYERING_DB_ROOT")
-if _env_db_root:
-    DEFAULT_DB_ROOT = Path(_env_db_root)
-else:
-    _parents = Path(__file__).resolve().parents
-    _base_root = _parents[3] if len(_parents) > 3 else _parents[-1]
-    DEFAULT_DB_ROOT = (
-        _base_root
-        / "scentence-db-init"
-        / "postgres"
-        / "RDB"
-        / "scripts"
-        / "perfume_db"
-    )
-DEFAULT_ACCORDS_PATH = DEFAULT_DB_ROOT / "routputs" / "TB_PERFUME_ACCORD_R.csv"
-DEFAULT_NOTES_PATH = DEFAULT_DB_ROOT / "outputs" / "TB_PERFUME_NOTES_M.csv"
-DEFAULT_BASIC_PATH = DEFAULT_DB_ROOT / "outputs" / "TB_PERFUME_BASIC_M.csv"
->>>>>>> 2b10de3872436c9251da242ef18242b359fa722d
+
+def get_db_connection(
+    db_config: Optional[Dict[str, Any]] = None,
+) -> PGConnection:
+    try:
+        return psycopg2.connect(**(db_config or DB_CONFIG))
+    except psycopg2.Error as exc:
+        raise LayeringDataError(
+            code="DB_CONNECTION_FAILED",
+            message="DB 연결에 실패했습니다.",
+            step="db_connect",
+            retriable=False,
+            details=str(exc),
+        ) from exc
+    except Exception as exc:
+        raise LayeringDataError(
+            code="DB_CONNECTION_FAILED",
+            message="DB 연결에 실패했습니다.",
+            step="db_connect",
+            retriable=False,
+            details=str(exc),
+        ) from exc
 
 
-def get_db_connection(db_config: Optional[Dict[str, str]] = None):
-    return psycopg2.connect(**(db_config or DB_CONFIG))
+def check_db_health(db_config: Optional[Dict[str, Any]] = None) -> bool:
+    try:
+        conn = get_db_connection(db_config)
+    except LayeringDataError:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+            cur.fetchone()
+        return True
+    except psycopg2.Error:
+        return False
+    finally:
+        conn.close()
+
+
+class LayeringDataError(RuntimeError):
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        step: str,
+        retriable: bool = False,
+        details: Optional[str] = None,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.step = step
+        self.retriable = retriable
+        self.details = details
 
 
 def _normalize_text(text: str) -> str:
@@ -169,11 +201,7 @@ def _vectorize(record: schemas.PerfumeRecord) -> schemas.PerfumeVector:
 
     total_intensity = sum(vector)
     persistence_score = _persistence_score(vector)
-    dominant = [
-        ACCORDS[idx]
-        for idx, value in enumerate(vector)
-        if value > 5
-    ]
+    dominant = [ACCORDS[idx] for idx, value in enumerate(vector) if value > 5]
     return schemas.PerfumeVector(
         perfume_id=record.perfume.perfume_id,
         perfume_name=record.perfume.perfume_name,
@@ -225,11 +253,37 @@ class PerfumeRepository:
         return index
 
     def _load_vectors(self) -> Dict[str, schemas.PerfumeVector]:
-        conn = get_db_connection(self._db_config)
         try:
-            records = _load_perfume_records(conn)
-        finally:
-            conn.close()
+            conn = get_db_connection(self._db_config)
+            try:
+                records = _load_perfume_records(conn)
+            finally:
+                conn.close()
+        except psycopg2.Error as exc:
+            raise LayeringDataError(
+                code="DB_QUERY_FAILED",
+                message="DB 조회에 실패했습니다.",
+                step="data_load",
+                retriable=False,
+                details=str(exc),
+            ) from exc
+        except LayeringDataError:
+            raise
+        except Exception as exc:
+            raise LayeringDataError(
+                code="DB_QUERY_FAILED",
+                message="DB 조회에 실패했습니다.",
+                step="data_load",
+                retriable=False,
+                details=str(exc),
+            ) from exc
+        if not records:
+            raise LayeringDataError(
+                code="DATASET_EMPTY",
+                message="향수 데이터가 비어 있습니다.",
+                step="data_load",
+                retriable=False,
+            )
         return {record.perfume.perfume_id: _vectorize(record) for record in records}
 
     def reload(self) -> None:
@@ -253,8 +307,10 @@ class PerfumeRepository:
             score = 0.0
             if normalized_query == key:
                 score = 1.0
-            elif len(key) >= 3 and len(normalized_query) >= 3 and (
-                normalized_query in key or key in normalized_query
+            elif (
+                len(key) >= 3
+                and len(normalized_query) >= 3
+                and (normalized_query in key or key in normalized_query)
             ):
                 score = 0.9
             elif Levenshtein is not None:
@@ -277,10 +333,7 @@ class PerfumeRepository:
             key=lambda item: item[0],
             reverse=True,
         )
-        return [
-            (perfume, score, key)
-            for score, key, perfume in ranked[:limit]
-        ]
+        return [(perfume, score, key) for score, key, perfume in ranked[:limit]]
 
     def get_perfume(self, perfume_id: str) -> schemas.PerfumeVector:
         try:
@@ -288,7 +341,9 @@ class PerfumeRepository:
         except KeyError as exc:
             raise KeyError(f"Perfume '{perfume_id}' not found") from exc
 
-    def all_candidates(self, exclude_id: Optional[str] = None) -> Iterable[schemas.PerfumeVector]:
+    def all_candidates(
+        self, exclude_id: Optional[str] = None
+    ) -> Iterable[schemas.PerfumeVector]:
         for perfume_id, vector in self._vectors.items():
             if perfume_id == exclude_id:
                 continue

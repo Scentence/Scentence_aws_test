@@ -133,3 +133,15 @@ class UserQueryResponse(BaseModel):
     clarification_prompt: Optional[str] = None
     clarification_options: List[str] = Field(default_factory=list)
     note: Optional[str] = None
+
+
+class LayeringError(BaseModel):
+    code: str
+    message: str
+    step: str
+    retriable: bool = False
+    details: Optional[str] = None
+
+
+class LayeringErrorResponse(BaseModel):
+    error: LayeringError

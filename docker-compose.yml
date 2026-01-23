@@ -99,11 +99,13 @@ services:
       - "8002:8002"
     volumes:
       - ./layering:/app
+      - ../scentence-db-init/postgres/RDB/scripts/perfume_db:/app/perfume_db
     env_file: .env
     environment:
       - DB_HOST=${DB_HOST}
       - DB_PORT=${DB_PORT}
       - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+      - LAYERING_DB_ROOT=/app/perfume_db
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: uvicorn main:app --host 0.0.0.0 --port 8002 --reload

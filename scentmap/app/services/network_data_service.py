@@ -6,11 +6,6 @@ import time
 from psycopg2.extras import RealDictCursor
 from scentmap.db import get_db_connection
 
-CACHE = {
-    "data": None,
-    "params": None,
-}
-
 
 # 향수 기본 정보 가져오기
 def _fetch_perfume_basic(max_perfumes: Optional[int]) -> List[Dict]:
@@ -302,17 +297,6 @@ def get_perfume_network(
     refresh: bool = False,
     debug: bool = False,
 ) -> Dict:
-    
-    # 동일 파라미터 요청 시 캐시된 네트워크 데이터 반환
-    params = (min_similarity, top_accords, max_perfumes)
-    if (
-        not refresh
-        and CACHE["data"]
-        and CACHE["params"] == params
-        and CACHE["data"].get("nodes")
-    ):
-        return CACHE["data"]
-
     started_at = time.time()
 
     # max_perfumes 미지정 시 안전한 기본 상한 적용
@@ -334,9 +318,5 @@ def get_perfume_network(
     network["meta"]["built_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
     network["meta"]["build_seconds"] = round(time.time() - started_at, 3)
     network["meta"]["max_perfumes"] = safe_max_perfumes
-
-    # 캐시 갱신
-    CACHE["data"] = network
-    CACHE["params"] = params
 
     return network

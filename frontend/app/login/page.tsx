@@ -169,7 +169,7 @@ export default function LoginPage() {
           </button>
 
           <div className="text-sm text-center text-[#666]">
-            계정이 없으신가요?{" "}
+            Scentence가 처음이신가요?{" "}
             <Link href="/signup" className="font-semibold text-black hover:underline">
               가입하기
             </Link>

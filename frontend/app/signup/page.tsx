@@ -5,6 +5,74 @@ import Link from "next/link";
 import Sidebar from "@/components/common/sidebar";
 import { useRouter } from "next/navigation";
 
+const AgreementPopup = ({ title, content, onAgree, onClose }: { title: string; content: string; onAgree: () => void; onClose: () => void; }) => (
+  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+    <div className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-xl bg-white" onClick={e => e.stopPropagation()}>
+      <div className="border-b p-6">
+          <h3 className="text-xl font-bold">{title}</h3>
+      </div>
+      <div className="overflow-y-auto p-6 text-sm text-gray-700">
+        <pre className="font-sans whitespace-pre-wrap">{content}</pre>
+      </div>
+      <div className="mt-auto border-t p-6">
+          <button
+            onClick={() => {
+              onAgree();
+              onClose();
+            }}
+            className="w-full rounded-lg bg-black py-3 font-bold text-white transition hover:opacity-90"
+          >
+            상기 내용을 숙지하였으며 이에 동의합니다.
+          </button>
+      </div>
+    </div>
+  </div>
+);
+
+// 약관 내용 정의 (향후 실제 내용으로 교체 필요)
+const TERMS_CONTENT = `
+제1조 (목적)
+이 약관은 Scentence(이하 "회사")가 제공하는 Scentence 서비스 및 관련 제반 서비스(이하 "서비스")의 이용과 관련하여 회사와 회원과의 권리, 의무 및 책임사항, 기타 필요한 사항을 규정함을 목적으로 합니다.
+
+제2조 (정의)
+이 약관에서 사용하는 용어의 정의는 다음과 같습니다.
+1. "서비스"라 함은 구현되는 단말기(PC, TV, 휴대형단말기 등의 각종 유무선 장치를 포함)와 상관없이 "회원"이 이용할 수 있는 Scentence 및 관련 제반 서비스를 의미합니다.
+2. "회원"이라 함은 회사의 "서비스"에 접속하여 이 약관에 따라 "회사"와 이용계약을 체결하고 "회사"가 제공하는 "서비스"를 이용하는 고객을 말합니다.
+
+(이하 약관의 상세 내용은 여기에 추가해주세요.)
+`;
+
+const PRIVACY_CONTENT = `
+Scentence(이하 "회사")는 개인정보보호법, 정보통신망 이용촉진 및 정보보호 등에 관한 법률 등 관련 법령상의 개인정보보호 규정을 준수하며, 관련 법령에 의거한 개인정보처리방침을 정하여 이용자 권익 보호에 최선을 다하고 있습니다.
+
+1. 수집하는 개인정보의 항목
+회사는 회원가입, 원활한 고객상담, 각종 서비스의 제공을 위해 아래와 같은 최소한의 개인정보를 필수항목으로 수집하고 있습니다.
+- 필수항목 : 이메일, 비밀번호, 이름, 성별
+- 선택항목 : 마케팅 정보 수신 동의(이메일, SMS)
+
+2. 개인정보의 수집 및 이용목적
+회사는 수집한 개인정보를 다음의 목적을 위해 활용합니다.
+- 서비스 제공에 관한 계약 이행 및 서비스 제공에 따른 요금정산
+- 회원 관리
+- 신규 서비스 개발 및 마케팅, 광고에의 활용
+
+(이하 개인정보 처리방침의 상세 내용은 여기에 추가해주세요.)
+`;
+
+const EMAIL_AGREEMENT_CONTENT = `
+Scentence에서 제공하는 이벤트, 신규 서비스, 프로모션 등 다양한 마케팅 정보를 이메일로 받아보실 수 있습니다.
+
+- 수신 동의 철회: 동의하신 이후라도 언제든지 '마이페이지 > 회원정보 수정'에서 수신 거부로 변경하실 수 있습니다.
+- 수신 동의를 거부하시더라도, 회원가입, 거래정보 등과 관련된 주요 정책 및 공지사항은 발송될 수 있습니다.
+`;
+
+const SNS_AGREEMENT_CONTENT = `
+Scentence에서 제공하는 이벤트, 신규 서비스, 프로모션 등 다양한 마케팅 정보를 SMS(문자메시지) 또는 카카오톡 알림톡으로 받아보실 수 있습니다.
+
+- 수신 동의 철회: 동의하신 이후라도 언제든지 '마이페이지 > 회원정보 수정'에서 수신 거부로 변경하실 수 있습니다.
+- 수신 동의를 거부하시더라도, 회원가입, 거래정보 등과 관련된 주요 정책 및 공지사항은 발송될 수 있습니다.
+`;
+
 export default function SignupPage() {
   const router = useRouter();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -22,6 +90,7 @@ export default function SignupPage() {
   const [hasTypedConfirm, setHasTypedConfirm] = useState(false);
   const [submitMessage, setSubmitMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [popupContent, setPopupContent] = useState<{ title: string; content: string; onAgree: () => void } | null>(null);
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "";
 
   const allAgree = termsAgree && privacyAgree && emailAlarmAgree && snsAlarmAgree;
@@ -39,6 +108,18 @@ export default function SignupPage() {
 
   const handlePrivacyChange = (checked: boolean) => {
     setPrivacyAgree(checked);
+  };
+
+  const agreementDetails = useMemo(() => ({
+    terms: { title: '이용약관 동의', content: TERMS_CONTENT, onAgree: () => setTermsAgree(true) },
+    privacy: { title: '개인정보 수집 및 이용 동의', content: PRIVACY_CONTENT, onAgree: () => setPrivacyAgree(true) },
+    email: { title: 'E-mail 정보 수신 동의', content: EMAIL_AGREEMENT_CONTENT, onAgree: () => setEmailAlarmAgree(true) },
+    sns: { title: 'SMS 정보 수신 동의', content: SNS_AGREEMENT_CONTENT, onAgree: () => setSnsAlarmAgree(true) },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), []);
+
+  const handleShowPopup = (type: keyof typeof agreementDetails) => {
+    setPopupContent(agreementDetails[type]);
   };
 
   const passwordRules = useMemo(() => {
@@ -129,6 +210,15 @@ export default function SignupPage() {
         <div
           className="fixed inset-0 bg-black/50 z-40 md:hidden"
           onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
+      {popupContent && (
+        <AgreementPopup
+            title={popupContent.title}
+            content={popupContent.content}
+            onAgree={popupContent.onAgree}
+            onClose={() => setPopupContent(null)}
         />
       )}
 
@@ -282,52 +372,83 @@ export default function SignupPage() {
             </div>
           </div>
 
-          <div className="space-y-3 rounded-xl border border-[#EEE] p-4">
-            <label className="flex items-center gap-2 text-sm font-semibold">
+          <div className="rounded-xl border border-[#EEE] p-4">
+            <label className="flex items-center gap-3 text-sm font-semibold">
               <input
                 type="checkbox"
-                className="accent-black"
+                className="accent-black h-5 w-5"
                 checked={allAgree}
                 onChange={(event) => handleAllAgreeChange(event.target.checked)}
               />
               약관 전체동의
             </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="accent-black"
-                checked={termsAgree}
-                onChange={(event) => handleTermsChange(event.target.checked)}
-              />
-              이용약관 동의
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="accent-black"
-                checked={privacyAgree}
-                onChange={(event) => handlePrivacyChange(event.target.checked)}
-              />
-              개인정보 수집 및 이용 동의
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="accent-black"
-                checked={emailAlarmAgree}
-                onChange={(event) => setEmailAlarmAgree(event.target.checked)}
-              />
-              이메일 수신 동의
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="accent-black"
-                checked={snsAlarmAgree}
-                onChange={(event) => setSnsAlarmAgree(event.target.checked)}
-              />
-              SNS 수신 동의
-            </label>
+            <hr className="my-3" />
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="flex cursor-pointer items-center gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    className="accent-black h-4 w-4"
+                    checked={termsAgree}
+                    onChange={(event) => handleTermsChange(event.target.checked)}
+                  />
+                  <span><span className="text-red-500">(필수)</span> 이용약관 동의</span>
+                </label>
+                <button type="button" onClick={() => handleShowPopup('terms')} className="p-1 transition-transform hover:scale-125">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-5 w-5 text-gray-400">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex items-center justify-between">
+                <label className="flex cursor-pointer items-center gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    className="accent-black h-4 w-4"
+                    checked={privacyAgree}
+                    onChange={(event) => handlePrivacyChange(event.target.checked)}
+                  />
+                  <span><span className="text-red-500">(필수)</span> 개인정보 수집 및 이용 동의</span>
+                </label>
+                <button type="button" onClick={() => handleShowPopup('privacy')} className="p-1 transition-transform hover:scale-125">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-5 w-5 text-gray-400">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex items-center justify-between">
+                <label className="flex cursor-pointer items-center gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    className="accent-black h-4 w-4"
+                    checked={emailAlarmAgree}
+                    onChange={(event) => setEmailAlarmAgree(event.target.checked)}
+                  />
+                  <span>(선택) E-mail 정보 수신 동의</span>
+                </label>
+                <button type="button" onClick={() => handleShowPopup('email')} className="p-1 transition-transform hover:scale-125">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-5 w-5 text-gray-400">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex items-center justify-between">
+                <label className="flex cursor-pointer items-center gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    className="accent-black h-4 w-4"
+                    checked={snsAlarmAgree}
+                    onChange={(event) => setSnsAlarmAgree(event.target.checked)}
+                  />
+                  <span>(선택) SMS 정보 수신 동의</span>
+                </label>
+                <button type="button" onClick={() => handleShowPopup('sns')} className="p-1 transition-transform hover:scale-125">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-5 w-5 text-gray-400">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                  </svg>
+                </button>
+              </div>
+            </div>
           </div>
 
           {submitMessage && (

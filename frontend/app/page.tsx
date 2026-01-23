@@ -18,7 +18,7 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="flex h-screen bg-white overflow-hidden text-black relative font-sans">
+    <div className="flex h-screen bg-[#FDFBF8] overflow-hidden text-black relative font-sans">
 
       {/* 1. 스마트 사이드바 (context="home") */}
       <Sidebar
@@ -34,7 +34,7 @@ export default function LandingPage() {
         )}
 
         {/* 2. HEADER */}
-        <header className="fixed top-0 left-0 right-0 flex items-center justify-between px-5 py-4 bg-[#E5E5E5] z-50">
+        <header className="fixed top-0 left-0 right-0 flex items-center justify-between px-5 py-4 bg-[#FDFBF8] border-b border-[#F0F0F0] z-50">
           <Link href="/" className="text-xl font-bold text-black tracking-tight">
             Scentence
           </Link>
@@ -132,28 +132,28 @@ export default function LandingPage() {
               {[
                 {
                   serial: "SC-001",
-                  imageLabel: "향 캐릭터 이름",                  
+                  imageLabel: "향 캐릭터 이름",
                   mood: "#데이트 #무드",
                   title: "비 오는 날의 홍차",
                   user: "@minji"
                 },
                 {
                   serial: "SC-GUEST",
-                  imageLabel: "향 캐릭터 이름",      
-                  mood: "#랜덤 #체험",     
+                  imageLabel: "향 캐릭터 이름",
+                  mood: "#랜덤 #체험",
                   title: "어코드 표현 문장",
-                  user: "@GUEST"                 
+                  user: "@GUEST"
                 },
                 {
                   serial: "SC-026",
-                  imageLabel: "향 캐릭터 이름",           
+                  imageLabel: "향 캐릭터 이름",
                   mood: "#휴일 #산책",
-                  title: "어코드 표현 문장",                  
+                  title: "어코드 표현 문장",
                   user: "@yuna"
                 },
                 {
                   serial: "SC-041",
-                  imageLabel: "향 캐릭터 이름",       
+                  imageLabel: "향 캐릭터 이름",
                   mood: "#집중 #야간",
                   title: "어코드 표현 문장",
                   user: "@junseo"

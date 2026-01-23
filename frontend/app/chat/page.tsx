@@ -60,6 +60,35 @@ export default function ChatPage() {
         setError("");
     };
 
+    const handleSelectThread = async (id: string) => {
+        if (loading) return;
+        
+        setLoading(true);
+        setThreadId(id);
+        localStorage.setItem("chat_thread_id", id); // 로컬 스토리지 갱신
+        
+        try {
+            const response = await fetch(`${BACKEND_URL}/chat/history/${id}`);
+            if (!response.ok) throw new Error("내역 로드 실패");
+            
+            const data = await response.json();
+            // 백엔드 필드명(text)을 프론트엔드 필드명(text)에 맞춰 매핑
+            const formattedMessages = data.messages.map((m: any) => ({
+                role: m.role,
+                text: m.text,
+                isStreaming: false
+            }));
+            
+            setMessages(formattedMessages);
+            setIsSidebarOpen(false); // 모바일 편의를 위해 선택 후 사이드바 닫기
+        } catch (err) {
+            console.error(err);
+            setError("대화 내역을 불러오는데 실패했습니다.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         const trimmed = inputValue.trim();
@@ -158,8 +187,10 @@ export default function ChatPage() {
             {/* ✅ 사이드바에 스위치 상태와 끄기 기능을 전달합니다. */}
             <Sidebar
                 isOpen={isSidebarOpen}
+                activeThreadId={threadId}           // ✅ 추가
                 onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
                 onNewChat={handleNewChat}
+                onSelectThread={handleSelectThread} // ✅ 추가
                 loading={loading}
             />
             <main className="flex-1 flex flex-col relative h-full bg-[#FAF8F5] overflow-hidden">

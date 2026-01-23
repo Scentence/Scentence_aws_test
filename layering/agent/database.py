@@ -201,11 +201,7 @@ def _vectorize(record: schemas.PerfumeRecord) -> schemas.PerfumeVector:
 
     total_intensity = sum(vector)
     persistence_score = _persistence_score(vector)
-    dominant = [
-        ACCORDS[idx]
-        for idx, value in enumerate(vector)
-        if value > 5
-    ]
+    dominant = [ACCORDS[idx] for idx, value in enumerate(vector) if value > 5]
     return schemas.PerfumeVector(
         perfume_id=record.perfume.perfume_id,
         perfume_name=record.perfume.perfume_name,
@@ -311,8 +307,10 @@ class PerfumeRepository:
             score = 0.0
             if normalized_query == key:
                 score = 1.0
-            elif len(key) >= 3 and len(normalized_query) >= 3 and (
-                normalized_query in key or key in normalized_query
+            elif (
+                len(key) >= 3
+                and len(normalized_query) >= 3
+                and (normalized_query in key or key in normalized_query)
             ):
                 score = 0.9
             elif Levenshtein is not None:
@@ -335,10 +333,7 @@ class PerfumeRepository:
             key=lambda item: item[0],
             reverse=True,
         )
-        return [
-            (perfume, score, key)
-            for score, key, perfume in ranked[:limit]
-        ]
+        return [(perfume, score, key) for score, key, perfume in ranked[:limit]]
 
     def get_perfume(self, perfume_id: str) -> schemas.PerfumeVector:
         try:
@@ -346,7 +341,9 @@ class PerfumeRepository:
         except KeyError as exc:
             raise KeyError(f"Perfume '{perfume_id}' not found") from exc
 
-    def all_candidates(self, exclude_id: Optional[str] = None) -> Iterable[schemas.PerfumeVector]:
+    def all_candidates(
+        self, exclude_id: Optional[str] = None
+    ) -> Iterable[schemas.PerfumeVector]:
         for perfume_id, vector in self._vectors.items():
             if perfume_id == exclude_id:
                 continue

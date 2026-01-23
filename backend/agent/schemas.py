@@ -1,7 +1,8 @@
-# backend/schemas.py
-from typing import List, Optional, Dict, Any, Literal
+# backend/agent/schemas.py
+from typing import List, Optional, Dict, Any, Literal, Annotated
 from pydantic import BaseModel, Field
 from langchain_core.messages import BaseMessage
+from langgraph.graph.message import add_messages  # [수정] 리듀서 임포트 추가
 
 
 # =================================================================
@@ -15,25 +16,25 @@ class ChatRequest(BaseModel):
 
 class AgentState(Dict):
     """
-    LangGraph의 각 노드가 공유하는 상태(Memory)입니다.
+    [최적화] Annotated와 add_messages를 추가하여 대화 히스토리가
+    노드 실행 시마다 초기화되지 않고 누적(Append)되도록 합니다.
     """
 
-    messages: List[BaseMessage]
+    messages: Annotated[List[BaseMessage], add_messages]
     user_query: str
     active_mode: Optional[str]
     next_step: Optional[str]
     user_preferences: Optional[Dict]
     research_results: Optional[List]
     member_id: Optional[int]
+    status: Optional[str]
 
 
 # =================================================================
 # 2. 인터뷰 및 라우팅 (Interviewer & Router)
 # =================================================================
 class UserPreferences(BaseModel):
-    """
-    인터뷰어가 사용자 대화에서 추출한 핵심 정보입니다.
-    """
+    """인터뷰어가 사용자 대화에서 추출한 핵심 정보입니다."""
 
     target: str = Field(description="대상 정보 (예: 20대 여성, 30대 남성 등)")
     gender: str = Field(description="성별 정보 (Women, Men, Unisex)")
@@ -53,8 +54,10 @@ class InterviewResult(BaseModel):
 
 
 class RoutingDecision(BaseModel):
+    """[복구] Supervisor가 다음 담당 노드를 결정할 때 사용하는 스키마입니다."""
+
     next_step: Literal["interviewer", "researcher", "writer"] = Field(
-        description="다음 단계"
+        description="다음 단계 선택"
     )
 
 

@@ -1,12 +1,14 @@
-# backend/database.py
+# backend/agent/database.py
 import os
 import traceback
 import json
+import asyncio
 from typing import List, Dict, Any, Optional
 import psycopg2
+from psycopg2 import pool  # [최적화] 커넥션 풀 도입
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import OpenAI, AsyncOpenAI  # [최적화] 비동기 클라이언트 추가
 
 # 오탈자 보정 라이브러리
 try:
@@ -20,7 +22,7 @@ except ImportError:
 load_dotenv()
 
 # ==========================================
-# 0. 설정 및 초기화
+# 0. 설정 및 초기화 (커넥션 풀 및 비동기 클라이언트)
 # ==========================================
 DB_CONFIG = {
     "dbname": os.getenv("DB_NAME", "perfume_db"),
@@ -30,16 +32,54 @@ DB_CONFIG = {
     "port": os.getenv("DB_PORT", "5432"),
 }
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# [최적화] 병렬 처리를 위한 커넥션 풀 생성 (최소 1개, 최대 20개 유지)
+perfume_db_pool = pool.ThreadedConnectionPool(1, 20, **DB_CONFIG)
 
-# 브랜드 목록 캐싱
+RECOM_DB_CONFIG = {
+    **DB_CONFIG,
+    "dbname": os.getenv("RECOM_DB_NAME", "recom_db"),
+}
+recom_db_pool = pool.ThreadedConnectionPool(1, 20, **RECOM_DB_CONFIG)
+
+# [최적화] 동기/비동기 OpenAI 클라이언트 이원화
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+async_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 BRAND_CACHE = []
 
 
+# [함수 수정] 풀에서 연결 가져오기 및 반납 로직
 def get_db_connection():
-    return psycopg2.connect(**DB_CONFIG)
+    return perfume_db_pool.getconn()
 
 
+def release_db_connection(conn):
+    perfume_db_pool.putconn(conn)
+
+
+def get_recom_db_connection():
+    return recom_db_pool.getconn()
+
+
+def release_recom_db_connection(conn):
+    recom_db_pool.putconn(conn)
+
+
+# [최적화] 비동기 임베딩 생성 (API 블로킹 방지)
+async def get_embedding_async(text: str) -> List[float]:
+    try:
+        if not text:
+            return []
+        response = await async_client.embeddings.create(
+            input=text.replace("\n", " "), model="text-embedding-3-small"
+        )
+        return response.data[0].embedding
+    except Exception as e:
+        print(f"⚠️ Embedding Error: {e}")
+        return []
+
+
+# 기존 동기 함수 (필요 시 유지)
 def get_embedding(text: str) -> List[float]:
     try:
         if not text:
@@ -52,15 +92,14 @@ def get_embedding(text: str) -> List[float]:
             .embedding
         )
     except Exception as e:
-        print(f"⚠️ Embedding Error: {e}")
+        print(f"⚠️ Sync Embedding Error: {e}")
         return []
 
 
 # ==========================================
-# 1. 브랜드명 자동 보정 함수
+# 1. 브랜드 및 메타데이터 관리
 # ==========================================
 def get_all_brands() -> List[str]:
-    """DB에 존재하는 모든 브랜드 목록을 가져옵니다 (캐싱 적용)"""
     global BRAND_CACHE
     if BRAND_CACHE:
         return BRAND_CACHE
@@ -73,16 +112,12 @@ def get_all_brands() -> List[str]:
         return BRAND_CACHE
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
 def match_brand_name(user_input: str) -> str:
-    """
-    사용자 입력(예: '샤넬')을 DB의 정확한 브랜드명(예: 'Chanel')으로 변환합니다.
-    """
     if not user_input:
         return user_input
-
     all_brands = get_all_brands()
     for b in all_brands:
         if b.lower() == user_input.lower():
@@ -95,76 +130,311 @@ def match_brand_name(user_input: str) -> str:
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a specialized Brand Name Matcher. Find the exact brand name from the provided List. Return ONLY the string. If no match, return 'None'.",
+                    "content": "You are a Brand Matcher. Return ONLY the exact brand name or 'None'.",
                 },
                 {
                     "role": "user",
-                    "content": f"List: [{brands_str}]\nUser Input: {user_input}",
+                    "content": f"List: [{brands_str}]\nInput: {user_input}",
                 },
             ],
             temperature=0,
         )
         matched = response.choices[0].message.content.strip()
         if matched and matched != "None" and matched in all_brands:
-            print(f"   ✨ Brand Correction: '{user_input}' -> '{matched}'")
             return matched
     except Exception:
         pass
-
     return user_input
 
 
-# ==========================================
-# 2. 메타데이터 로더 (신규 테이블 반영)
-# ==========================================
 def fetch_meta_data() -> Dict[str, str]:
     meta = {}
     conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-
-        # [수정] _R 테이블에서 메타데이터 로드
         cur.execute("SELECT DISTINCT season FROM TB_PERFUME_SEASON_R")
         meta["seasons"] = ", ".join([str(r[0]) for r in cur.fetchall() if r[0]])
-
         cur.execute("SELECT DISTINCT occasion FROM TB_PERFUME_OCA_R")
         meta["occasions"] = ", ".join([str(r[0]) for r in cur.fetchall() if r[0]])
-
         cur.execute("SELECT DISTINCT accord FROM TB_PERFUME_ACCORD_R LIMIT 100")
         meta["accords"] = ", ".join([str(r[0]) for r in cur.fetchall() if r[0]])
-
-        # [수정] 성별은 고정값이므로 하드코딩 혹은 R테이블 조회
         meta["genders"] = "Women, Men, Unisex"
-
-        # Style은 현재 별도 R 테이블이 없으므로 Occasion이나 Accord를 참고하거나 비워둠
-        # 일단 빈 문자열로 둡니다 (필요 시 수정)
-        meta["styles"] = ""
-
-        cur.execute(
-            "SELECT perfume_brand, COUNT(*) as cnt FROM TB_PERFUME_BASIC_M GROUP BY perfume_brand ORDER BY cnt DESC LIMIT 50"
-        )
-        top_brands = [str(r[0]) for r in cur.fetchall() if r[0]]
-        meta["brands"] = ", ".join(top_brands)
-
     except Exception:
         meta = {}
     finally:
         if conn:
-            conn.close()
+            cur.close()
+            release_db_connection(conn)
     return meta
 
 
 # ==========================================
-# 3. Tool 함수들 (노트 검색)
+# 2. 검색 엔진 (Connection Pool 적용)
 # ==========================================
+def search_perfumes(
+    hard_filters: Dict[str, Any],
+    strategy_filters: Dict[str, List[str]],
+    exclude_ids: List[int] = None,
+    limit: int = 20,
+) -> List[Dict[str, Any]]:
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        sql = """
+            SELECT DISTINCT m.perfume_id as id, m.perfume_brand as brand, m.perfume_name as name, m.img_link as image_url,
+            (SELECT STRING_AGG(DISTINCT accord, ', ') FROM TB_PERFUME_ACCORD_R WHERE perfume_id = m.perfume_id) as accords,
+            (SELECT gender FROM TB_PERFUME_GENDER_R WHERE perfume_id = m.perfume_id LIMIT 1) as gender,
+            (SELECT STRING_AGG(DISTINCT n.note, ', ') FROM TB_PERFUME_NOTES_M n WHERE n.perfume_id = m.perfume_id AND UPPER(n.type) = 'TOP') as top_notes,
+            (SELECT STRING_AGG(DISTINCT n.note, ', ') FROM TB_PERFUME_NOTES_M n WHERE n.perfume_id = m.perfume_id AND UPPER(n.type) = 'MIDDLE') as middle_notes,
+            (SELECT STRING_AGG(DISTINCT n.note, ', ') FROM TB_PERFUME_NOTES_M n WHERE n.perfume_id = m.perfume_id AND UPPER(n.type) = 'BASE') as base_notes
+            FROM TB_PERFUME_BASIC_M m
+        """
+        params, where_clauses = [], []
+
+        if exclude_ids:
+            where_clauses.append(
+                f"m.perfume_id NOT IN ({','.join(['%s']*len(exclude_ids))})"
+            )
+            params.extend(exclude_ids)
+
+        if hard_filters.get("gender"):
+            g = hard_filters["gender"].lower()
+            tg = (
+                "Feminine"
+                if g in ["women", "female"]
+                else "Masculine" if g in ["men", "male"] else "Unisex"
+            )
+            where_clauses.append(
+                "m.perfume_id IN (SELECT perfume_id FROM TB_PERFUME_GENDER_R WHERE gender = %s)"
+            )
+            params.append(tg)
+
+        if hard_filters.get("brand"):
+            where_clauses.append("m.perfume_brand ILIKE %s")
+            params.append(match_brand_name(hard_filters["brand"]))
+
+        hard_meta_map = {
+            "season": ("TB_PERFUME_SEASON_R", "season"),
+            "occasion": ("TB_PERFUME_OCA_R", "occasion"),
+            "accord": ("TB_PERFUME_ACCORD_R", "accord"),
+            "note": ("TB_PERFUME_NOTES_M", "note"),
+        }
+        for k, (t, c) in hard_meta_map.items():
+            if hard_filters.get(k):
+                where_clauses.append(
+                    f"m.perfume_id IN (SELECT perfume_id FROM {t} WHERE {c} ILIKE %s)"
+                )
+                params.append(hard_filters[k])
+
+        strategy_map = {
+            "accord": ("TB_PERFUME_ACCORD_R", "accord"),
+            "season": ("TB_PERFUME_SEASON_R", "season"),
+            "occasion": ("TB_PERFUME_OCA_R", "occasion"),
+            "note": ("TB_PERFUME_NOTES_M", "note"),
+        }
+        for k, vals in strategy_filters.items():
+            if not vals or k == "gender":
+                continue
+            mapping = strategy_map.get(k.lower())
+            if mapping:
+                t, c = mapping
+                clauses = [
+                    f"m.perfume_id IN (SELECT perfume_id FROM {t} WHERE {c} ILIKE %s)"
+                    for v in vals
+                ]
+                params.extend(vals)
+                where_clauses.append(f"({' OR '.join(clauses)})")
+
+        if where_clauses:
+            sql += " WHERE " + " AND ".join(where_clauses)
+        sql += f" LIMIT {limit}"
+        cur.execute(sql, params)
+        return [dict(row) for row in cur.fetchall()]
+    finally:
+        cur.close()
+        release_db_connection(conn)
+
+
+# ==========================================
+# 3. 비동기 리랭킹 엔진
+# ==========================================
+async def rerank_perfumes_async(
+    candidates: List[Dict[str, Any]], query_text: str, top_k: int = 5
+) -> List[Dict[str, Any]]:
+    if not candidates or not query_text:
+        return candidates[:top_k]
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        # [최적화] 비동기 번역 및 스타일링
+        system_prompt = "You are a Perfume Data Analyst. Transform the Korean logic into a sensory description..."
+        translation = await async_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": query_text},
+            ],
+            temperature=0,
+        )
+        stylized_query = translation.choices[0].message.content.strip()
+        query_vector = await get_embedding_async(stylized_query)
+        if not query_vector:
+            return candidates[:top_k]
+
+        candidate_ids = [p["id"] for p in candidates]
+        placeholders = ",".join(["%s"] * len(candidate_ids))
+        sql = f"""
+            SELECT m.perfume_id, MAX(1 - (e.embedding <=> %s::vector)) as similarity_score,
+            (ARRAY_AGG(m.content ORDER BY (e.embedding <=> %s::vector) ASC))[1] as best_review
+            FROM TB_PERFUME_REVIEW_M m
+            JOIN TB_REVIEW_EMBEDDING_M e ON m.review_id = e.review_id
+            WHERE m.perfume_id IN ({placeholders})
+            GROUP BY m.perfume_id
+            ORDER BY similarity_score DESC
+        """
+        cur.execute(sql, [query_vector, query_vector] + candidate_ids)
+        scores = {row["perfume_id"]: row for row in cur.fetchall()}
+
+        reranked = []
+        for p in candidates:
+            sc = scores.get(
+                p["id"], {"similarity_score": 0, "best_review": "관련 리뷰 없음"}
+            )
+            p.update(
+                {
+                    "review_score": sc["similarity_score"],
+                    "best_review": sc["best_review"],
+                }
+            )
+            reranked.append(p)
+        reranked.sort(key=lambda x: x.get("review_score", 0), reverse=True)
+        return reranked[:top_k]
+    finally:
+        cur.close()
+        release_db_connection(conn)
+
+
+# ==========================================
+# 4. 추천 로그 및 저장 (Connection Pool 적용)
+# ==========================================
+def save_recommendation_log(
+    member_id: int, perfumes: List[Dict[str, Any]], reason: str
+):
+    if not member_id or not perfumes:
+        return
+    conn = get_recom_db_connection()
+    try:
+        cur = conn.cursor()
+        sql = "INSERT INTO TB_MEMBER_RECOM_RESULT_T (MEMBER_ID, PERFUME_ID, PERFUME_NAME, RECOM_TYPE, RECOM_REASON, INTEREST_YN) VALUES (%s, %s, %s, 'GENERAL', %s, 'N')"
+        for p in perfumes:
+            cur.execute(sql, (member_id, p.get("id"), p.get("name"), reason))
+        conn.commit()
+    finally:
+        cur.close()
+        release_recom_db_connection(conn)
+
+
+def add_my_perfume(member_id: int, perfume_id: int, perfume_name: str):
+    conn = get_recom_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT 1 FROM TB_MEMBER_MY_PERFUME_T WHERE MEMBER_ID = %s AND PERFUME_ID = %s",
+            (member_id, perfume_id),
+        )
+        if cur.fetchone():
+            return {"status": "already_exists", "message": "이미 저장된 향수입니다."}
+        cur.execute(
+            "INSERT INTO TB_MEMBER_MY_PERFUME_T (MEMBER_ID, PERFUME_ID, PERFUME_NAME, REGISTER_STATUS, PREFERENCE) VALUES (%s, %s, %s, 'HAVE', 'GOOD')",
+            (member_id, perfume_id, perfume_name),
+        )
+        conn.commit()
+        return {"status": "success", "message": "향수가 저장되었습니다."}
+    finally:
+        cur.close()
+        release_recom_db_connection(conn)
+
+
+# ==========================================
+# 5. 채팅 시스템 (Connection Pool 적용)
+# ==========================================
+def save_chat_message(
+    thread_id: str, member_id: int, role: str, message: str, meta: dict = None
+):
+    conn = get_recom_db_connection()
+    try:
+        cur = conn.cursor()
+        title_snippet = message[:30] + "..." if len(message) > 30 else message
+        cur.execute(
+            """
+            INSERT INTO TB_CHAT_THREAD_T (THREAD_ID, MEMBER_ID, TITLE, LAST_CHAT_DT) VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (THREAD_ID) DO UPDATE SET LAST_CHAT_DT = CURRENT_TIMESTAMP, TITLE = CASE WHEN TB_CHAT_THREAD_T.TITLE IS NULL OR TB_CHAT_THREAD_T.TITLE = '' THEN EXCLUDED.TITLE ELSE TB_CHAT_THREAD_T.TITLE END
+        """,
+            (thread_id, member_id, title_snippet),
+        )
+        cur.execute(
+            "INSERT INTO TB_CHAT_MESSAGE_T (THREAD_ID, MEMBER_ID, ROLE, MESSAGE, META_DATA) VALUES (%s, %s, %s, %s, %s)",
+            (
+                thread_id,
+                member_id,
+                role,
+                message,
+                json.dumps(meta, ensure_ascii=False) if meta else None,
+            ),
+        )
+        conn.commit()
+    finally:
+        cur.close()
+        release_recom_db_connection(conn)
+
+
+def get_chat_history(thread_id: str) -> List[Dict[str, Any]]:
+    conn = get_recom_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute(
+            "SELECT ROLE as role, MESSAGE as text, META_DATA as metadata FROM TB_CHAT_MESSAGE_T WHERE THREAD_ID = %s ORDER BY CREATED_DT ASC",
+            (thread_id,),
+        )
+        return [dict(row) for row in cur.fetchall()]
+    finally:
+        cur.close()
+        release_recom_db_connection(conn)
+
+
+def get_user_chat_list(member_id: int) -> List[Dict[str, Any]]:
+    if not member_id:
+        return []
+    conn = get_recom_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute(
+            "SELECT THREAD_ID as thread_id, TITLE as title, LAST_CHAT_DT as last_chat_dt FROM TB_CHAT_THREAD_T WHERE MEMBER_ID = %s AND IS_DELETED = 'N' ORDER BY LAST_CHAT_DT DESC LIMIT 30",
+            (member_id,),
+        )
+        rows = cur.fetchall()
+        results = []
+        for r in rows:
+            res = dict(r)
+            if res["last_chat_dt"]:
+                res["last_chat_dt"] = res["last_chat_dt"].isoformat()
+            results.append(res)
+        return results
+    finally:
+        cur.close()
+        release_recom_db_connection(conn)
+
+
 def lookup_note_by_string(keyword: str) -> List[str]:
+    """사용자 입력 텍스트와 일치하거나 유사한 노트를 DB에서 찾습니다."""
     conn = get_db_connection()
     cur = conn.cursor()
     keyword_clean = keyword.strip().lower()
     found_notes = set()
 
     try:
+        # 1. 완전 일치 확인
         cur.execute(
             "SELECT note FROM TB_PERFUME_NOTES_M WHERE LOWER(note) = %s LIMIT 1",
             (keyword_clean,),
@@ -173,6 +443,7 @@ def lookup_note_by_string(keyword: str) -> List[str]:
         if row:
             return [row[0]]
 
+        # 2. 유사도 기반 검색 (Levenshtein distance)
         cur.execute("SELECT DISTINCT note FROM TB_PERFUME_NOTES_M")
         all_notes = [r[0] for r in cur.fetchall() if r[0]]
 
@@ -189,13 +460,17 @@ def lookup_note_by_string(keyword: str) -> List[str]:
         print(f"⚠️ Lookup String Note Error: {e}")
         return []
     finally:
-        conn.close()
+        cur.close()
+        release_db_connection(conn)
 
 
 def lookup_note_by_vector(keyword: str) -> List[str]:
+    """벡터 검색을 통해 유사한 노트 후보군을 찾습니다."""
+    # 비동기가 아닌 동기식 도구에서 호출되므로 동기 방식으로 구현
     conn = get_db_connection()
     cur = conn.cursor()
     try:
+        # get_embedding은 동기 함수 사용
         query_vector = get_embedding(keyword)
         if not query_vector:
             return []
@@ -206,504 +481,5 @@ def lookup_note_by_vector(keyword: str) -> List[str]:
         print(f"⚠️ Lookup Vector Note Error: {e}")
         return []
     finally:
-        conn.close()
-
-
-# ==========================================
-# 4. 정밀 검색 엔진 (search_perfumes)
-# ==========================================
-def search_perfumes(
-    hard_filters: Dict[str, Any],
-    strategy_filters: Dict[str, List[str]],
-    exclude_ids: List[int] = None,
-    limit: int = 20,  # [수정] 기본값 20 (리랭킹 위해 넉넉히 확보)
-) -> List[Dict[str, Any]]:
-
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-
-    try:
-        # [수정] 복잡한 연산 제거, _R 테이블 조회, Note 대소문자 보정(UPPER)
-        sql = """
-            SELECT DISTINCT 
-                m.perfume_id as id, 
-                m.perfume_brand as brand, 
-                m.perfume_name as name, 
-                m.img_link as image_url,
-                (
-                    SELECT STRING_AGG(DISTINCT accord, ', ') 
-                    FROM TB_PERFUME_ACCORD_R 
-                    WHERE perfume_id = m.perfume_id
-                ) as accords,
-                (
-                    SELECT gender
-                    FROM TB_PERFUME_GENDER_R
-                    WHERE perfume_id = m.perfume_id
-                    LIMIT 1
-                ) as gender,
-                (SELECT STRING_AGG(DISTINCT n.note, ', ') FROM TB_PERFUME_NOTES_M n WHERE n.perfume_id = m.perfume_id AND UPPER(n.type) = 'TOP') as top_notes,
-                (SELECT STRING_AGG(DISTINCT n.note, ', ') FROM TB_PERFUME_NOTES_M n WHERE n.perfume_id = m.perfume_id AND UPPER(n.type) = 'MIDDLE') as middle_notes,
-                (SELECT STRING_AGG(DISTINCT n.note, ', ') FROM TB_PERFUME_NOTES_M n WHERE n.perfume_id = m.perfume_id AND UPPER(n.type) = 'BASE') as base_notes
-            FROM TB_PERFUME_BASIC_M m
-        """
-        params = []
-        where_clauses = []
-
-        # [0] 중복 방지
-        if exclude_ids and len(exclude_ids) > 0:
-            placeholders = ", ".join(["%s"] * len(exclude_ids))
-            where_clauses.append(f"m.perfume_id NOT IN ({placeholders})")
-            params.extend(exclude_ids)
-
-        # ---------------------------------------------------------
-        # 1. HARD FILTERS
-        # ---------------------------------------------------------
-
-        # [1-1] Gender Logic (TB_PERFUME_GENDER_R)
-        gender_req = hard_filters.get("gender", "").lower()
-        if gender_req:
-            target_gender = ""
-            if gender_req in ["women", "female"]:
-                target_gender = "Feminine"
-            elif gender_req in ["men", "male"]:
-                target_gender = "Masculine"
-            elif gender_req in ["unisex"]:
-                target_gender = "Unisex"
-
-            if target_gender:
-                where_clauses.append(
-                    f"m.perfume_id IN (SELECT perfume_id FROM TB_PERFUME_GENDER_R WHERE gender = %s)"
-                )
-                params.append(target_gender)
-
-        # [1-2] Brand Logic
-        if hard_filters.get("brand"):
-            corrected_brand = match_brand_name(hard_filters["brand"])
-            where_clauses.append("m.perfume_brand ILIKE %s")
-            params.append(corrected_brand)
-
-        # [1-3] Other Hard Filters
-        # [수정] Occasion 테이블명 TB_PERFUME_OCA_R 로 변경
-        hard_meta_map = {
-            "season": ("TB_PERFUME_SEASON_R", "season"),
-            "occasion": ("TB_PERFUME_OCA_R", "occasion"),
-            "accord": ("TB_PERFUME_ACCORD_R", "accord"),
-            "note": ("TB_PERFUME_NOTES_M", "note"),
-        }
-
-        for key, (table, col) in hard_meta_map.items():
-            val = hard_filters.get(key)
-            if not val:
-                continue
-
-            where_clauses.append(
-                f"m.perfume_id IN (SELECT perfume_id FROM {table} WHERE {col} ILIKE %s)"
-            )
-            params.append(val)
-
-        # ---------------------------------------------------------
-        # 2. STRATEGY FILTERS
-        # ---------------------------------------------------------
-        # [수정] Occasion 테이블명 TB_PERFUME_OCA_R 로 변경
-        strategy_map = {
-            "accord": ("TB_PERFUME_ACCORD_R", "accord"),
-            "season": ("TB_PERFUME_SEASON_R", "season"),
-            "occasion": ("TB_PERFUME_OCA_R", "occasion"),
-            "note": ("TB_PERFUME_NOTES_M", "note"),
-        }
-
-        for key, values in strategy_filters.items():
-            if not values or key == "gender":
-                continue
-
-            mapping = strategy_map.get(key.lower())
-            if not mapping:
-                continue
-
-            table_name, col_name = mapping
-            category_clauses = []
-            for val in values:
-                category_clauses.append(
-                    f"m.perfume_id IN (SELECT perfume_id FROM {table_name} WHERE {col_name} ILIKE %s)"
-                )
-                params.append(val)
-
-            if category_clauses:
-                where_clauses.append("(" + " OR ".join(category_clauses) + ")")
-
-        # 3. Final Query Build
-        if where_clauses:
-            sql += " WHERE " + " AND ".join(where_clauses)
-
-        # [수정] limit 파라미터 적용
-        sql += f" LIMIT {limit}"
-
-        cur.execute(sql, params)
-        return [dict(row) for row in cur.fetchall()]
-
-    except Exception as e:
-        print(f"🚨 DB Search Error: {e}")
-        traceback.print_exc()
-        return []
-    finally:
         cur.close()
-        conn.close()
-
-
-# ==========================================
-# 5. 리뷰 기반 리랭킹 (Reranking) - [신규 추가]
-# ==========================================
-def rerank_perfumes(
-    candidates: List[Dict[str, Any]], query_text: str, top_k: int = 5
-) -> List[Dict[str, Any]]:
-    """
-    1차 검색된 후보군(candidates)의 리뷰 벡터와
-    전략 이유(query_text) 벡터를 비교하여 유사도 순으로 재정렬합니다.
-    """
-    if not candidates or not query_text:
-        return candidates[:top_k]
-
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-
-    try:
-        # 1. [번역 & 임베딩] 한글 쿼리 -> 영문 번역 (매칭 정확도 향상)
-        system_prompt = """
-        You are a Perfume Data Analyst.
-        Your task is to convert the user's **Korean Strategic Intention** into a **Descriptive English Perfume Summary** that matches our database style.
-
-        [Input Context]
-        The input is a logical strategy (e.g., "To emphasize masculine charm...").
-        
-        [Output Goal]
-        Transform this logic into a sensory description of a perfume that would fulfill that strategy.
-        
-        [Rules]
-        1. **Translate & Adapt**: Translate the Korean input into English, changing the tone from "Planning" (Future tense) to "Describing" (Present tense).
-           - BAD: "I will recommend a woody scent..."
-           - GOOD: "This fragrance features woody notes..."
-        2. **Style Matching**: Use the exact 3rd-person style found in perfume databases.
-           - Start with: "This fragrance features...", "It evokes...", "It presents..."
-        3. **Keyword Integration**: Naturally weave the provided keywords (e.g., Wedding, Date) into the description.
-        4. **Length**: Keep it concise (2-3 sentences).
-
-        [Example]
-        Input: "결혼식 하객으로 참석하는 20대 여성을 위해, 튀지 않으면서도 우아한 플로럴 향을 추천함. Keywords: Wedding, Elegant"
-        Output: "This fragrance presents an elegant floral bouquet that is subtle yet memorable. It evokes a sophisticated vibe, making it perfect for a wedding guest who wants to maintain a polished presence."
-        """
-
-        translation_response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": query_text},
-            ],
-            temperature=0,  # 스타일 일관성을 위해 0 설정
-        )
-
-        # 변수명을 의미에 맞게 'stylized_query'로 변경하여 사용
-        stylized_query = translation_response.choices[0].message.content.strip()
-
-        query_vector = get_embedding(stylized_query)
-        if not query_vector:
-            return candidates[:top_k]
-
-        # 2. 후보군 ID 추출
-        candidate_ids = [p["id"] for p in candidates]
-        if not candidate_ids:
-            return []
-
-        # 3. 리랭킹 SQL 실행
-        # 후보 향수들의 리뷰 중, 쿼리와 가장 유사한 '인생 리뷰' 하나를 찾아서 그 점수로 줄 세우기
-        placeholders = ",".join(["%s"] * len(candidate_ids))
-
-        sql = f"""
-            SELECT 
-                m.perfume_id,
-                MAX(1 - (e.embedding <=> %s::vector)) as similarity_score,
-                (ARRAY_AGG(m.content ORDER BY (e.embedding <=> %s::vector) ASC))[1] as best_review
-            FROM TB_PERFUME_REVIEW_M m
-            JOIN TB_REVIEW_EMBEDDING_M e ON m.review_id = e.review_id
-            WHERE m.perfume_id IN ({placeholders})
-            GROUP BY m.perfume_id
-            ORDER BY similarity_score DESC
-            LIMIT %s
-        """
-
-        # 파라미터: [쿼리벡터, 쿼리벡터, ID들..., limit(넉넉하게 후보군 전체 개수만큼)]
-        params = [query_vector, query_vector] + candidate_ids + [len(candidates)]
-
-        cur.execute(sql, params)
-        scores = {row["perfume_id"]: row for row in cur.fetchall()}
-
-        # 4. 결과 재조립
-        reranked_results = []
-        for p in candidates:
-            p_id = p["id"]
-            if p_id in scores:
-                score_data = scores[p_id]
-                p["review_score"] = score_data["similarity_score"]
-                p["best_review"] = score_data["best_review"]
-                reranked_results.append(p)
-            else:
-                p["review_score"] = 0
-                p["best_review"] = "관련 리뷰 없음"
-                reranked_results.append(p)
-
-        # 5. 정렬 (점수 내림차순)
-        reranked_results.sort(key=lambda x: x.get("review_score", 0), reverse=True)
-
-        # [★로그 추가] 상위 5개 결과의 유사도와 리뷰 요약 출력
-        print(
-            f"\n   📊 [Review Reranking] Top Matches (Query: {stylized_query[:30]}...):",
-            flush=True,
-        )
-        for i, p in enumerate(reranked_results[:5]):  # 상위 5개만 로그 출력
-            score = p.get("review_score", 0)
-            review_full = p.get("best_review", "")
-            # 로그 가독성을 위해 리뷰 60자만 자르고 ... 처리
-            review_snippet = (
-                (review_full[:60] + "...") if len(review_full) > 60 else review_full
-            )
-
-            print(
-                f"      {i+1}. [{score:.4f}] {p.get('brand')} - {p.get('name')} | 📝 \"{review_snippet}\"",
-                flush=True,
-            )
-
-        return reranked_results[:top_k]
-
-    except Exception as e:
-        print(f"🚨 Reranking Error: {e}")
-        traceback.print_exc()
-        return candidates[:top_k]
-    finally:
-        cur.close()
-        conn.close()
-
-
-# ==========================================
-# 6. Recom DB 연결 및 저장 함수 (디버깅 강화판)
-# ==========================================
-
-# [설정] 추천/회원 데이터용 DB 설정
-RECOM_DB_CONFIG = {
-    **DB_CONFIG,
-    "dbname": os.getenv("RECOM_DB_NAME", "recom_db"),
-}
-
-
-def get_recom_db_connection():
-    # 연결 시도 직전에 접속 정보 출력
-    print(
-        f"   🔌 [DB접속시도] DB명: {RECOM_DB_CONFIG['dbname']} | Host: {RECOM_DB_CONFIG['host']}",
-        flush=True,
-    )
-    return psycopg2.connect(**RECOM_DB_CONFIG)
-
-
-def save_recommendation_log(
-    member_id: int, perfumes: List[Dict[str, Any]], reason: str
-):
-    """
-    Researcher 자동 저장 함수 (디버깅 로그 포함)
-    """
-    if not member_id or not perfumes:
-        return
-
-    print(
-        f"\n📝 [Auto-Save] 추천 이력 저장 시작 (Member: {member_id}, Count: {len(perfumes)})",
-        flush=True,
-    )
-
-    conn = None
-    try:
-        conn = get_recom_db_connection()
-        cur = conn.cursor()
-
-        sql = """
-            INSERT INTO TB_MEMBER_RECOM_RESULT_T 
-            (MEMBER_ID, PERFUME_ID, PERFUME_NAME, RECOM_TYPE, RECOM_REASON, INTEREST_YN)
-            VALUES (%s, %s, %s, 'GENERAL', %s, 'N')
-        """
-
-        for p in perfumes:
-            cur.execute(sql, (member_id, p.get("id"), p.get("name"), reason))
-
-        conn.commit()
-        print(
-            f"   ✅ [Success] 추천 이력 저장 완료! (DB: {RECOM_DB_CONFIG['dbname']})",
-            flush=True,
-        )
-
-    except Exception as e:
-        print(f"   🔥 [Error] 추천 이력 저장 실패: {e}", flush=True)
-        if conn:
-            conn.rollback()
-    finally:
-        if conn:
-            conn.close()
-
-
-def add_my_perfume(member_id: int, perfume_id: int, perfume_name: str):
-    """
-    사용자 버튼 클릭 저장 함수 (디버깅 로그 포함)
-    """
-    print(f"\n👇 [Button-Click] 내 향수 저장 요청 도착!", flush=True)
-    print(
-        f"   - 요청 데이터: Member={member_id}, Perfume={perfume_id} ({perfume_name})",
-        flush=True,
-    )
-
-    conn = None
-    try:
-        conn = get_recom_db_connection()
-        cur = conn.cursor()
-
-        # 1. 중복 체크
-        check_sql = "SELECT 1 FROM TB_MEMBER_MY_PERFUME_T WHERE MEMBER_ID = %s AND PERFUME_ID = %s"
-        cur.execute(check_sql, (member_id, perfume_id))
-        if cur.fetchone():
-            print("   ⚠️ [Skip] 이미 저장된 향수입니다.", flush=True)
-            return {"status": "already_exists", "message": "이미 저장된 향수입니다."}
-
-        # 2. 신규 저장
-        insert_sql = """
-            INSERT INTO TB_MEMBER_MY_PERFUME_T
-            (MEMBER_ID, PERFUME_ID, PERFUME_NAME, REGISTER_STATUS, PREFERENCE)
-            VALUES (%s, %s, %s, 'HAVE', 'GOOD')
-        """
-        cur.execute(insert_sql, (member_id, perfume_id, perfume_name))
-        conn.commit()
-
-        print(
-            f"   ✅ [Success] 저장 성공! (DB: {RECOM_DB_CONFIG['dbname']} / Table: TB_MEMBER_MY_PERFUME_T)",
-            flush=True,
-        )
-        return {"status": "success", "message": "향수가 저장되었습니다."}
-
-    except Exception as e:
-        # 에러 발생 시 여기서 정확한 이유가 출력됩니다.
-        print(f"   🔥 [Error] 저장 실패 원인: {e}", flush=True)
-        if conn:
-            conn.rollback()
-        return {"status": "error", "message": f"서버 에러: {str(e)}"}
-    finally:
-        if conn:
-            conn.close()
-
-
-# ==========================================
-# 7. 채팅 시스템 관리 (Thread & Message)
-# ==========================================
-
-
-def save_chat_message(
-    thread_id: str, member_id: int, role: str, message: str, meta: dict = None
-):
-    """
-    [Upsert 로직]
-    1. 채팅방(Thread)이 없으면 생성, 있으면 마지막 대화 시간 갱신
-    2. 메시지(Message)를 해당 스레드에 귀속시켜 저장
-    """
-    conn = None
-    try:
-        conn = get_recom_db_connection()
-        cur = conn.cursor()
-
-        # [1] Thread Upsert (채팅방 관리)
-        # 제목(TITLE)은 첫 메시지의 앞부분을 추출하여 자동 생성
-        title_snippet = message[:30] + "..." if len(message) > 30 else message
-
-        upsert_thread_sql = """
-            INSERT INTO TB_CHAT_THREAD_T (THREAD_ID, MEMBER_ID, TITLE, LAST_CHAT_DT)
-            VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
-            ON CONFLICT (THREAD_ID) 
-            DO UPDATE SET 
-                LAST_CHAT_DT = CURRENT_TIMESTAMP,
-                TITLE = CASE WHEN TB_CHAT_THREAD_T.TITLE IS NULL OR TB_CHAT_THREAD_T.TITLE = '' 
-                             THEN EXCLUDED.TITLE ELSE TB_CHAT_THREAD_T.TITLE END
-        """
-        cur.execute(upsert_thread_sql, (thread_id, member_id, title_snippet))
-
-        # [2] Message Insert (개별 메시지 저장)
-        insert_msg_sql = """
-            INSERT INTO TB_CHAT_MESSAGE_T (THREAD_ID, MEMBER_ID, ROLE, MESSAGE, META_DATA)
-            VALUES (%s, %s, %s, %s, %s)
-        """
-        meta_json = json.dumps(meta, ensure_ascii=False) if meta else None
-        cur.execute(insert_msg_sql, (thread_id, member_id, role, message, meta_json))
-
-        conn.commit()
-        # print(f"   💾 [Chat-DB] Saved {role} message to thread: {thread_id}", flush=True)
-
-    except Exception as e:
-        print(f"   🔥 [Error] Chat Save Failure: {e}", flush=True)
-        if conn:
-            conn.rollback()
-    finally:
-        if conn:
-            conn.close()
-
-
-def get_chat_history(thread_id: str) -> List[Dict[str, Any]]:
-    """
-    특정 스레드의 대화 내역을 시간순으로 조회 (AI 문맥 복원용)
-    """
-    conn = None
-    try:
-        conn = get_recom_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-
-        sql = """
-            SELECT ROLE as role, MESSAGE as text, META_DATA as metadata
-            FROM TB_CHAT_MESSAGE_T
-            WHERE THREAD_ID = %s
-            ORDER BY CREATED_DT ASC
-        """
-        cur.execute(sql, (thread_id,))
-        return [dict(row) for row in cur.fetchall()]
-    except Exception as e:
-        print(f"   ⚠️ [Error] Get History Failure: {e}", flush=True)
-        return []
-    finally:
-        if conn:
-            conn.close()
-
-
-def get_user_chat_list(member_id: int) -> List[Dict[str, Any]]:
-    """
-    사용자의 채팅방 목록 조회 (사이드바 히스토리용)
-    """
-    if not member_id:
-        return []
-
-    conn = None
-    try:
-        conn = get_recom_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-
-        sql = """
-            SELECT THREAD_ID as thread_id, TITLE as title, LAST_CHAT_DT as last_chat_dt
-            FROM TB_CHAT_THREAD_T
-            WHERE MEMBER_ID = %s AND IS_DELETED = 'N'
-            ORDER BY LAST_CHAT_DT DESC
-            LIMIT 30
-        """
-        cur.execute(sql, (member_id,))
-        rows = cur.fetchall()
-
-        # JSON 직렬화를 위해 datetime 객체를 ISO 포맷 문자열로 변환
-        results = []
-        for r in rows:
-            res = dict(r)
-            if res["last_chat_dt"]:
-                res["last_chat_dt"] = res["last_chat_dt"].isoformat()
-            results.append(res)
-        return results
-    except Exception as e:
-        print(f"   ⚠️ [Error] Get Chat List Failure: {e}", flush=True)
-        return []
-    finally:
-        if conn:
-            conn.close()
+        release_db_connection(conn)

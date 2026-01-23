@@ -3,12 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 try:  # pragma: no cover - fallback for script execution
     from .agent.database import PerfumeRepository
-    from .agent.graph import analyze_user_input, analyze_user_query
+    from .agent.graph import analyze_user_input, analyze_user_query, suggest_perfume_options
     from .agent.schemas import LayeringRequest, LayeringResponse, UserQueryRequest, UserQueryResponse
     from .agent.tools import rank_recommendations
 except ImportError:  # pragma: no cover
     from agent.database import PerfumeRepository
-    from agent.graph import analyze_user_input, analyze_user_query
+    from agent.graph import analyze_user_input, analyze_user_query, suggest_perfume_options
     from agent.schemas import LayeringRequest, LayeringResponse, UserQueryRequest, UserQueryResponse
     from agent.tools import rank_recommendations
 
@@ -75,6 +75,8 @@ def layering_analyze(payload: UserQueryRequest) -> UserQueryResponse:
     recommendation = None
     note = None
     base_perfume_id = None
+    clarification_prompt = None
+    clarification_options: list[str] = []
 
     if analysis.pairing_analysis:
         recommendation = analysis.pairing_analysis.result
@@ -89,6 +91,8 @@ def layering_analyze(payload: UserQueryRequest) -> UserQueryResponse:
             note = "No feasible layering options found for the detected base perfume."
     else:
         note = "No perfume names detected from the query."
+        clarification_prompt = "레이어링할 향수 이름을 알려주세요. 예: CK One, Wood Sage & Sea Salt"
+        clarification_options = suggest_perfume_options(payload.user_text, repository)
 
     return UserQueryResponse(
         raw_text=payload.user_text,
@@ -97,5 +101,7 @@ def layering_analyze(payload: UserQueryRequest) -> UserQueryResponse:
         detected_perfumes=analysis.detected_perfumes,
         detected_pair=analysis.detected_pair,
         recommendation=recommendation,
+        clarification_prompt=clarification_prompt,
+        clarification_options=clarification_options,
         note=note,
     )

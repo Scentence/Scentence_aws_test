@@ -250,6 +250,7 @@ def _build_network(
                 "seasons": perfume["seasons"],
                 "occasions": perfume["occasions"],
                 "genders": perfume["genders"],
+                "member_status": perfume.get("member_status"),
             }
         )
 

@@ -3,6 +3,7 @@
 import "./vis-network.css";
 import Link from "next/link";
 import Script from "next/script";
+import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 type NetworkNode = {
@@ -85,7 +86,6 @@ const MEMBER_STATUS_LABELS: Record<string, string> = {
   HAD: "보유했음",
   RECOMMENDED: "추천",
   WANT: "관심",
-  NONE: "미지정",
 };
 
 const formatMemberStatus = (status: string) =>
@@ -94,6 +94,10 @@ const formatMemberStatus = (status: string) =>
     : status;
 
 export default function PerfumeNetworkPage() {
+  const { data: session } = useSession();
+  const sessionUserId = (
+    session?.user as { id?: string | number } | undefined
+  )?.id;
   // 네트워크 요청 파라미터
   const [minSimilarity, setMinSimilarity] = useState(0.45);
   const [topAccords, setTopAccords] = useState(2);
@@ -146,6 +150,10 @@ export default function PerfumeNetworkPage() {
 
   useEffect(() => {
     // 로그인 정보에서 memberId 로드
+    if (sessionUserId) {
+      setMemberId(String(sessionUserId));
+      return;
+    }
     if (typeof window === "undefined") return;
     const stored = localStorage.getItem("localAuth");
     if (!stored) return;
@@ -157,7 +165,7 @@ export default function PerfumeNetworkPage() {
     } catch (error) {
       return;
     }
-  }, []);
+  }, [sessionUserId]);
 
   const toggleSelection = (
     value: string,

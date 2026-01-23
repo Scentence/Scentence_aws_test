@@ -139,7 +139,7 @@ def _build_profiles(
     tags_by_perfume: Dict[int, Dict[str, List[str]]],
     member_status_by_perfume: Dict[int, str],
 ) -> Dict[int, Dict]:
-    # 회원별 상태(member_status) 향수 프로필에 포함
+    # 회원별 등록 상태(register_status) 향수 프로필에 포함
 
     accords_by_perfume: Dict[int, List[Tuple[str, int]]] = defaultdict(list)
     for row in accord_rows:
@@ -185,7 +185,7 @@ def _build_profiles(
             "seasons": tags["seasons"],
             "occasions": tags["occasions"],
             "genders": tags["genders"],
-            "member_status": member_status_by_perfume.get(perfume_id),
+            "register_status": member_status_by_perfume.get(perfume_id),
         }
     return perfume_map
 
@@ -250,7 +250,7 @@ def _build_network(
                 "seasons": perfume["seasons"],
                 "occasions": perfume["occasions"],
                 "genders": perfume["genders"],
-                "member_status": perfume.get("member_status"),
+                "register_status": perfume.get("register_status"),
             }
         )
 

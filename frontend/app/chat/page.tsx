@@ -183,7 +183,7 @@ export default function ChatPage() {
     };
 
     return (
-        <div className="flex h-[100dvh] bg-[#FAF8F5] overflow-hidden text-[#393939]">
+        <div className="flex h-[100dvh] bg-[#FDFBF8] overflow-hidden text-[#393939]">
             {/* ✅ 사이드바에 스위치 상태와 끄기 기능을 전달합니다. */}
             <Sidebar
                 isOpen={isSidebarOpen}
@@ -193,9 +193,9 @@ export default function ChatPage() {
                 onSelectThread={handleSelectThread} // ✅ 추가
                 loading={loading}
             />
-            <main className="flex-1 flex flex-col relative h-full bg-[#FAF8F5] overflow-hidden">
-                {/* 1. HEADER (Gray Background - Matches Landing Page) */}
-                <header className="flex items-center justify-between px-5 py-4 bg-[#E5E5E5] shrink-0">
+            <main className="flex-1 flex flex-col relative h-full bg-[#FDFBF8] overflow-hidden">
+                {/* 1. HEADER (Unified Style) */}
+                <header className="flex items-center justify-between px-5 py-4 bg-[#FDFBF8] border-b border-[#F0F0F0] shrink-0">
                     <h1 className="text-xl font-bold text-black tracking-tight cursor-pointer" onClick={() => router.push('/')}>Scentence</h1>
                     <button onClick={() => setIsSidebarOpen(true)} className="p-1">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-[#555]">
@@ -224,7 +224,7 @@ export default function ChatPage() {
                 </div>
 
                 {/* ✅ 채팅 입력창 (Fixed at bottom) */}
-                <div className="shrink-0 p-4 bg-[#FAF8F5] border-t border-[#E5E4DE] z-30">
+                <div className="shrink-0 p-4 bg-[#FDFBF8] border-t border-[#F0F0F0] z-30">
                     <form onSubmit={handleSubmit} className="space-y-3">
                         <div className="flex gap-3">
                             <input

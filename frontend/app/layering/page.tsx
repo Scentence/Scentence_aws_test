@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import AccordWheel from "@/components/layering/AccordWheel";
 import { BACKEND_ACCORDS } from "@/lib/accords";
 
@@ -180,14 +181,21 @@ export default function LayeringPage() {
   return (
     <div className="min-h-screen bg-[#F5F2EA] text-[#1F1F1F]">
       <div className="max-w-5xl mx-auto px-6 py-12">
-        <header className="space-y-3">
-          <p className="text-xs uppercase tracking-[0.3em] text-[#7A6B57]">
-            Layering Visualization
-          </p>
-          <h1 className="text-3xl font-semibold">레이어링 어코드 원판</h1>
-          <p className="text-sm text-[#5C5448]">
-            21개 어코드의 강도를 원형 그래픽으로 표현합니다.
-          </p>
+        <header className="flex items-center justify-between">
+          <div className="space-y-3">
+            <p className="text-xs uppercase tracking-[0.3em] text-[#7A6B57]">
+              Layering Visualization
+            </p>
+            <h1 className="text-3xl font-semibold">레이어링 어코드 원판</h1>
+            <p className="text-sm text-[#5C5448]">
+              21개 어코드의 강도를 원형 그래픽으로 표현합니다.
+            </p>
+          </div>
+          <Link href="/" className="p-3 bg-white/50 hover:bg-white rounded-full transition shadow-sm text-[#7A6B57] hover:text-[#5C5448]">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+              <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+            </svg>
+          </Link>
         </header>
 
         <section className="mt-8 grid gap-6 lg:grid-cols-[1fr_1.2fr]">

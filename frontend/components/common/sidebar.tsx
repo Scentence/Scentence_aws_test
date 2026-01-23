@@ -127,6 +127,7 @@ export default function Sidebar({ isOpen, onClose, context }: SidebarProps) {
                                         <Link href="/admin" className="block text-lg font-medium hover:text-blue-600">🛠️ 관리자 페이지</Link>
                                     )}
                                     <Link href="/archives" className="block text-lg font-medium hover:text-blue-600">📂 나만의 아카이브</Link>
+                                    <Link href="/layering" className="block text-lg font-medium hover:text-blue-600">🧪 향수 레이어링</Link>
                                     <Link href="/perfume-network" className="block text-lg font-medium hover:text-blue-600">🗺️ 향수 관계맵</Link>
                                     <Link href="/contact" className="block text-gray-600">📞 문의하기</Link>
                                     <button

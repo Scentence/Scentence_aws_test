@@ -77,12 +77,12 @@ export default function LandingPage() {
           {/* 4. QUICK MENU BUTTONS */}
           {/* 버튼 반응 추가 */}
           <section className="flex gap-4">
-            <button className="flex-1 bg-[#E0E0E0] py-4 rounded-xl text-center text-sm font-bold text-[#333] transition-transform active:scale-95 duration-200 shadow-sm hover:bg-[#D6D6D6]">
+            <button className="flex-1 bg-[#C8A24D] py-4 rounded-xl text-center text-sm font-bold text-white transition-transform active:scale-95 duration-200 shadow-[0_6px_16px_rgba(200,162,77,0.35)] hover:bg-[#B89138]">
               향수 백과
             </button>
             <button
               onClick={handleNewChat}
-              className="flex-1 bg-[#E0E0E0] py-4 rounded-xl text-center text-sm font-bold text-[#333] transition-transform active:scale-95 duration-200 shadow-sm hover:bg-[#D6D6D6]"
+              className="flex-1 bg-[#C8A24D] py-4 rounded-xl text-center text-sm font-bold text-white transition-transform active:scale-95 duration-200 shadow-[0_6px_16px_rgba(200,162,77,0.35)] hover:bg-[#B89138]"
             >
               향수 추천
             </button>
@@ -226,7 +226,7 @@ function AutoScrollScript() {
     const carousel = document.getElementById('hero-carousel');
     if (!carousel) return;
 
-    let interval: NodeJS.Timeout;
+    let interval: NodeJS.Timeout; // https://developers.kakao.com/docs/latest/ko/getting-started/app#test-app
     const startAutoScroll = () => {
       interval = setInterval(() => {
         const nextScroll = carousel.scrollLeft + carousel.clientWidth;

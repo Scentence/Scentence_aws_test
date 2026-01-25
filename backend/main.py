@@ -87,7 +87,14 @@ async def stream_generator(
                 if "internal_helper" in tags:
                     continue
 
-                if node_name in ["writer", "perfume_describer", "ingredient_specialist"]:
+                target_nodes = [
+                    "writer", 
+                    "perfume_describer", 
+                    "ingredient_specialist", 
+                    "similarity_curator",  # <--- 이거 추가 필수!
+                    "fallback_handler"     # <--- 이것도 추가 권장
+                ]
+                if node_name in target_nodes:
                     content = event["data"]["chunk"].content
                     if content:
                         full_ai_response += content

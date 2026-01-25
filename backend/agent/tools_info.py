@@ -112,39 +112,42 @@ def lookup_perfume_info_tool(user_input: str) -> str:
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        # [수정] 어코드, 계절, 상황, 성별 정보를 모두 조인하여 비율(RATIO) 순으로 가져오는 쿼리
-        # 어코드가 너무 많을 수 있으므로 RATIO 높은 순으로 정렬하여 반환
+        # [★수정] 정확도 우선 정렬 (Exact Match & Length Sort)
         sql = """
             SELECT 
                 p.perfume_id, p.perfume_brand, p.perfume_name, p.img_link,
                 
-                -- 1. 성별 (TB_PERFUME_GENDER_R - PK 기반 1:1)
                 (SELECT gender FROM TB_PERFUME_GENDER_R WHERE perfume_id = p.perfume_id LIMIT 1) as gender,
                 
-                -- 2. 노트 정보 (TB_PERFUME_NOTES_M)
                 (SELECT STRING_AGG(DISTINCT note, ', ') FROM TB_PERFUME_NOTES_M WHERE perfume_id = p.perfume_id AND type='TOP') as top_notes,
                 (SELECT STRING_AGG(DISTINCT note, ', ') FROM TB_PERFUME_NOTES_M WHERE perfume_id = p.perfume_id AND type='MIDDLE') as middle_notes,
                 (SELECT STRING_AGG(DISTINCT note, ', ') FROM TB_PERFUME_NOTES_M WHERE perfume_id = p.perfume_id AND type='BASE') as base_notes,
                 
-                -- 3. 어코드 (TB_PERFUME_ACCORD_R) - 비율 높은 순 정렬
                 (SELECT STRING_AGG(accord, ', ' ORDER BY ratio DESC) 
                  FROM TB_PERFUME_ACCORD_R 
                  WHERE perfume_id = p.perfume_id) as accords,
 
-                -- 4. 계절 (TB_PERFUME_SEASON_R) - 비율 높은 순 정렬
                 (SELECT STRING_AGG(season, ', ' ORDER BY ratio DESC) 
                  FROM TB_PERFUME_SEASON_R 
                  WHERE perfume_id = p.perfume_id) as seasons,
 
-                -- 5. 상황 (TB_PERFUME_OCA_R) - 비율 높은 순 정렬
                 (SELECT STRING_AGG(occasion, ', ' ORDER BY ratio DESC) 
                  FROM TB_PERFUME_OCA_R 
                  WHERE perfume_id = p.perfume_id) as occasions
 
             FROM TB_PERFUME_BASIC_M p
-            WHERE p.perfume_brand ILIKE %s AND (p.perfume_name ILIKE %s OR p.perfume_name ILIKE %s)
+            WHERE p.perfume_brand ILIKE %s 
+              AND p.perfume_name ILIKE %s
+            
+            -- [★핵심] 정렬 로직 추가
+            ORDER BY 
+                -- 1순위: 이름이 정확히 일치하는 경우 (가장 우선)
+                CASE WHEN p.perfume_name ILIKE %s THEN 0 ELSE 1 END,
+                -- 2순위: 이름 길이가 짧은 순 (Gloss, Intense 등이 뒤로 가도록)
+                LENGTH(p.perfume_name) ASC
             LIMIT 1
         """
+        # 파라미터 순서: Brand, %Name% (검색용), Name (정확도 비교용)
         cur.execute(sql, (target_brand, f"%{target_name}%", target_name))
         result = cur.fetchone()
         

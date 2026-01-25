@@ -8,14 +8,17 @@ from pydantic import BaseModel, Field
 # 메인 그래프의 State와는 별개로, 정보 팀 내부에서만 쓰는 상태입니다.
 class InfoState(Dict):
     user_query: str                  # 사용자의 원래 질문
-    info_type: Literal["perfume", "note", "accord", "brand", "unknown"] # 질문 유형
-    target_name: str                 # 검색할 대상 이름 (예: "샤넬 넘버5", "머스크", "시트러스")
+    
+    # [★수정] 여기에 "similarity"가 추가되어야 합니다.
+    info_type: Literal["perfume", "note", "accord", "brand", "similarity", "unknown"] 
+    
+    target_name: str                 # 검색할 대상 이름
     
     # 검색 결과 데이터
     search_result: Optional[Dict]    # DB에서 찾은 Raw Data
     final_answer: Optional[str]      # 사용자에게 나갈 최종 답변 텍스트
     
-    # 메시지 기록 (필요하다면 메인 그래프와 공유하거나 따로 관리)
+    # 메시지 기록
     messages: List[Any] 
 
 
@@ -24,12 +27,15 @@ class InfoState(Dict):
 # ==========================================
 class InfoRoutingDecision(BaseModel):
     """사용자 질문이 무엇에 관한 것인지 분류"""
-    info_type: Literal["perfume", "note", "accord", "brand"] = Field(
-        description="질문의 대상 카테고리 (향수, 노트, 어코드, 브랜드)"
+    
+    # [★수정] 여기가 핵심입니다. "similarity" 옵션 추가!
+    info_type: Literal["perfume", "note", "accord", "brand", "similarity"] = Field(
+        description="질문의 대상 카테고리 (향수, 노트, 어코드, 브랜드, 유사추천)"
     )
+    
     target_name: str = Field(
         description="질문의 핵심 대상 이름 (예: '조말론 블랙베리', '우디', '샤넬')"
     )
     intent: str = Field(
-        description="사용자가 궁금해하는 구체적인 내용 (예: '지속력이 궁금해', '어떤 향인지 설명해줘')"
+        description="사용자가 궁금해하는 구체적인 내용 (예: '지속력이 궁금해', '비슷한거 추천해줘')"
     )

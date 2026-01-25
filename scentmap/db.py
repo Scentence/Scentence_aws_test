@@ -124,10 +124,14 @@ def init_db_schema():
         PRIMARY KEY (perfume_id_a, perfume_id_b)
     );
     
-    -- 인덱스는 IF NOT EXISTS 구문이 PostgreSQL 버전에 따라 다를 수 있어
-    -- 예외 처리를 하거나, DO BLOCK을 사용합니다.
+    -- 기존 인덱스
     CREATE INDEX IF NOT EXISTS idx_sim_score ON TB_PERFUME_SIMILARITY (score DESC);
     CREATE INDEX IF NOT EXISTS idx_sim_a ON TB_PERFUME_SIMILARITY (perfume_id_a);
+    
+    -- 성능 최적화 인덱스 (유사도 엣지 조회 속도 향상)
+    CREATE INDEX IF NOT EXISTS idx_sim_b ON TB_PERFUME_SIMILARITY (perfume_id_b);
+    CREATE INDEX IF NOT EXISTS idx_sim_score_a ON TB_PERFUME_SIMILARITY (score DESC, perfume_id_a);
+    CREATE INDEX IF NOT EXISTS idx_sim_score_b ON TB_PERFUME_SIMILARITY (score DESC, perfume_id_b);
     """
 
     try:

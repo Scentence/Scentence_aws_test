@@ -2,8 +2,7 @@
 from typing import List, Optional, Dict, Any, Literal, Annotated
 from pydantic import BaseModel, Field
 from langchain_core.messages import BaseMessage
-from langgraph.graph.message import add_messages  # [수정] 리듀서 임포트 추가
-
+from langgraph.graph.message import add_messages
 
 # =================================================================
 # 1. 공통 상태 및 요청 (Common State)
@@ -28,6 +27,10 @@ class AgentState(Dict):
     research_results: Optional[List]
     member_id: Optional[int]
     status: Optional[str]
+    
+    # [★추가] 정보 검색(Info Graph) 에이전트와 상태를 공유하기 위한 필드
+    info_type: Optional[str] 
+    target_name: Optional[str]
 
 
 # =================================================================
@@ -44,6 +47,8 @@ class UserPreferences(BaseModel):
     season: Optional[str] = Field(None, description="계절 정보")
     like: Optional[str] = Field(None, description="취향 정보")
     style: Optional[str] = Field(None, description="이미지 정보")
+    # [Note] 사용자 요청에 따라 'note' 필드는 필요 시 추가 가능 (HardFilters엔 이미 존재)
+    note: Optional[str] = Field(None, description="선호 노트") 
 
 
 class InterviewResult(BaseModel):
@@ -54,15 +59,21 @@ class InterviewResult(BaseModel):
 
 
 class RoutingDecision(BaseModel):
-    """[복구] Supervisor가 다음 담당 노드를 결정할 때 사용하는 스키마입니다."""
+    """
+    [★수정] Supervisor가 결정할 수 있는 다음 단계입니다.
+    - interviewer: 향수 추천 요청인 경우 (정보가 충분하든 부족하든 이쪽으로 보냄)
+    - info_retrieval: 특정 향수/노트/어코드에 대한 지식/정보 질문인 경우 (신규)
+    - writer: 단순 잡담인 경우
+    * 'researcher' 선택지가 삭제되었습니다 (Interviewer를 통해서만 진입 가능)
+    """
 
-    next_step: Literal["interviewer", "researcher", "writer"] = Field(
-        description="다음 단계 선택"
+    next_step: Literal["interviewer", "info_retrieval", "writer"] = Field(
+        description="질문 의도에 따른 다음 담당 에이전트"
     )
 
 
 # =================================================================
-# 3. 리서처 전략 수립 (Researcher Planning)
+# 3. 리서처 전략 수립 (Researcher Planning) - [변경 없음]
 # =================================================================
 class HardFilters(BaseModel):
     gender: str = Field(description="성별 (Women, Men, Unisex)")
@@ -94,7 +105,7 @@ class ResearchActionPlan(BaseModel):
 
 
 # =================================================================
-# 4. 리서처 결과 및 라이터 전달 (Researcher Output)
+# 4. 리서처 결과 및 라이터 전달 (Researcher Output) - [변경 없음]
 # =================================================================
 class PerfumeNotes(BaseModel):
     top: str = Field(description="탑 노트")

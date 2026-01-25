@@ -581,30 +581,33 @@ export default function PerfumeNetworkPage() {
       nodesDataRef.current = new vis.DataSet(nodes);
       edgesDataRef.current = new vis.DataSet(edges);
       try {
-        networkRef.current = new vis.Network(containerRef.current, { nodes: nodesDataRef.current, edges: edgesDataRef.current }, {
-        interaction: { hover: true, navigationButtons: true, tooltipDelay: 200 },
-        layout: selectedPerfumeId ? {
-          hierarchical: {
-            enabled: false
+        const options: any = {
+          interaction: { hover: true, navigationButtons: true, tooltipDelay: 200 },
+          physics: { 
+            enabled: !freezeMotion, 
+            solver: "forceAtlas2Based", 
+            forceAtlas2Based: { 
+              gravitationalConstant: selectedPerfumeId ? -260 : -140, 
+              centralGravity: selectedPerfumeId ? 0.03 : 0.01,
+              springLength: selectedPerfumeId ? 320 : 240, 
+              springConstant: selectedPerfumeId ? 0.02 : 0.04,
+              damping: 0.9,
+              avoidOverlap: 2.5 
+            },
+            stabilization: {
+              enabled: true,
+              iterations: 200
+            }
           }
-        } : undefined,
-        physics: { 
-          enabled: !freezeMotion, 
-          solver: "forceAtlas2Based", 
-          forceAtlas2Based: { 
-            gravitationalConstant: selectedPerfumeId ? -260 : -140, 
-            centralGravity: selectedPerfumeId ? 0.03 : 0.01,
-            springLength: selectedPerfumeId ? 320 : 240, 
-            springConstant: selectedPerfumeId ? 0.02 : 0.04,
-            damping: 0.9,
-            avoidOverlap: 2.5 
-          },
-          stabilization: {
-            enabled: true,
-            iterations: 200
-          }
+        };
+        if (selectedPerfumeId) {
+          options.layout = { hierarchical: { enabled: false } };
         }
-        });
+        networkRef.current = new vis.Network(
+          containerRef.current,
+          { nodes: nodesDataRef.current, edges: edgesDataRef.current },
+          options
+        );
       } catch (err) {
         console.warn("⚠️ vis-network 초기화 실패:", err);
         return;
@@ -644,7 +647,7 @@ export default function PerfumeNetworkPage() {
       }
       
       // physics 설정 동적 업데이트
-      networkRef.current.setOptions({
+      const updatedOptions: any = {
         physics: { 
           enabled: !freezeMotion, 
           solver: "forceAtlas2Based", 
@@ -661,7 +664,11 @@ export default function PerfumeNetworkPage() {
             iterations: 200
           }
         }
-      });
+      };
+      if (selectedPerfumeId) {
+        updatedOptions.layout = { hierarchical: { enabled: false } };
+      }
+      networkRef.current.setOptions(updatedOptions);
       if (!freezeMotion) {
         networkRef.current.stabilize(200);
         networkRef.current.once("stabilizationIterationsDone", () => {

@@ -35,6 +35,11 @@ type UserQueryResponse = {
   clarification_prompt?: string | null;
   clarification_options?: string[];
   note?: string | null;
+  save_results?: { target: string; saved: boolean; saved_count: number; message?: string | null }[];
+};
+
+type FeedbackResponse = {
+  save_result: { target: string; saved: boolean; saved_count: number; message?: string | null };
 };
 
 type LayeringError = {
@@ -122,11 +127,17 @@ export default function LayeringPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<UserQueryResponse | null>(null);
+  const [feedbackStatus, setFeedbackStatus] = useState<string | null>(null);
+  const [feedbackSaving, setFeedbackSaving] = useState(false);
+  const [feedbackLocked, setFeedbackLocked] = useState(false);
 
   const handleAnalyze = async () => {
     setLoading(true);
     setError(null);
     setResult(null);
+    setFeedbackStatus(null);
+    setFeedbackSaving(false);
+    setFeedbackLocked(false);
 
     const trimmedQuery = queryText.trim();
     if (!trimmedQuery) {
@@ -136,10 +147,28 @@ export default function LayeringPage() {
     }
 
     try {
+      let currentMemberId = 0;
+      try {
+        const localAuth = localStorage.getItem("localAuth");
+        if (localAuth) {
+          const parsed = JSON.parse(localAuth);
+          if (parsed && parsed.memberId) {
+            currentMemberId = parseInt(parsed.memberId, 10);
+          }
+        }
+      } catch (e) {
+        console.error("Member ID Parsing Error:", e);
+      }
+
       const response = await fetch(`${apiBase}/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_text: trimmedQuery }),
+        body: JSON.stringify({
+          user_text: trimmedQuery,
+          member_id: currentMemberId,
+          save_recommendations: true,
+          save_my_perfume: false,
+        }),
       });
 
       if (!response.ok) {
@@ -162,6 +191,65 @@ export default function LayeringPage() {
       setError(err instanceof Error ? err.message : "알 수 없는 오류가 발생했어요.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const sendFeedback = async (preference: "GOOD" | "BAD" | "NEUTRAL") => {
+    const candidate = result?.recommendation;
+    if (!candidate) {
+      return;
+    }
+    if (feedbackLocked || feedbackSaving) {
+      return;
+    }
+    if (!window.confirm("선택한 만족도를 저장할까요? 저장 후에는 변경할 수 없습니다.")) {
+      return;
+    }
+    let currentMemberId = 0;
+    try {
+      const localAuth = localStorage.getItem("localAuth");
+      if (localAuth) {
+        const parsed = JSON.parse(localAuth);
+        if (parsed && parsed.memberId) {
+          currentMemberId = parseInt(parsed.memberId, 10);
+        }
+      }
+    } catch (e) {
+      console.error("Member ID Parsing Error:", e);
+    }
+    if (!currentMemberId) {
+      setFeedbackStatus("로그인이 필요합니다.");
+      return;
+    }
+
+    try {
+      setFeedbackSaving(true);
+      setFeedbackStatus("저장 중...");
+      const response = await fetch(`${apiBase}/recommendation/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          member_id: currentMemberId,
+          perfume_id: candidate.perfume_id,
+          perfume_name: candidate.perfume_name,
+          preference,
+        }),
+      });
+      if (!response.ok) {
+        const errorMessage = await parseErrorResponse(response);
+        throw new Error(errorMessage);
+      }
+      const payload = (await response.json()) as FeedbackResponse;
+      if (payload.save_result?.saved) {
+        setFeedbackStatus("만족도 저장 완료");
+        setFeedbackLocked(true);
+      } else {
+        setFeedbackStatus(payload.save_result?.message ?? "저장 실패");
+      }
+    } catch (err) {
+      setFeedbackStatus(err instanceof Error ? err.message : "저장 실패");
+    } finally {
+      setFeedbackSaving(false);
     }
   };
 
@@ -229,6 +317,41 @@ export default function LayeringPage() {
                       ))}
                     </ul>
                   ) : null}
+                </div>
+              )}
+              {candidate && (
+                <div className="rounded-xl border border-[#E6DDCF] bg-white p-3 text-xs text-[#5C5448]">
+                  <p className="font-semibold">추천 만족도</p>
+                  <p className="mt-1 text-[11px] text-[#8A7F73]">
+                    저장 후에는 변경할 수 없습니다.
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => sendFeedback("GOOD")}
+                      className="rounded-lg border border-[#E2D7C5] bg-[#F8F4EC] px-3 py-2 text-xs font-semibold text-[#5C5448] transition hover:bg-[#EFE6D8] disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={feedbackLocked || feedbackSaving}
+                    >
+                      만족
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => sendFeedback("NEUTRAL")}
+                      className="rounded-lg border border-[#E2D7C5] bg-[#F8F4EC] px-3 py-2 text-xs font-semibold text-[#5C5448] transition hover:bg-[#EFE6D8] disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={feedbackLocked || feedbackSaving}
+                    >
+                      보통
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => sendFeedback("BAD")}
+                      className="rounded-lg border border-[#E2D7C5] bg-[#F8F4EC] px-3 py-2 text-xs font-semibold text-[#5C5448] transition hover:bg-[#EFE6D8] disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={feedbackLocked || feedbackSaving}
+                    >
+                      불만족
+                    </button>
+                  </div>
+                  {feedbackStatus && <p className="mt-2">{feedbackStatus}</p>}
                 </div>
               )}
               {result?.note && !result?.clarification_prompt && (

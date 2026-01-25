@@ -215,6 +215,7 @@ def _spray_order(base: PerfumeVector, candidate: PerfumeVector) -> List[str]:
 
 def _result_to_candidate(result: LayeringComputationResult) -> LayeringCandidate:
     candidate = result.candidate
+    # 추천 이유 텍스트를 바꾸려면 _build_analysis_string() 로직을 조정
     analysis = _build_analysis_string(result.score_breakdown)
     return LayeringCandidate(
         perfume_id=candidate.perfume_id,

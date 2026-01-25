@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from typing import Any, Dict, Iterable, List, Optional
@@ -21,6 +22,7 @@ except ImportError:  # pragma: no cover
 
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 DB_CONFIG: Dict[str, Any] = {
     "dbname": os.getenv("DB_NAME", "perfume_db"),
@@ -28,6 +30,11 @@ DB_CONFIG: Dict[str, Any] = {
     "password": os.getenv("DB_PASSWORD", "scentence"),
     "host": os.getenv("DB_HOST", "host.docker.internal"),
     "port": os.getenv("DB_PORT", "5432"),
+}
+
+RECOM_DB_CONFIG: Dict[str, Any] = {
+    **DB_CONFIG,
+    "dbname": os.getenv("RECOM_DB_NAME", "recom_db"),
 }
 
 def get_db_connection(
@@ -67,6 +74,32 @@ def check_db_health(db_config: Optional[Dict[str, Any]] = None) -> bool:
         return False
     finally:
         conn.close()
+
+
+def get_recom_db_connection(
+    db_config: Optional[Dict[str, Any]] = None,
+) -> PGConnection:
+    try:
+        logger.info("Connecting to recom_db (dbname=%s)", (db_config or RECOM_DB_CONFIG).get("dbname"))
+        return psycopg2.connect(**(db_config or RECOM_DB_CONFIG))
+    except psycopg2.Error as exc:
+        logger.exception("Recom DB connection failed")
+        raise LayeringDataError(
+            code="RECOM_DB_CONNECTION_FAILED",
+            message="추천 DB 연결에 실패했습니다.",
+            step="recom_db_connect",
+            retriable=False,
+            details=str(exc),
+        ) from exc
+    except Exception as exc:
+        logger.exception("Unexpected recom DB connection error")
+        raise LayeringDataError(
+            code="RECOM_DB_CONNECTION_FAILED",
+            message="추천 DB 연결에 실패했습니다.",
+            step="recom_db_connect",
+            retriable=False,
+            details=str(exc),
+        ) from exc
 
 
 class LayeringDataError(RuntimeError):
@@ -352,3 +385,200 @@ class PerfumeRepository:
     @property
     def count(self) -> int:
         return len(self._vectors)
+
+
+# 추천 결과를 recom_db에 기록하기 위함
+def save_recommendation_results(
+    member_id: int,
+    recommendations: List[schemas.LayeringCandidate],
+    recom_type: str = "LAYERING",
+) -> schemas.SaveResult:
+    if not member_id:
+        logger.info("Skip recommendation save (member_id missing)")
+        return schemas.SaveResult(
+            target="recommendation",
+            saved=False,
+            saved_count=0,
+            message="member_id is missing",
+        )
+    if not recommendations:
+        logger.info("Skip recommendation save (no recommendations)")
+        return schemas.SaveResult(
+            target="recommendation",
+            saved=False,
+            saved_count=0,
+            message="no recommendations to save",
+        )
+
+    try:
+        conn = get_recom_db_connection()
+        cur = conn.cursor()
+        sql = (
+            "INSERT INTO TB_MEMBER_RECOM_RESULT_T "
+            "(MEMBER_ID, PERFUME_ID, PERFUME_NAME, RECOM_TYPE, RECOM_REASON, INTEREST_YN) "
+            "VALUES (%s, %s, %s, %s, %s, 'N')"
+        )
+        for item in recommendations:
+            # 저장되는 추천 이유를 바꾸려면 여기에서 reason 값을 재구성
+            reason = item.analysis or "Layering recommendation"
+            cur.execute(
+                sql,
+                (
+                    member_id,
+                    item.perfume_id,
+                    item.perfume_name,
+                    recom_type,
+                    reason,
+                ),
+            )
+        conn.commit()
+        logger.info(
+            "Recommendation save completed (member_id=%s, count=%s)",
+            member_id,
+            len(recommendations),
+        )
+        return schemas.SaveResult(
+            target="recommendation",
+            saved=True,
+            saved_count=len(recommendations),
+            message=None,
+        )
+    except Exception as exc:
+        logger.exception("Failed to save layering recommendations")
+        return schemas.SaveResult(
+            target="recommendation",
+            saved=False,
+            saved_count=0,
+            message=str(exc),
+        )
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+# 보유 향수 저장 요청을 처리하기 위함
+def save_my_perfume(
+    member_id: int,
+    perfume: schemas.PerfumeVector,
+) -> schemas.SaveResult:
+    if not member_id:
+        logger.info("Skip my perfume save (member_id missing)")
+        return schemas.SaveResult(
+            target="my_perfume",
+            saved=False,
+            saved_count=0,
+            message="member_id is missing",
+        )
+
+    try:
+        conn = get_recom_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT 1 FROM TB_MEMBER_MY_PERFUME_T WHERE MEMBER_ID = %s AND PERFUME_ID = %s",
+            (member_id, perfume.perfume_id),
+        )
+        if cur.fetchone():
+            logger.info(
+                "My perfume already exists (member_id=%s, perfume_id=%s)",
+                member_id,
+                perfume.perfume_id,
+            )
+            return schemas.SaveResult(
+                target="my_perfume",
+                saved=False,
+                saved_count=0,
+                message="already exists",
+            )
+        cur.execute(
+            "INSERT INTO TB_MEMBER_MY_PERFUME_T "
+            "(MEMBER_ID, PERFUME_ID, PERFUME_NAME, REGISTER_STATUS, PREFERENCE) "
+            "VALUES (%s, %s, %s, 'RECOMMENDED', 'NEUTRAL')",
+            (member_id, perfume.perfume_id, perfume.perfume_name),
+        )
+        conn.commit()
+        logger.info(
+            "My perfume save completed (member_id=%s, perfume_id=%s)",
+            member_id,
+            perfume.perfume_id,
+        )
+        return schemas.SaveResult(
+            target="my_perfume",
+            saved=True,
+            saved_count=1,
+            message=None,
+        )
+    except Exception as exc:
+        logger.exception("Failed to save base perfume")
+        return schemas.SaveResult(
+            target="my_perfume",
+            saved=False,
+            saved_count=0,
+            message=str(exc),
+        )
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+# 추천 만족도 저장 요청을 처리하기 위함
+def save_recommendation_feedback(
+    member_id: int,
+    perfume_id: str,
+    perfume_name: str,
+    preference: str,
+) -> schemas.SaveResult:
+    if not member_id:
+        logger.info("Skip recommendation feedback save (member_id missing)")
+        return schemas.SaveResult(
+            target="my_perfume",
+            saved=False,
+            saved_count=0,
+            message="member_id is missing",
+        )
+
+    try:
+        conn = get_recom_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO TB_MEMBER_MY_PERFUME_T
+                (MEMBER_ID, PERFUME_ID, PERFUME_NAME, REGISTER_STATUS, PREFERENCE)
+            VALUES (%s, %s, %s, 'RECOMMENDED', %s)
+            ON CONFLICT (MEMBER_ID, PERFUME_ID)
+            DO UPDATE SET
+                REGISTER_STATUS = 'RECOMMENDED',
+                PREFERENCE = EXCLUDED.PREFERENCE,
+                ALTER_DT = CURRENT_TIMESTAMP
+            """,
+            (member_id, perfume_id, perfume_name, preference),
+        )
+        conn.commit()
+        logger.info(
+            "Recommendation feedback save completed (member_id=%s, perfume_id=%s, preference=%s)",
+            member_id,
+            perfume_id,
+            preference,
+        )
+        return schemas.SaveResult(
+            target="my_perfume",
+            saved=True,
+            saved_count=1,
+            message=None,
+        )
+    except Exception as exc:
+        logger.exception("Failed to save recommendation feedback")
+        return schemas.SaveResult(
+            target="my_perfume",
+            saved=False,
+            saved_count=0,
+            message=str(exc),
+        )
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass

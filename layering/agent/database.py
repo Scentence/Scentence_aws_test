@@ -120,7 +120,7 @@ def _load_perfume_accords(conn) -> Dict[str, Dict[str, float]]:
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
             """
-            SELECT perfume_id, accord, ratio, type
+            SELECT perfume_id, accord, ratio
             FROM TB_PERFUME_ACCORD_R
             """
         )

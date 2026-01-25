@@ -3,8 +3,6 @@
 // API 설정
 export const API_CONFIG = {
   BASE_URL: process.env.NEXT_PUBLIC_SCENTMAP_API_URL ?? "http://127.0.0.1:8001",
-  CACHE_VERSION: "v2.0", // 데이터 구조 변경 시 버전 업데이트
-  CACHE_EXPIRY_HOURS: 24, // 캐시 만료 시간 (24시간)
 } as const;
 
 // 그래프 설정

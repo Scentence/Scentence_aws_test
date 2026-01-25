@@ -208,38 +208,11 @@ export default function PerfumeNetworkPage() {
     fetchFilterOptions();
   }, []);
 
-  // 전체 데이터 로딩 (localStorage 캐싱 포함)
+  // 전체 데이터 로딩
   useEffect(() => {
-    const CACHE_KEY = `perfume_network_${API_CONFIG.CACHE_VERSION}_${memberId ?? "guest"}`;
     if (!memberIdReady) return;
-    
     const controller = new AbortController();
     const fetchData = async () => {
-      // 1. 캐시 확인
-      try {
-        if (typeof window !== "undefined") {
-          const cached = localStorage.getItem(CACHE_KEY);
-          if (cached) {
-            const { data, timestamp } = JSON.parse(cached);
-            const age = Date.now() - timestamp;
-            const maxAge = API_CONFIG.CACHE_EXPIRY_HOURS * 60 * 60 * 1000;
-            
-            // 캐시가 유효하면 사용
-            if (age < maxAge) {
-              console.log(`✅ 캐시에서 데이터 로드 (${Math.floor(age / 60000)}분 전)`);
-              setFullPayload(data);
-              setStatus("준비 완료 (캐시)");
-              return;
-            } else {
-              console.log("⏰ 캐시 만료, 새로운 데이터 로드 중...");
-            }
-          }
-        }
-      } catch (err) {
-        console.warn("⚠️ 캐시 읽기 오류:", err);
-      }
-      
-      // 2. 서버에서 데이터 로드
       setStatus("전체 데이터 로드 중...");
       try {
         const res = await fetch(requestUrl, { signal: controller.signal });
@@ -247,33 +220,6 @@ export default function PerfumeNetworkPage() {
         const data = await res.json();
         setFullPayload(data);
         setStatus("준비 완료");
-        
-      // 3. 캐시에 저장
-      try {
-        if (typeof window !== "undefined") {
-          const payload = { data, timestamp: Date.now() };
-          const serialized = JSON.stringify(payload);
-          // 용량이 큰 경우 캐시를 생략해 오류 방지
-          if (serialized.length > 4_000_000) {
-            console.warn("⚠️ 캐시 데이터가 너무 커서 저장을 건너뜁니다.");
-            return;
-          }
-          try {
-            localStorage.setItem(CACHE_KEY, serialized);
-          } catch (storageErr) {
-            // quota 초과 시 이전 캐시 삭제 후 1회 재시도
-            Object.keys(localStorage).forEach(key => {
-              if (key.startsWith("perfume_network_")) {
-                localStorage.removeItem(key);
-              }
-            });
-            localStorage.setItem(CACHE_KEY, serialized);
-          }
-          console.log(`💾 데이터 캐시 저장 완료 (${data.meta?.perfume_count || 0}개 향수)`);
-        }
-      } catch (err) {
-        console.warn("⚠️ 캐시 저장 오류:", err);
-      }
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {
           return;

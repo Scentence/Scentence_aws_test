@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 import logging
 from contextlib import asynccontextmanager
+import os
 
 from scentmap.db import init_db_schema, close_pool
 from scentmap.app.api.network import router as network_router
@@ -39,10 +40,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Scentmap Service", lifespan=lifespan)
 
-origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
+origins_env = os.getenv("CORS_ORIGINS")
+if origins_env:
+    origins = [origin.strip() for origin in origins_env.split(",") if origin.strip()]
+else:
+    origins = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
 
 app.add_middleware(
     CORSMiddleware,

@@ -14,9 +14,20 @@ logger = logging.getLogger(__name__)
 # 이 값을 충분히 크게 잡으면 화면 결과는 동일하게 유지됩니다.
 SIMILARITY_TOP_K = 30
 
+# 필터 옵션 캐시 (짧은 TTL)
+_filter_options_cache: Optional[Dict[str, List[str]]] = None
+_filter_options_cached_at: Optional[float] = None
+FILTER_OPTIONS_TTL_SECONDS = 300
+
 
 # 필터 옵션 조회 (DB 기준 향수 카운트순)
 def get_filter_options() -> Dict[str, List[str]]:
+    global _filter_options_cache, _filter_options_cached_at
+    now = time.time()
+    if _filter_options_cache and _filter_options_cached_at:
+        if now - _filter_options_cached_at < FILTER_OPTIONS_TTL_SECONDS:
+            return _filter_options_cache
+
     with get_db_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
@@ -74,13 +85,16 @@ def get_filter_options() -> Dict[str, List[str]]:
             )
             accords = [row["accord"] for row in cur.fetchall()]
 
-    return {
+    data = {
         "brands": brands,
         "seasons": seasons,
         "occasions": occasions,
         "genders": genders,
         "accords": accords,
     }
+    _filter_options_cache = data
+    _filter_options_cached_at = now
+    return data
 
 
 # 향수 기본 정보 가져오기

@@ -128,9 +128,12 @@ export default function PerfumeNetworkPage() {
   // UI 상태
   const [freezeMotion, setFreezeMotion] = useState(false);
   const [memberId, setMemberId] = useState<string | null>(null);
+  const [memberIdReady, setMemberIdReady] = useState(false);
   const [isDetailFilterOpen, setIsDetailFilterOpen] = useState(false);
   const [isAccordFilterOpen, setIsAccordFilterOpen] = useState(true); // 분위기 필터 펼침 상태 (기본: 열림)
   const [displayLimit, setDisplayLimit] = useState<number>(10); // 그래프에 표시할 향수 개수
+  const [showMyPerfumesOnly, setShowMyPerfumesOnly] = useState(false);
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
 
   // vis-network 참조
   const containerRef = useRef<HTMLDivElement>(null);
@@ -154,17 +157,23 @@ export default function PerfumeNetworkPage() {
   useEffect(() => {
     if (sessionUserId) {
       setMemberId(String(sessionUserId));
+      setMemberIdReady(true);
       return;
     }
     if (typeof window === "undefined") return;
     const stored = localStorage.getItem("localAuth");
-    if (!stored) return;
+    if (!stored) {
+      setMemberIdReady(true);
+      return;
+    }
     try {
       const parsed = JSON.parse(stored) as { memberId?: number | string };
       if (parsed?.memberId) {
         setMemberId(String(parsed.memberId));
       }
+      setMemberIdReady(true);
     } catch (error) {
+      setMemberIdReady(true);
       return;
     }
   }, [sessionUserId]);
@@ -201,8 +210,10 @@ export default function PerfumeNetworkPage() {
 
   // 전체 데이터 로딩 (localStorage 캐싱 포함)
   useEffect(() => {
-    const CACHE_KEY = `perfume_network_${API_CONFIG.CACHE_VERSION}`;
+    const CACHE_KEY = `perfume_network_${API_CONFIG.CACHE_VERSION}_${memberId ?? "guest"}`;
+    if (!memberIdReady) return;
     
+    const controller = new AbortController();
     const fetchData = async () => {
       // 1. 캐시 확인
       try {
@@ -231,39 +242,49 @@ export default function PerfumeNetworkPage() {
       // 2. 서버에서 데이터 로드
       setStatus("전체 데이터 로드 중...");
       try {
-        const res = await fetch(requestUrl);
+        const res = await fetch(requestUrl, { signal: controller.signal });
         if (!res.ok) throw new Error("서버 오류");
         const data = await res.json();
         setFullPayload(data);
         setStatus("준비 완료");
         
-        // 3. 캐시에 저장
-        try {
-          if (typeof window !== "undefined") {
-            localStorage.setItem(CACHE_KEY, JSON.stringify({
-              data,
-              timestamp: Date.now()
-            }));
-            console.log(`💾 데이터 캐시 저장 완료 (${data.meta?.perfume_count || 0}개 향수)`);
-            
-            // 이전 버전 캐시 삭제
+      // 3. 캐시에 저장
+      try {
+        if (typeof window !== "undefined") {
+          const payload = { data, timestamp: Date.now() };
+          const serialized = JSON.stringify(payload);
+          // 용량이 큰 경우 캐시를 생략해 오류 방지
+          if (serialized.length > 4_000_000) {
+            console.warn("⚠️ 캐시 데이터가 너무 커서 저장을 건너뜁니다.");
+            return;
+          }
+          try {
+            localStorage.setItem(CACHE_KEY, serialized);
+          } catch (storageErr) {
+            // quota 초과 시 이전 캐시 삭제 후 1회 재시도
             Object.keys(localStorage).forEach(key => {
-              if (key.startsWith("perfume_network_") && key !== CACHE_KEY) {
+              if (key.startsWith("perfume_network_")) {
                 localStorage.removeItem(key);
-                console.log(`🗑️ 이전 캐시 삭제: ${key}`);
               }
             });
+            localStorage.setItem(CACHE_KEY, serialized);
           }
-        } catch (err) {
-          console.warn("⚠️ 캐시 저장 오류:", err);
+          console.log(`💾 데이터 캐시 저장 완료 (${data.meta?.perfume_count || 0}개 향수)`);
         }
       } catch (err) {
+        console.warn("⚠️ 캐시 저장 오류:", err);
+      }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
         setStatus("로드 실패");
       }
     };
     
     fetchData();
-  }, [requestUrl]);
+    return () => controller.abort();
+  }, [requestUrl, memberIdReady, memberId]);
 
   // 헬퍼: 영문명 병기 포맷터
   const formatLabelWithEnglishPair = (value: string, formatter: (v: string) => string) => {
@@ -284,6 +305,20 @@ export default function PerfumeNetworkPage() {
   const fmtSeason = (v: string) => labelsData?.seasons[v.trim()] || SEASON_LABELS[v.trim()] || v;
   const fmtOccasion = (v: string) => labelsData?.occasions[v.trim()] || OCCASION_LABELS[v.trim()] || v;
   const fmtGender = (v: string) => labelsData?.genders[v.trim()] || GENDER_TARGET_LABELS[v.trim()] || v;
+  const getStatusBadge = (status?: string | null) => {
+    if (!status) return null;
+    const normalized = status.trim().toUpperCase();
+    const map: Record<string, { label: string; className: string }> = {
+      HAVE: { label: "보유", className: "bg-[#E8F0FF] text-[#3B5CC9]" },
+      WANT: { label: "위시", className: "bg-[#FFE8EE] text-[#C24B6B]" },
+      HAD: { label: "과거", className: "bg-[#F2F2F2] text-[#7A6B57]" },
+      RECOMMENDED: { label: "추천", className: "bg-[#E8F6EC] text-[#2F7D4C]" },
+    };
+    const matched = map[normalized];
+    if (matched) return matched;
+    // 실제 값 그대로 표시 (정확한 매핑 보장)
+    return { label: normalized, className: "bg-[#F8F4EC] text-[#8A7C68]" };
+  };
 
 
   // 클라이언트 필터링 로직
@@ -344,7 +379,45 @@ export default function PerfumeNetworkPage() {
     );
 
     return { nodes: finalNodes, edges: filteredEdges, meta: fullPayload.meta };
-  }, [fullPayload, minSimilarity, topAccords, selectedAccords, selectedBrands, selectedSeasons, selectedOccasions, selectedGenders]);
+  }, [fullPayload, minSimilarity, topAccords, selectedAccords, selectedBrands, selectedSeasons, selectedOccasions, selectedGenders, showMyPerfumesOnly]);
+
+  const myPerfumeFilters = useMemo(() => {
+    if (!fullPayload) return null;
+    const myPerfumes = fullPayload.nodes.filter(
+      (n): n is NetworkNode => n.type === "perfume" && !!n.register_status
+    );
+    const accordSet = new Set<string>();
+    const brandSet = new Set<string>();
+    const seasonSet = new Set<string>();
+    const occasionSet = new Set<string>();
+    const genderSet = new Set<string>();
+
+    myPerfumes.forEach((p) => {
+      if (p.primary_accord) accordSet.add(p.primary_accord);
+      (p.accords || []).forEach((acc) => accordSet.add(acc));
+      if (p.brand) brandSet.add(p.brand);
+      (p.seasons || []).forEach((s) => seasonSet.add(s));
+      (p.occasions || []).forEach((o) => occasionSet.add(o));
+      (p.genders || []).forEach((g) => genderSet.add(g));
+    });
+
+    return {
+      accords: Array.from(accordSet),
+      brands: Array.from(brandSet),
+      seasons: Array.from(seasonSet),
+      occasions: Array.from(occasionSet),
+      genders: Array.from(genderSet),
+    };
+  }, [fullPayload]);
+
+  useEffect(() => {
+    if (!showMyPerfumesOnly || !myPerfumeFilters) return;
+    setSelectedAccords(myPerfumeFilters.accords);
+    setSelectedBrands(myPerfumeFilters.brands);
+    setSelectedSeasons(myPerfumeFilters.seasons);
+    setSelectedOccasions(myPerfumeFilters.occasions);
+    setSelectedGenders(myPerfumeFilters.genders);
+  }, [showMyPerfumesOnly, myPerfumeFilters]);
 
   // 선택 향수 어코드 비중
   const selectedPerfumeAccordWeights = useMemo(() => {
@@ -486,7 +559,9 @@ export default function PerfumeNetworkPage() {
           .map(([acc, weight]) => `${fmtAccord(acc)} ${Math.round(weight * 100)}%`)
           .join(", ");
         
-        const tooltipText = `${n.label}\n${fmtBrand(n.brand || "")}${topAccordsText ? `\n${topAccordsText}` : ""}`;
+        const statusBadge = getStatusBadge(n.register_status);
+        const statusText = statusBadge ? `내 향수 상태: ${statusBadge.label}` : "";
+        const tooltipText = `${n.label}\n${fmtBrand(n.brand || "")}${statusText ? `\n${statusText}` : ""}${topAccordsText ? `\n${topAccordsText}` : ""}`;
 
         return {
           id: n.id,
@@ -817,6 +892,27 @@ export default function PerfumeNetworkPage() {
                   <div className="flex gap-2">
                     <button onClick={() => networkRef.current?.fit()} className="h-9 px-4 rounded-full border border-[#E2D7C5] bg-white text-xs font-semibold">화면 맞춤</button>
                     <button onClick={() => setFreezeMotion(!freezeMotion)} className="h-9 px-4 rounded-full border border-[#E2D7C5] bg-white text-xs font-semibold">{freezeMotion ? "움직임 재개" : "움직임 멈춤"}</button>
+                    <button
+                      onClick={() => {
+                        if (!memberId) {
+                          setShowLoginPrompt(true);
+                          return;
+                        }
+                        setSelectedPerfumeId(null);
+                        setShowMyPerfumesOnly(prev => !prev);
+                      }}
+                      className={`h-9 px-4 rounded-full text-xs font-semibold border transition ${
+                        showMyPerfumesOnly
+                          ? "bg-[#C8A24D] text-white border-[#C8A24D]"
+                          : "bg-white text-[#7A6B57] border-[#E2D7C5] hover:bg-[#F8F4EC]"
+                      }`}
+                      title={memberId ? "내 향수 보기" : "로그인이 필요해요"}
+                    >
+                      {showMyPerfumesOnly ? "전체 향수 보기" : "내 향수 보기"}
+                    </button>
+                    {!memberId && (
+                      <span className="self-center text-[10px] text-[#9C8D7A]">로그인 필요</span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -843,6 +939,7 @@ export default function PerfumeNetworkPage() {
                 const accordText = accordList.map((acc, idx) => 
                   idx === 0 ? `${fmtAccord(acc)}(대표)` : fmtAccord(acc)
                 ).join(", ");
+                const statusBadge = getStatusBadge(p?.register_status);
                 
                 // 선택한 분위기 중 이 향수에 포함된 것들 찾기
                 const matchedAccords = selectedAccords.filter(acc => 
@@ -858,9 +955,16 @@ export default function PerfumeNetworkPage() {
                   <div className="space-y-5">
                     {/* 선택한 향수 소개 */}
                     <div>
-                      <p className="text-sm text-[#7A6B57] mb-3">
-                        <span className="font-bold text-[#C8A24D] text-lg">{p?.label}</span> 향수를 선택하셨어요.
-                      </p>
+                      <div className="flex items-center gap-2 mb-3">
+                        <p className="text-sm text-[#7A6B57]">
+                          <span className="font-bold text-[#C8A24D] text-lg">{p?.label}</span> 향수를 선택하셨어요.
+                        </p>
+                        {statusBadge && (
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${statusBadge.className}`}>
+                            {statusBadge.label}
+                          </span>
+                        )}
+                      </div>
                       
                       <div className="space-y-2 text-sm leading-relaxed text-[#2E2B28]">
                         {matchedAccords.length > 0 && (
@@ -897,9 +1001,16 @@ export default function PerfumeNetworkPage() {
                                 onMouseEnter={() => setHoveredSimilarPerfumeId(perfume.id)} 
                                 onMouseLeave={() => setHoveredSimilarPerfumeId(null)}>
                                 <div className="flex justify-between items-start mb-3">
-                                  <div>
+                                  <div className="space-y-1">
                                     <span className="text-sm font-bold group-hover:text-[#C8A24D] transition-colors block">{perfume.label}</span>
-                                    <span className="text-[10px] text-[#7A6B57]">{fmtBrand(perfume.brand || "")}</span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[10px] text-[#7A6B57]">{fmtBrand(perfume.brand || "")}</span>
+                                      {getStatusBadge(perfume.register_status) && (
+                                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${getStatusBadge(perfume.register_status)!.className}`}>
+                                          {getStatusBadge(perfume.register_status)!.label}
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
                                   <span className="text-[10px] font-bold text-[#C8A24D] bg-[#C8A24D]/10 px-2 py-1 rounded-md whitespace-nowrap ml-2">
                                     유사도 {Math.round(score * 100)}%
@@ -941,6 +1052,28 @@ export default function PerfumeNetworkPage() {
           </div>
         </section>
       </div>
+      {showLoginPrompt && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center space-y-4">
+            <div className="text-3xl">🔒</div>
+            <h3 className="text-lg font-semibold text-[#2E2B28]">로그인이 필요해요</h3>
+            <p className="text-xs text-[#7A6B57]">
+              내 향수로 보기는 회원 전용 기능입니다. 로그인 후 더 편하게 이용할 수 있어요.
+            </p>
+            <div className="flex gap-2">
+              <Link href="/login" className="flex-1 h-9 rounded-full bg-[#C8A24D] text-white text-xs font-semibold flex items-center justify-center">
+                로그인하러 가기
+              </Link>
+              <button
+                onClick={() => setShowLoginPrompt(false)}
+                className="flex-1 h-9 rounded-full border border-[#E2D7C5] text-xs font-semibold"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -38,18 +38,19 @@ class AgentState(Dict):
 # =================================================================
 class UserPreferences(BaseModel):
     """인터뷰어가 사용자 대화에서 추출한 핵심 정보입니다."""
-
     target: str = Field(description="대상 정보 (예: 20대 여성, 30대 남성 등)")
     gender: str = Field(description="성별 정보 (Women, Men, Unisex)")
+    
     brand: Optional[str] = Field(None, description="특정 브랜드")
     perfume: Optional[str] = Field(None, description="특정 향수")
     situation: Optional[str] = Field(None, description="상황 정보")
     season: Optional[str] = Field(None, description="계절 정보")
     like: Optional[str] = Field(None, description="취향 정보")
     style: Optional[str] = Field(None, description="이미지 정보")
-    # [Note] 사용자 요청에 따라 'note' 필드는 필요 시 추가 가능 (HardFilters엔 이미 존재)
-    note: Optional[str] = Field(None, description="선호 노트") 
-
+    
+    # [★수정] Accord(계열)와 Note(원료)를 엄격하게 분리
+    accord: Optional[str] = Field(None, description="선호하는 향의 분위기나 계열 (예: Woody, Floral, Citrus, Spicy)")
+    note: Optional[str] = Field(None, description="구체적으로 선호하는 향 원료 (예: Rose, Vetiver, Sandalwood, Vanilla)")
 
 class InterviewResult(BaseModel):
     user_preferences: UserPreferences = Field(description="추출된 사용자 선호 정보")

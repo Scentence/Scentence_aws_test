@@ -38,6 +38,7 @@ from .prompts import (
     WRITER_FAILURE_PROMPT,
     WRITER_CHAT_PROMPT,
     WRITER_RECOMMENDATION_PROMPT,
+    WRITER_RECOMMENDATION_PROMPT_EXPERT,
     NOTE_SELECTION_PROMPT,
 )
 from .database import save_recommendation_log
@@ -50,7 +51,7 @@ load_dotenv()
 # ==========================================
 # 1. 모델 설정
 # ==========================================
-FAST_LLM = ChatOpenAI(model="gpt-4o-mini", temperature=0, streaming=True)
+FAST_LLM = ChatOpenAI(model="gpt-4.1-mini", temperature=0, streaming=True)
 SMART_LLM = ChatOpenAI(model="gpt-4.1", temperature=0, streaming=True)
 SUPER_SMART_LLM = ChatOpenAI(model="gpt-5.2", temperature=0, streaming=True)
 
@@ -166,8 +167,25 @@ def supervisor_node(state: AgentState):
 def interviewer_node(state: AgentState):
     """[Interviewer]"""
     print(f"\n🎤 [Interviewer] 추천 정보 분석 및 검증...", flush=True)
+
     current_prefs = state.get("user_preferences", {})
-    messages = [SystemMessage(content=INTERVIEWER_PROMPT)] + state["messages"]
+
+    # 현재 정보를 문자열로 변환
+    current_context_str = json.dumps(current_prefs, ensure_ascii=False)
+
+    # [★수정] 여기서 CURRENT_CONTEXT만 채워주면 됩니다! (SUFFICIENCY_CRITERIA는 이미 들어있음)
+    try:
+        formatted_prompt = INTERVIEWER_PROMPT.format(
+            CURRENT_CONTEXT=current_context_str
+        )
+    except Exception as e:
+        # 혹시라도 포맷팅 에러가 나면 원본 프롬프트를 사용하여 멈추지 않게 함
+        print(f"⚠️ Prompt Formatting Error: {e}")
+        formatted_prompt = INTERVIEWER_PROMPT.replace(
+            "{{CURRENT_CONTEXT}}", "정보 없음"
+        )
+
+    messages = [SystemMessage(content=formatted_prompt)] + state["messages"]
 
     try:
         result = SMART_LLM.with_structured_output(InterviewResult).invoke(messages)
@@ -356,10 +374,13 @@ async def researcher_node(state: AgentState):
 async def writer_node(state: AgentState):
     print(f"\n✍️ [Writer] 답변 작성 중...", flush=True)
 
+    # [★설정] 사용자 모드 선택 (나중에 DB 연동 시 이 부분만 수정하면 됩니다)
+    USER_MODE = "BEGINNER"  # 옵션: "BEGINNER" | "EXPERT"
+
     research_data = state.get("research_results")
     results_list = research_data.get("results", []) if research_data else []
 
-    # 1. 프롬프트 선택 로직 (기존 로직 유지)
+    # 1. 프롬프트 선택 로직 (기존 로직 유지 + 전문가 모드 분기 추가)
     if research_data is None:
         prompt = WRITER_CHAT_PROMPT
         data_ctx = ""
@@ -367,7 +388,14 @@ async def writer_node(state: AgentState):
         prompt = WRITER_FAILURE_PROMPT
         data_ctx = ""
     else:
-        prompt = WRITER_RECOMMENDATION_PROMPT
+        # [NEW] 추천 모드일 때만 사용자 레벨에 따라 프롬프트 스위칭
+        if USER_MODE == "EXPERT":
+            print("   😎 [Mode] 전문가용 프롬프트 적용")
+            prompt = WRITER_RECOMMENDATION_PROMPT_EXPERT
+        else:
+            print("   🐥 [Mode] 비기너용 프롬프트 적용")
+            prompt = WRITER_RECOMMENDATION_PROMPT
+
         data_ctx = json.dumps(research_data, ensure_ascii=False, indent=2)
 
     # [★할루시네이션 방지: 부분 성공 및 그라운딩 강화]

@@ -21,9 +21,11 @@ from .tools_similarity import lookup_similar_perfumes_tool
 # [3] 프롬프트 임포트
 from .prompts_info import (
     INFO_SUPERVISOR_PROMPT,
-    PERFUME_DESCRIBER_PROMPT,
+    PERFUME_DESCRIBER_PROMPT_BEGINNER,
+    PERFUME_DESCRIBER_PROMPT_EXPERT,
+    SIMILARITY_CURATOR_PROMPT_BEGINNER,
+    SIMILARITY_CURATOR_PROMPT_EXPERT,
     INGREDIENT_SPECIALIST_PROMPT,
-    SIMILARITY_CURATOR_PROMPT,
 )
 
 load_dotenv()
@@ -94,6 +96,9 @@ def info_supervisor_node(state: InfoState):
 async def perfume_describer_node(state: InfoState):
     """[Perfume Expert] 상세 정보"""
     target = state["target_name"]
+
+    # [★설정] 사용자 모드 (DB 연동 전 하드코딩: "BEGINNER" or "EXPERT")
+    USER_MODE = "BEGINNER"
     try:
         print(f"\n   ▶️ [Info Subgraph] Perfume Describer: '{target}'", flush=True)
 
@@ -119,9 +124,15 @@ async def perfume_describer_node(state: InfoState):
             fail_msg = f"죄송합니다. '{target}'에 대한 상세 정보를 데이터베이스에서 찾을 수 없습니다. 😢"
             return {"messages": [AIMessage(content=fail_msg)], "final_answer": fail_msg}
 
-        # 2. 정상 데이터일 때만 LLM 호출
+        if USER_MODE == "EXPERT":
+            print("      😎 [Mode] 전문가용 분석 프롬프트 적용")
+            selected_prompt = PERFUME_DESCRIBER_PROMPT_EXPERT
+        else:
+            print("      🐥 [Mode] 비기너용 도슨트 프롬프트 적용")
+            selected_prompt = PERFUME_DESCRIBER_PROMPT_BEGINNER
+
         messages = [
-            SystemMessage(content=PERFUME_DESCRIBER_PROMPT),
+            SystemMessage(content=selected_prompt),
             HumanMessage(
                 content=f"대상 향수: {target}\n\n[검색된 상세 정보]:\n{search_result_json}"
             ),
@@ -251,6 +262,9 @@ async def ingredient_specialist_node(state: InfoState):
 
 async def similarity_curator_node(state: InfoState):
     """[Similarity Expert] 유사 추천"""
+
+    # [★설정] 사용자 모드
+    USER_MODE = "BEGINNER"
     try:
         target = state["target_name"]
         print(f"\n   ▶️ [Info Subgraph] Similarity Curator: '{target}'", flush=True)
@@ -281,10 +295,15 @@ async def similarity_curator_node(state: InfoState):
             fail_msg = f"현재 저희 데이터베이스에는 '{target}'과 결이 비슷한 향수 정보가 충분하지 않네요. 😅 다른 향수로 다시 찾아봐 드릴까요?"
             return {"messages": [AIMessage(content=fail_msg)], "final_answer": fail_msg}
         # =============================================================
+        if USER_MODE == "EXPERT":
+            print("      😎 [Mode] 전문가용 큐레이터 프롬프트 적용")
+            selected_prompt = SIMILARITY_CURATOR_PROMPT_EXPERT
+        else:
+            print("      🐥 [Mode] 비기너용 도슨트 프롬프트 적용")
+            selected_prompt = SIMILARITY_CURATOR_PROMPT_BEGINNER
 
-        # 2. LLM 기반 답변 생성 (데이터가 유효할 때만 실행)
         messages = [
-            SystemMessage(content=SIMILARITY_CURATOR_PROMPT),
+            SystemMessage(content=selected_prompt),
             HumanMessage(
                 content=f"원본 향수: {target}\n\n[추천 후보군 데이터]:\n{search_result_json}"
             ),

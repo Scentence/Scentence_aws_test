@@ -8,14 +8,13 @@ from psycopg2.extras import RealDictCursor
 
 # DB 연결 함수
 from .database import get_db_connection, release_db_connection
+
 # 스키마 임포트
 from .tools_schemas_info import NoteSearchInput, AccordSearchInput
 
 # [내부 헬퍼 설정] (화면 출력 방지 태그 포함)
 NORMALIZER_LLM = ChatOpenAI(
-    model="gpt-4o-mini", 
-    temperature=0,
-    tags=["internal_helper"] 
+    model="gpt-4o-mini", temperature=0, tags=["internal_helper"]
 )
 
 # =================================================================
@@ -43,7 +42,7 @@ ACCORD_EXPRESSION_DICT = {
     "Spicy": "후추나 계피처럼 코끝을 톡 쏘는 알싸하고 이국적인 매력",
     "Sweet": "설탕 시럽이나 솜사탕처럼 기분 좋게 녹아드는 직관적인 달콤함",
     "Synthetic": "차가운 금속이나 잘 다림질된 옷감처럼 현대적이고 인공적인 세련미",
-    "Woody": "비 온 뒤 숲속을 거닐 때 느껴지는 묵직하고 차분한 나무의 기운"
+    "Woody": "비 온 뒤 숲속을 거닐 때 느껴지는 묵직하고 차분한 나무의 기운",
 }
 
 # 노트 표현 사전
@@ -59,7 +58,7 @@ NOTE_EXPRESSION_DICT = {
     "Vanilla": "따뜻하게 데워진 우유에 설탕을 녹인 듯한 부드럽고 달콤한 향",
     "Amber": "호박석처럼 따뜻하고 달콤하며 파우더리한, 신비로운 동양의 향",
     "Patchouli": "젖은 흙과 낙엽이 쌓인 숲 바닥에서 올라오는 쌉싸름하고 어두운 풀내음",
-    "Fig": "무화과 나무의 잎사귀에서 나는 쌉싸름한 풀내음과 과육의 크리미한 달콤함"
+    "Fig": "무화과 나무의 잎사귀에서 나는 쌉싸름한 풀내음과 과육의 크리미한 달콤함",
 }
 
 
@@ -71,86 +70,101 @@ def enrich_accord_description(text: str) -> str:
     텍스트 내에 'Woody', 'Citrus' 같은 어코드 키워드가 있으면
     사전의 묘사를 괄호 안에 넣어 풍성하게 만듭니다.
     """
-    if not text: return ""
-    
+    if not text:
+        return ""
+
     enriched_text = text
     for accord, desc in ACCORD_EXPRESSION_DICT.items():
         pattern = re.compile(f"\\b{accord}\\b", re.IGNORECASE)
         replacement = f"{accord}({desc})"
-        
+
         # 이미 괄호 설명이 붙어있는지 확인 후 치환
         if f"{accord}(" not in enriched_text:
-             enriched_text = pattern.sub(replacement, enriched_text)
-            
+            enriched_text = pattern.sub(replacement, enriched_text)
+
     return enriched_text
 
 
 # =================================================================
-# Tool 1. 향수 상세 정보 검색 (기존 유지 + 쿼리 고도화)
+# Tool 1. 향수 상세 정보 검색 (브랜드/이름 유연한 매칭 보강)
 # =================================================================
 @tool
 def lookup_perfume_info_tool(user_input: str) -> str:
     """
-    사용자가 입력한 향수 이름(한글/영어/오타 포함)을 DB에서 정확히 찾아 상세 정보를 반환합니다.
+    사용자가 입력한 향수 이름을 DB(영어명, 한글명, 별칭 포함)에서 정확히 찾아 상세 정보를 반환합니다.
     """
+    # 1. AI를 통해 브랜드와 이름을 지능적으로 분리
     normalization_prompt = f"""
     You are a Perfume Database Expert.
     User Input: "{user_input}"
     Task: Identify Brand and Name, Convert to English.
-    Ignore non-perfume meanings. Output strictly JSON.
-    Output JSON: {{"brand": "BrandName", "name": "PerfumeName"}}
+    Example: "조말론 우드세이지" -> {{"brand": "Jo Malone", "name": "Wood Sage & Sea Salt"}}
+    Output strictly JSON.
     """
     try:
         norm_result = NORMALIZER_LLM.invoke(normalization_prompt).content
         cleaned_json = norm_result.replace("```json", "").replace("```", "").strip()
         parsed = json.loads(cleaned_json)
-        target_brand = parsed.get("brand", "")
-        target_name = parsed.get("name", "")
+        target_brand = parsed.get("brand", "").strip()
+        target_name = parsed.get("name", "").strip()
     except Exception as e:
         return f"검색어 분석 실패: {e}"
 
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        # [★수정] 정확도 우선 정렬 (Exact Match & Length Sort)
+        # [★개선] 브랜드명 역시 부분 일치(ILIKE %brand%)를 허용하여 매칭률을 높입니다.
         sql = """
             SELECT 
                 p.perfume_id, p.perfume_brand, p.perfume_name, p.img_link,
-                
                 (SELECT gender FROM TB_PERFUME_GENDER_R WHERE perfume_id = p.perfume_id LIMIT 1) as gender,
-                
                 (SELECT STRING_AGG(DISTINCT note, ', ') FROM TB_PERFUME_NOTES_M WHERE perfume_id = p.perfume_id AND type='TOP') as top_notes,
                 (SELECT STRING_AGG(DISTINCT note, ', ') FROM TB_PERFUME_NOTES_M WHERE perfume_id = p.perfume_id AND type='MIDDLE') as middle_notes,
                 (SELECT STRING_AGG(DISTINCT note, ', ') FROM TB_PERFUME_NOTES_M WHERE perfume_id = p.perfume_id AND type='BASE') as base_notes,
-                
-                (SELECT STRING_AGG(accord, ', ' ORDER BY ratio DESC) 
-                 FROM TB_PERFUME_ACCORD_R 
-                 WHERE perfume_id = p.perfume_id) as accords,
-
-                (SELECT STRING_AGG(season, ', ' ORDER BY ratio DESC) 
-                 FROM TB_PERFUME_SEASON_R 
-                 WHERE perfume_id = p.perfume_id) as seasons,
-
-                (SELECT STRING_AGG(occasion, ', ' ORDER BY ratio DESC) 
-                 FROM TB_PERFUME_OCA_R 
-                 WHERE perfume_id = p.perfume_id) as occasions
-
+                (SELECT STRING_AGG(accord, ', ' ORDER BY ratio DESC) FROM TB_PERFUME_ACCORD_R WHERE perfume_id = p.perfume_id) as accords,
+                (SELECT STRING_AGG(season, ', ' ORDER BY ratio DESC) FROM TB_PERFUME_SEASON_R WHERE perfume_id = p.perfume_id) as seasons,
+                (SELECT STRING_AGG(occasion, ', ' ORDER BY ratio DESC) FROM TB_PERFUME_OCA_R WHERE perfume_id = p.perfume_id) as occasions
             FROM TB_PERFUME_BASIC_M p
-            WHERE p.perfume_brand ILIKE %s 
-              AND p.perfume_name ILIKE %s
+            LEFT JOIN TB_PERFUME_NAME_KR n ON p.perfume_id = n.perfume_id
             
-            -- [★핵심] 정렬 로직 추가
+            WHERE p.perfume_brand ILIKE %s -- [★수정] 브랜드도 부분 일치 허용
+              AND (
+                  REPLACE(REPLACE(p.perfume_name, ' ', ''), '-', '') ILIKE %s
+                  OR REPLACE(REPLACE(n.name_kr, ' ', ''), '-', '') ILIKE %s
+                  OR REPLACE(REPLACE(n.search_keywords, ' ', ''), '-', '') ILIKE %s
+              )
+            
             ORDER BY 
-                -- 1순위: 이름이 정확히 일치하는 경우 (가장 우선)
-                CASE WHEN p.perfume_name ILIKE %s THEN 0 ELSE 1 END,
-                -- 2순위: 이름 길이가 짧은 순 (Gloss, Intense 등이 뒤로 가도록)
-                LENGTH(p.perfume_name) ASC
+                CASE 
+                    WHEN p.perfume_name ILIKE %s THEN 0 
+                    WHEN n.name_kr ILIKE %s THEN 1     
+                    WHEN n.search_keywords ILIKE %s THEN 2 
+                    ELSE 3 
+                END,
+                LENGTH(p.perfume_name) ASC 
             LIMIT 1
         """
-        # 파라미터 순서: Brand, %Name% (검색용), Name (정확도 비교용)
-        cur.execute(sql, (target_brand, f"%{target_name}%", target_name))
+
+        # 검색어 전처리: 브랜드와 이름 모두 유연하게 매칭되도록 와일드카드 추가
+        brand_pattern = (
+            f"%{target_brand}%"  # Jo Malone -> %Jo Malone% (London까지 매칭)
+        )
+        clean_target_name = target_name.replace(" ", "").replace("-", "")
+        name_pattern = f"%{clean_target_name}%"
+
+        params = (
+            brand_pattern,  # 브랜드 부분 일치
+            name_pattern,  # 이름 유연 매칭
+            name_pattern,
+            name_pattern,
+            target_name,  # 정렬용 원본
+            target_name,
+            f"%,{target_name},%",
+        )
+
+        cur.execute(sql, params)
         result = cur.fetchone()
-        
+
         if result:
             return json.dumps(dict(result), ensure_ascii=False)
         else:
@@ -188,7 +202,7 @@ def lookup_note_info_tool(keywords: List[str]) -> str:
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     final_info = {}
-    
+
     try:
         for note in target_notes:
             # (D) [대표 향수 조회]
@@ -210,10 +224,12 @@ def lookup_note_info_tool(keywords: List[str]) -> str:
                 LIMIT 3
             """
             cur.execute(sql_perfumes, (f"%{note}%",))
-            examples = [f"{r['perfume_brand']} {r['perfume_name']}" for r in cur.fetchall()]
-            
-            if not examples: 
-                continue 
+            examples = [
+                f"{r['perfume_brand']} {r['perfume_name']}" for r in cur.fetchall()
+            ]
+
+            if not examples:
+                continue
 
             # (A) 사전 조회
             dict_desc = ""
@@ -221,12 +237,12 @@ def lookup_note_info_tool(keywords: List[str]) -> str:
                 if key.lower() in note.lower() or note.lower() in key.lower():
                     dict_desc = val
                     break
-            
+
             # (B) DB 상세 설명 조회
             sql_desc = "SELECT description FROM TB_NOTE_EMBEDDING_M WHERE note ILIKE %s LIMIT 1"
             cur.execute(sql_desc, (note,))
             row = cur.fetchone()
-            db_desc = row['description'] if row else ""
+            db_desc = row["description"] if row else ""
 
             # (C) 병합 및 어코드 설명 주입
             enriched_db_desc = enrich_accord_description(db_desc)
@@ -242,9 +258,9 @@ def lookup_note_info_tool(keywords: List[str]) -> str:
 
             final_info[note] = {
                 "description": full_description,
-                "representative_perfumes": examples
+                "representative_perfumes": examples,
             }
-            
+
         return json.dumps(final_info, ensure_ascii=False)
     except Exception as e:
         return f"Error: {e}"
@@ -277,7 +293,7 @@ def lookup_accord_info_tool(keywords: List[str]) -> str:
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     final_info = {}
-    
+
     try:
         for accord in target_accords:
             # (B) 대표 향수 조회
@@ -292,22 +308,25 @@ def lookup_accord_info_tool(keywords: List[str]) -> str:
                 LIMIT 3
             """
             cur.execute(sql, (f"%{accord}%",))
-            examples = [f"{r['perfume_brand']} {r['perfume_name']}" for r in cur.fetchall()]
-            
-            if not examples: continue
-            
+            examples = [
+                f"{r['perfume_brand']} {r['perfume_name']}" for r in cur.fetchall()
+            ]
+
+            if not examples:
+                continue
+
             # (A) 사전 조회
             desc = "특정한 분위기를 자아내는 향의 계열입니다."
             for key, val in ACCORD_EXPRESSION_DICT.items():
                 if key.lower() == accord.lower():
-                    desc = f"{key}: {val}" 
+                    desc = f"{key}: {val}"
                     break
-            
+
             final_info[accord] = {
                 "description": desc,
-                "representative_perfumes": examples
+                "representative_perfumes": examples,
             }
-            
+
         return json.dumps(final_info, ensure_ascii=False)
     except Exception as e:
         return f"Error: {e}"

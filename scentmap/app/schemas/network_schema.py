@@ -14,6 +14,7 @@ class NetworkNode(BaseModel):
     seasons: Optional[List[str]] = None  
     occasions: Optional[List[str]] = None  
     genders: Optional[List[str]] = None 
+    register_status: Optional[str] = None  # 회원 향수 등록 상태
 
 
 class NetworkEdge(BaseModel):

@@ -3,7 +3,21 @@
 import "./vis-network.css";
 import Link from "next/link";
 import Script from "next/script";
+import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  API_CONFIG,
+  GRAPH_CONFIG,
+  ACCORD_LABELS,
+  ACCORD_DESCRIPTIONS,
+  ACCORD_ICONS,
+  BRAND_LABELS,
+  SEASON_LABELS,
+  OCCASION_LABELS,
+  GENDER_TARGET_LABELS,
+  getAccordColor,
+  hexToRgba,
+} from "./config";
 
 type NetworkNode = {
   id: string;
@@ -16,6 +30,7 @@ type NetworkNode = {
   seasons?: string[];
   occasions?: string[];
   genders?: string[];
+  register_status?: string | null;
 };
 
 type NetworkEdge = {
@@ -46,730 +61,972 @@ type NetworkPayload = {
   meta: NetworkMeta;
 };
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_SCENTMAP_API_URL ??
-  "http://127.0.0.1:8001";
-
-// 어코드별 기본 색상 매핑
-const ACCORD_COLORS: Record<string, string> = {
-  Animal: "#7A5C3E",
-  Aquatic: "#5FBED7",
-  Chypre: "#3F6F5E",
-  Citrus: "#E6E04A",
-  Creamy: "#F1E8D6",
-  Earthy: "#AD868B",
-  Floral: "#F6B3C6",
-  Fougère: "#6F7A4A",
-  Fruity: "#F39A4C",
-  Gourmand: "#B97A4B",
-  Green: "#4FA66A",
-  Leathery: "#2E2B28",
-  Oriental: "#7A3E2F",
-  Powdery: "#E9CFCF",
-  Resinous: "#4B6F8A",
-  Smoky: "#7B7B7B",
-  Spicy: "#9E3B32",
-  Sweet: "#F4A3C4",
-  Synthetic: "#7FA1D6",
-  Woody: "#6B4F2A",
-  Fresh: "#8FB5FF",
+type LabelsData = {
+  perfume_names: Record<string, string>;
+  brands: Record<string, string>;
+  accords: Record<string, string>;
+  seasons: Record<string, string>;
+  occasions: Record<string, string>;
+  genders: Record<string, string>;
 };
 
-const getAccordColor = (accord?: string) =>
-  (accord && ACCORD_COLORS[accord]) || "#E8DDCA";
+const API_BASE = API_CONFIG.BASE_URL;
+const DEFAULT_ACCORDS = ["Floral", "Woody", "Citrus", "Fresh", "Spicy"];
 
 export default function PerfumeNetworkPage() {
-  // 네트워크 요청 파라미터
-  const [minSimilarity, setMinSimilarity] = useState(0.45);
-  const [topAccords, setTopAccords] = useState(2);
-  const [maxPerfumes, setMaxPerfumes] = useState<string>("");
-  // API 응답 및 상태 표시
-  const [payload, setPayload] = useState<NetworkPayload | null>(null);
+  const { data: session } = useSession();
+  const sessionUserId = (
+    session?.user as { id?: string | number } | undefined
+  )?.id;
+
+  // API 응답 데이터
+  const [fullPayload, setFullPayload] = useState<NetworkPayload | null>(null);
+  const [labelsData, setLabelsData] = useState<LabelsData | null>(null);
+  const [filterOptions, setFilterOptions] = useState<{
+    accords: string[];
+    brands: string[];
+    seasons: string[];
+    occasions: string[];
+    genders: string[];
+  }>({
+    accords: [],
+    brands: [],
+    seasons: [],
+    occasions: [],
+    genders: [],
+  });
   const [status, setStatus] = useState("대기 중");
-  const [error, setError] = useState("");
-  const [scriptReady, setScriptReady] = useState(false); // vis-network 로드 여부
-  const [lastRequest, setLastRequest] = useState(""); // 디버그용 요청 URL
-  // 필터 선택 상태
-  const [selectedAccords, setSelectedAccords] = useState<string[]>([]);
+  const [scriptReady, setScriptReady] = useState(false);
+  
+  // 클라이언트 사이드 필터링 파라미터 (즉시 반응)
+  const [minSimilarity, setMinSimilarity] = useState<number>(
+    GRAPH_CONFIG.MIN_SIMILARITY_DEFAULT
+  );
+  const [topAccords, setTopAccords] = useState<number>(
+    GRAPH_CONFIG.TOP_ACCORDS_DEFAULT
+  );
+  
+  // 1단계: 어코드 선택 (기본값: 대중적인 어코드들)
+  const [selectedAccords, setSelectedAccords] =
+    useState<string[]>(DEFAULT_ACCORDS);
+  
+  // 2단계: 세부 필터 (선택)
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
   const [selectedSeasons, setSelectedSeasons] = useState<string[]>([]);
   const [selectedOccasions, setSelectedOccasions] = useState<string[]>([]);
   const [selectedGenders, setSelectedGenders] = useState<string[]>([]);
-  // 선택된 향수 노드 강조
-  const [selectedPerfumeId, setSelectedPerfumeId] = useState<string | null>(
-    null
-  );
-  // 드롭다운 열림 상태
-  const [accordOpen, setAccordOpen] = useState(false);
-  const [brandOpen, setBrandOpen] = useState(false);
-  const [seasonOpen, setSeasonOpen] = useState(false);
-  const [occasionOpen, setOccasionOpen] = useState(false);
-  const [genderOpen, setGenderOpen] = useState(false);
+  
+  // 3단계: 향수 선택
+  const [selectedPerfumeId, setSelectedPerfumeId] = useState<string | null>(null);
 
-  // vis-network 렌더링용 참조
+  const BRANDS_PER_PAGE = 20;
+  const [brandPage, setBrandPage] = useState(1);
+  
+  // 유사 향수 호버 상태
+  const [hoveredSimilarPerfumeId, setHoveredSimilarPerfumeId] = useState<string | null>(null);
+  
+  // UI 상태
+  const [freezeMotion, setFreezeMotion] = useState(false);
+  const [memberId, setMemberId] = useState<string | null>(null);
+  const [memberIdReady, setMemberIdReady] = useState(false);
+  const [isDetailFilterOpen, setIsDetailFilterOpen] = useState(false);
+  const [isAccordFilterOpen, setIsAccordFilterOpen] = useState(true); // 분위기 필터 펼침 상태 (기본: 열림)
+  const [displayLimit, setDisplayLimit] = useState<number>(10); // 그래프에 표시할 향수 개수
+  const [showMyPerfumesOnly, setShowMyPerfumesOnly] = useState(false);
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+
+  // vis-network 참조
   const containerRef = useRef<HTMLDivElement>(null);
   const networkRef = useRef<any>(null);
   const nodesDataRef = useRef<any>(null);
   const edgesDataRef = useRef<any>(null);
 
-  // 요청 파라미터가 바뀔 때마다 URL 갱신
+  // API URL 생성 (최초 1회만 - 전체 데이터 로드용)
   const requestUrl = useMemo(() => {
-    const params = new URLSearchParams();
-    params.set("min_similarity", String(minSimilarity));
-    params.set("top_accords", String(topAccords));
-    if (maxPerfumes.trim()) {
-      params.set("max_perfumes", maxPerfumes.trim());
+    const params = new URLSearchParams({
+      min_similarity: "0.0",
+      top_accords: "5"
+    });
+    if (memberId) {
+      params.set("member_id", memberId);
     }
     return `${API_BASE}/network/perfumes?${params.toString()}`;
-  }, [minSimilarity, topAccords, maxPerfumes]);
+  }, [memberId]);
 
-  const toggleSelection = (
-    value: string,
-    current: string[],
-    onChange: (next: string[]) => void
-  ) => {
-    if (current.includes(value)) {
-      onChange(current.filter((item) => item !== value));
+  // 로그인 정보 로드
+  useEffect(() => {
+    if (sessionUserId) {
+      setMemberId(String(sessionUserId));
+      setMemberIdReady(true);
       return;
     }
-    onChange([...current, value]);
+    if (typeof window === "undefined") return;
+    const stored = localStorage.getItem("localAuth");
+    if (!stored) {
+      setMemberIdReady(true);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(stored) as { memberId?: number | string };
+      if (parsed?.memberId) {
+        setMemberId(String(parsed.memberId));
+      }
+      setMemberIdReady(true);
+    } catch (error) {
+      setMemberIdReady(true);
+      return;
+    }
+  }, [sessionUserId]);
+
+  // 라벨 데이터 로딩
+  useEffect(() => {
+    const fetchLabels = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/labels`);
+        if (!res.ok) return;
+        const data = await res.json() as LabelsData;
+        setLabelsData(data);
+      } catch (err) {
+        console.warn("⚠️ 라벨 로드 오류:", err);
+      }
+    };
+    fetchLabels();
+  }, []);
+
+  // 필터 옵션 로딩
+  useEffect(() => {
+    const fetchFilterOptions = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/network/filter-options`);
+        if (!res.ok) return;
+        const data = await res.json();
+        setFilterOptions(data);
+      } catch (err) {
+        console.warn("⚠️ 필터 옵션 로드 오류:", err);
+      }
+    };
+    fetchFilterOptions();
+  }, []);
+
+  // 전체 데이터 로딩
+  useEffect(() => {
+    if (!memberIdReady) return;
+    const controller = new AbortController();
+    const fetchData = async () => {
+      setStatus("전체 데이터 로드 중...");
+      try {
+        const res = await fetch(requestUrl, { signal: controller.signal });
+        if (!res.ok) throw new Error("서버 오류");
+        const data = await res.json();
+        setFullPayload(data);
+        setStatus("준비 완료");
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
+        setStatus("로드 실패");
+      }
+    };
+    
+    fetchData();
+    return () => controller.abort();
+  }, [requestUrl, memberIdReady, memberId]);
+
+  // 헬퍼: 영문명 병기 포맷터
+  const formatLabelWithEnglishPair = (value: string, formatter: (v: string) => string) => {
+    const korean = formatter(value);
+    return korean === value ? value : `${korean} (${value})`;
   };
 
-  const formatSelection = (values: string[], placeholder: string) => {
-    if (values.length === 0) {
-      return placeholder;
+  // 라벨 포맷터들
+  const fmtAccord = (v: string) => {
+    const trimmed = v.trim();
+    // 푸제르의 다양한 표기 처리
+    if (trimmed === "Fougère" || trimmed === "Foug\\u00e8re" || trimmed.includes("Foug")) {
+      return "푸제르";
     }
-    if (values.length === 1) {
-      return values[0];
-    }
-    return `${values[0]} 외 ${values.length - 1}`;
+    return labelsData?.accords[trimmed] || ACCORD_LABELS[trimmed] || v;
+  };
+  const fmtBrand = (v: string) => labelsData?.brands[v.trim()] || BRAND_LABELS[v.trim()] || v;
+  const fmtSeason = (v: string) => labelsData?.seasons[v.trim()] || SEASON_LABELS[v.trim()] || v;
+  const fmtOccasion = (v: string) => labelsData?.occasions[v.trim()] || OCCASION_LABELS[v.trim()] || v;
+  const fmtGender = (v: string) => labelsData?.genders[v.trim()] || GENDER_TARGET_LABELS[v.trim()] || v;
+  const getStatusBadge = (status?: string | null) => {
+    if (!status) return null;
+    const normalized = status.trim().toUpperCase();
+    const map: Record<string, { label: string; className: string }> = {
+      HAVE: { label: "보유", className: "bg-[#E8F0FF] text-[#3B5CC9]" },
+      WANT: { label: "위시", className: "bg-[#FFE8EE] text-[#C24B6B]" },
+      HAD: { label: "과거", className: "bg-[#F2F2F2] text-[#7A6B57]" },
+      RECOMMENDED: { label: "추천", className: "bg-[#E8F6EC] text-[#2F7D4C]" },
+    };
+    const matched = map[normalized];
+    if (matched) return matched;
+    // 실제 값 그대로 표시 (정확한 매핑 보장)
+    return { label: normalized, className: "bg-[#F8F4EC] text-[#8A7C68]" };
   };
 
-  // 필터 UI에 필요한 옵션 목록 추출
-  const filterOptions = useMemo(() => {
-    if (!payload) {
-      return {
-        accords: [] as string[],
-        brands: [] as string[],
-        seasons: [] as string[],
-        occasions: [] as string[],
-        genders: [] as string[],
-      };
-    }
 
-    const perfumeNodes = payload.nodes.filter(
-      (node) => node.type === "perfume"
-    ) as NetworkNode[];
+  // 클라이언트 필터링 로직
+  const filteredPayload = useMemo(() => {
+    if (!fullPayload) return null;
+    
+    const perfumeNodes = fullPayload.nodes.filter(n => n.type === "perfume") as NetworkNode[];
+    const visiblePerfumeNodes = perfumeNodes.filter(node => {
+      if (selectedAccords.length > 0 && (!node.primary_accord || !selectedAccords.includes(node.primary_accord))) return false;
+      if (selectedBrands.length > 0 && (!node.brand || !selectedBrands.includes(node.brand))) return false;
+      if (selectedSeasons.length > 0 && !selectedSeasons.some(s => node.seasons?.includes(s))) return false;
+      if (selectedOccasions.length > 0 && !selectedOccasions.some(o => node.occasions?.includes(o))) return false;
+      if (selectedGenders.length > 0 && !selectedGenders.some(g => node.genders?.includes(g))) return false;
+      return true;
+    });
+    
+    const visibleIds = new Set(visiblePerfumeNodes.map(n => n.id));
+    const filteredEdges: NetworkEdge[] = [];
+    const accordMap = new Map<string, Array<{to: string, weight: number}>>();
 
+    fullPayload.edges.forEach(edge => {
+      if (edge.type === "SIMILAR_TO") {
+        if (visibleIds.has(edge.from) && visibleIds.has(edge.to) && (edge.weight ?? 0) >= minSimilarity) {
+          filteredEdges.push(edge);
+        }
+      } else if (edge.type === "HAS_ACCORD" && visibleIds.has(edge.from)) {
+        if (!accordMap.has(edge.from)) accordMap.set(edge.from, []);
+        accordMap.get(edge.from)!.push({ to: edge.to, weight: edge.weight ?? 0 });
+      }
+    });
+
+    // 선택한 어코드 ID 세트
+    const selectedAccordIds = new Set(
+      selectedAccords.map(acc => `accord_${acc}`)
+    );
+
+    // 향수별 어코드 엣지 추가 (선택한 어코드만)
+    accordMap.forEach((accords, perfumeId) => {
+      accords
+        .sort((a, b) => b.weight - a.weight)
+        .slice(0, topAccords)
+        .filter(acc => selectedAccordIds.has(acc.to)) // 선택한 어코드만
+        .forEach(acc => {
+          filteredEdges.push({ from: perfumeId, to: acc.to, type: "HAS_ACCORD", weight: acc.weight });
+        });
+    });
+    
+    // 엣지에 연결된 어코드만 노드로 포함
+    const activeAccordIds = new Set(
+      filteredEdges
+        .filter(e => e.type === "HAS_ACCORD")
+        .map(e => e.to)
+    );
+    
+    const finalNodes = fullPayload.nodes.filter(n => 
+      (n.type === "perfume" && visibleIds.has(n.id)) || 
+      (n.type === "accord" && activeAccordIds.has(n.id))
+    );
+
+    return { nodes: finalNodes, edges: filteredEdges, meta: fullPayload.meta };
+  }, [fullPayload, minSimilarity, topAccords, selectedAccords, selectedBrands, selectedSeasons, selectedOccasions, selectedGenders, showMyPerfumesOnly]);
+
+  const myPerfumeFilters = useMemo(() => {
+    if (!fullPayload) return null;
+    const myPerfumes = fullPayload.nodes.filter(
+      (n): n is NetworkNode => n.type === "perfume" && !!n.register_status
+    );
     const accordSet = new Set<string>();
     const brandSet = new Set<string>();
     const seasonSet = new Set<string>();
     const occasionSet = new Set<string>();
     const genderSet = new Set<string>();
 
-    for (const node of perfumeNodes) {
-      if (node.primary_accord) {
-        accordSet.add(node.primary_accord);
-      }
-      if (node.brand) {
-        brandSet.add(node.brand);
-      }
-      node.seasons?.forEach((season) => seasonSet.add(season));
-      node.occasions?.forEach((occasion) => occasionSet.add(occasion));
-      node.genders?.forEach((gender) => genderSet.add(gender));
-    }
-
-    return {
-      accords: Array.from(accordSet).sort(),
-      brands: Array.from(brandSet).sort(),
-      seasons: Array.from(seasonSet).sort(),
-      occasions: Array.from(occasionSet).sort(),
-      genders: Array.from(genderSet).sort(),
-    };
-  }, [payload]);
-
-  // 선택된 필터를 기준으로 네트워크 노드/엣지 축소
-  const filteredPayload = useMemo(() => {
-    if (!payload) return null;
-
-    const perfumeNodes = payload.nodes.filter(
-      (node) => node.type === "perfume"
-    ) as NetworkNode[];
-
-    const matchesFilter = (node: NetworkNode) => {
-      // 대표 어코드 기준으로 필터링
-      if (
-        selectedAccords.length > 0 &&
-        (!node.primary_accord || !selectedAccords.includes(node.primary_accord))
-      ) {
-        return false;
-      }
-      if (
-        selectedBrands.length > 0 &&
-        (!node.brand || !selectedBrands.includes(node.brand))
-      ) {
-        return false;
-      }
-      if (
-        selectedSeasons.length > 0 &&
-        !selectedSeasons.some((season) => node.seasons?.includes(season))
-      ) {
-        return false;
-      }
-      if (
-        selectedOccasions.length > 0 &&
-        !selectedOccasions.some((occasion) => node.occasions?.includes(occasion))
-      ) {
-        return false;
-      }
-      if (
-        selectedGenders.length > 0 &&
-        !selectedGenders.some((gender) => node.genders?.includes(gender))
-      ) {
-        return false;
-      }
-      return true;
-    };
-
-    const visiblePerfumeIds = new Set(
-      perfumeNodes.filter(matchesFilter).map((node) => node.id)
-    );
-
-    const visibleAccordIds = new Set(
-      payload.edges
-        .filter((edge) => edge.type === "HAS_ACCORD")
-        .filter((edge) => visiblePerfumeIds.has(edge.from))
-        .map((edge) => edge.to)
-    );
-
-    const nodes = payload.nodes.filter((node) => {
-      if (node.type === "perfume") {
-        return visiblePerfumeIds.has(node.id);
-      }
-      return visibleAccordIds.has(node.id);
+    myPerfumes.forEach((p) => {
+      if (p.primary_accord) accordSet.add(p.primary_accord);
+      (p.accords || []).forEach((acc) => accordSet.add(acc));
+      if (p.brand) brandSet.add(p.brand);
+      (p.seasons || []).forEach((s) => seasonSet.add(s));
+      (p.occasions || []).forEach((o) => occasionSet.add(o));
+      (p.genders || []).forEach((g) => genderSet.add(g));
     });
 
-    const nodeIdSet = new Set(nodes.map((node) => node.id));
-    const edges = payload.edges.filter(
-      (edge) => nodeIdSet.has(edge.from) && nodeIdSet.has(edge.to)
-    );
-
-    return { ...payload, nodes, edges };
-  }, [
-    payload,
-    selectedAccords,
-    selectedBrands,
-    selectedSeasons,
-    selectedOccasions,
-    selectedGenders,
-  ]);
-
-  const visiblePayload = filteredPayload ?? payload;
-
-  // 화면에 표시되는 노드/엣지 개수
-  const visibleCounts = useMemo(() => {
-    if (!visiblePayload) {
-      return { perfumes: 0, accords: 0, edges: 0 };
-    }
-    const perfumes = visiblePayload.nodes.filter(
-      (node) => node.type === "perfume"
-    ).length;
-    const accords = visiblePayload.nodes.filter(
-      (node) => node.type === "accord"
-    ).length;
-    return { perfumes, accords, edges: visiblePayload.edges.length };
-  }, [visiblePayload]);
-
-  useEffect(() => {
-    // 네트워크 데이터 요청
-    const fetchData = async () => {
-      setStatus("데이터 요청 중...");
-      setError("");
-      setLastRequest(requestUrl);
-      try {
-        const res = await fetch(requestUrl);
-        if (!res.ok) {
-          throw new Error(`서버 오류: ${res.status}`);
-        }
-        const data = (await res.json()) as NetworkPayload;
-        setPayload(data);
-        setStatus("데이터 수신 완료");
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "알 수 없는 오류");
-        setStatus("요청 실패");
-      }
+    return {
+      accords: Array.from(accordSet),
+      brands: Array.from(brandSet),
+      seasons: Array.from(seasonSet),
+      occasions: Array.from(occasionSet),
+      genders: Array.from(genderSet),
     };
-
-    fetchData();
-  }, [requestUrl]);
+  }, [fullPayload]);
 
   useEffect(() => {
-    // vis-network 초기화 및 데이터 반영
-    if (!scriptReady || !visiblePayload || !containerRef.current) return;
-    const vis = (window as any).vis;
-    if (!vis) return;
+    if (!showMyPerfumesOnly || !myPerfumeFilters) return;
+    setSelectedAccords(myPerfumeFilters.accords);
+    setSelectedBrands(myPerfumeFilters.brands);
+    setSelectedSeasons(myPerfumeFilters.seasons);
+    setSelectedOccasions(myPerfumeFilters.occasions);
+    setSelectedGenders(myPerfumeFilters.genders);
+  }, [showMyPerfumesOnly, myPerfumeFilters]);
 
-    const nodes = visiblePayload.nodes.map((node) => {
-      if (node.type === "perfume") {
-        const borderColor = getAccordColor(node.primary_accord);
-        const isAccordSelected = selectedAccords.length > 0;
+  // 선택 향수 어코드 비중
+  const selectedPerfumeAccordWeights = useMemo(() => {
+    if (!fullPayload || !selectedPerfumeId) return new Map<string, number>();
+    const weights = new Map<string, number>();
+    fullPayload.edges.forEach(e => {
+      if (e.type === "HAS_ACCORD" && e.from === selectedPerfumeId) {
+        weights.set(e.to.replace("accord_", ""), e.weight ?? 0);
+      }
+    });
+    return weights;
+  }, [fullPayload, selectedPerfumeId]);
+
+  // 유사 향수 목록 탐색 (fullPayload 기준으로 검색하되 minSimilarity 필터 적용)
+  const similarPerfumes = useMemo(() => {
+    if (!fullPayload || !selectedPerfumeId) return [];
+    
+    const scoreMap = new Map<string, number>();
+    fullPayload.edges.forEach(e => {
+      if (e.type === "SIMILAR_TO" && (e.weight ?? 0) >= minSimilarity) {
+        if (e.from === selectedPerfumeId) scoreMap.set(e.to, e.weight ?? 0);
+        else if (e.to === selectedPerfumeId) scoreMap.set(e.from, e.weight ?? 0);
+      }
+    });
+
+    const perfumeMap = new Map(fullPayload.nodes.filter(n => n.type === "perfume").map(n => [n.id, n as NetworkNode]));
+    const selected = perfumeMap.get(selectedPerfumeId);
+    if (!selected) return [];
+
+    return Array.from(scoreMap.entries())
+      .map(([id, score]) => {
+        const p = perfumeMap.get(id);
+        if (!p) return null;
+        const common = (selected.accords || []).filter(a => (p.accords || []).includes(a));
+        const added = (p.accords || []).filter(a => !(selected.accords || []).includes(a));
+        return { perfume: p, score, commonAccords: common, newAccords: added };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
+  }, [fullPayload, selectedPerfumeId, minSimilarity]);
+
+  const top5SimilarIds = useMemo(() => new Set(similarPerfumes.map(s => s.perfume.id)), [similarPerfumes]);
+
+  // 그래프 표시용 (displayLimit 적용하되 선택된 향수와 유사 향수는 항상 포함)
+  const displayPayload = useMemo(() => {
+    if (!filteredPayload || !fullPayload) return null;
+    
+    const allPerfumes = filteredPayload.nodes.filter(n => n.type === "perfume");
+    
+    // 선택된 향수와 유사 향수 ID 수집
+    const mustIncludeIds = new Set<string>();
+    if (selectedPerfumeId) {
+      mustIncludeIds.add(selectedPerfumeId);
+      top5SimilarIds.forEach(id => mustIncludeIds.add(id));
+    }
+    
+    // 필수 포함 향수 (filteredPayload에 없으면 fullPayload에서 가져오기)
+    const mustIncludePerfumes: NetworkNode[] = [];
+    mustIncludeIds.forEach(id => {
+      let perfume = allPerfumes.find(p => p.id === id);
+      if (!perfume) {
+        // filteredPayload에 없으면 fullPayload에서 찾기
+        perfume = fullPayload.nodes.find(n => n.id === id && n.type === "perfume") as NetworkNode;
+      }
+      if (perfume) {
+        mustIncludePerfumes.push(perfume);
+      }
+    });
+    
+    const otherPerfumes = allPerfumes.filter(p => !mustIncludeIds.has(p.id));
+    
+    // displayLimit 엄격히 적용
+    let perfumes: NetworkNode[];
+    if (mustIncludePerfumes.length >= displayLimit) {
+      perfumes = mustIncludePerfumes.slice(0, displayLimit);
+    } else {
+      const remainingSlots = displayLimit - mustIncludePerfumes.length;
+      perfumes = [...mustIncludePerfumes, ...otherPerfumes.slice(0, remainingSlots)];
+    }
+    
+    const perfumeIds = new Set(perfumes.map(p => p.id));
+    
+    // 엣지 수집 (fullPayload에서 필요한 엣지 가져오기)
+    const edges: NetworkEdge[] = [];
+    fullPayload.edges.forEach(e => {
+      if (e.type === "SIMILAR_TO") {
+        // 유사도 엣지: 표시할 향수들 간의 연결만
+        if (perfumeIds.has(e.from) && perfumeIds.has(e.to) && (e.weight ?? 0) >= minSimilarity) {
+          edges.push(e);
+        }
+      } else if (e.type === "HAS_ACCORD" && perfumeIds.has(e.from)) {
+        // 어코드 엣지: 표시할 향수의 어코드만
+        edges.push(e);
+      }
+    });
+    
+    // 선택한 어코드만 노드로 포함
+    const selectedAccordIds = new Set(selectedAccords.map(acc => `accord_${acc}`));
+    const accords = fullPayload.nodes.filter(n => 
+      n.type === "accord" && 
+      selectedAccordIds.has(n.id) && 
+      edges.some(e => e.to === n.id)
+    );
+    
+    return { nodes: [...accords, ...perfumes], edges };
+  }, [filteredPayload, fullPayload, displayLimit, selectedPerfumeId, top5SimilarIds, selectedAccords, minSimilarity]);
+
+  // vis-network 렌더링 및 인터랙션 설정
+  useEffect(() => {
+    if (!scriptReady || !displayPayload || !containerRef.current) return;
+    const vis = (window as any).vis ?? (window as any).visNetwork;
+    if (!vis || typeof vis.Network !== "function" || typeof vis.DataSet !== "function") {
+      console.warn("⚠️ vis-network 로드 실패");
+      return;
+    }
+
+    const nodes = displayPayload.nodes.map(n => {
+      if (n.type === "perfume") {
+        const isSel = n.id === selectedPerfumeId;
+        const isSim = top5SimilarIds.has(n.id);
+        const isHov = n.id === hoveredSimilarPerfumeId;
+        const isBlur = !!selectedPerfumeId && !isSel && !isSim && !isHov;
+        const border = getAccordColor(n.primary_accord);
+        
+        // 그래프 노드 호버 툴팁 생성 (간결한 정보)
+        // 이 향수의 어코드 비중 정보 (상위 5개)
+        const perfumeAccordWeights = new Map<string, number>();
+        if (fullPayload) {
+          fullPayload.edges.forEach(e => {
+            if (e.type === "HAS_ACCORD" && e.from === n.id) {
+              perfumeAccordWeights.set(e.to.replace("accord_", ""), e.weight ?? 0);
+            }
+          });
+        }
+        const topAccordsText = Array.from(perfumeAccordWeights.entries())
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([acc, weight]) => `${fmtAccord(acc)} ${Math.round(weight * 100)}%`)
+          .join(", ");
+        
+        const statusBadge = getStatusBadge(n.register_status);
+        const statusText = statusBadge ? `내 향수 상태: ${statusBadge.label}` : "";
+        const tooltipText = `${n.label}\n${fmtBrand(n.brand || "")}${statusText ? `\n${statusText}` : ""}${topAccordsText ? `\n${topAccordsText}` : ""}`;
+
         return {
-          id: node.id,
-          label: node.label,
+          id: n.id,
+          label: isHov || isSel ? n.label : "",
+          title: tooltipText,
           shape: "circularImage",
-          image: node.image || undefined,
-          title: `${node.label}\n${node.brand ?? ""}\n대표 어코드: ${
-            node.primary_accord ?? "Unknown"
-          }`,
-          borderWidth: isAccordSelected ? 4 : 2,
-          color: {
-            border: borderColor,
-            background: "#F8F4EC",
+          image: n.image,
+          size: isSel ? 40 : (isSim || isHov ? 32 : (isBlur ? 20 : 26)),
+          borderWidth: isSel ? 8 : (isHov ? 7 : (isBlur ? 1 : 4)),
+          color: { 
+            border: isHov ? "#FFD700" : (isSel ? border : hexToRgba(border, isBlur ? 0.08 : 1)), 
+            background: isBlur ? "rgba(255, 251, 243, 0.15)" : "#FFFBF3" 
           },
-          font: { color: "#4D463A", size: 12 },
+          opacity: isBlur ? 0.08 : 1,
+          font: { size: isSel ? 14 : 12, bold: true, background: "white", color: isSel ? "#C8A24D" : "#2E2B28" },
+          fixed: isSel ? { x: true, y: true } : false, // 선택된 향수는 중앙 고정
+          x: isSel ? 0 : undefined,
+          y: isSel ? 0 : undefined,
+          level: isSel ? 0 : (isSim ? 1 : 2) // 계층 설정
         };
       }
-      const accordLabel = node.label;
-      const accordColor = getAccordColor(accordLabel);
-      const isSelectedAccord = selectedAccords.includes(accordLabel);
+      // 어코드 노드
+      const isHigh = !selectedPerfumeId || displayPayload.edges.some(e => e.type === "HAS_ACCORD" && e.to === n.id && (e.from === selectedPerfumeId || top5SimilarIds.has(e.from)));
+      const isBlurAccord = selectedPerfumeId && !isHigh;
+      const accordDesc = ACCORD_DESCRIPTIONS[n.label] || "";
+      const accordTooltip = `${fmtAccord(n.label)}\n${accordDesc}`;
       return {
-        id: node.id,
-        label: node.label,
+        id: n.id,
+        label: isBlurAccord ? "" : fmtAccord(n.label),
+        title: accordTooltip,
         shape: "dot",
-        size: isSelectedAccord ? 20 : 14,
-        borderWidth: isSelectedAccord ? 3 : 1,
-        color: { background: accordColor, border: accordColor },
-        font: { color: "#5C5448", size: isSelectedAccord ? 13 : 11 },
+        size: isHigh ? 24 : (isBlurAccord ? 12 : 18),
+        color: { background: hexToRgba(getAccordColor(n.label), isHigh ? 0.7 : (isBlurAccord ? 0.03 : 0.1)) },
+        font: { size: isHigh ? 12 : 10, bold: isHigh },
+        opacity: isBlurAccord ? 0.15 : 1,
+        level: -1, // 어코드는 최상단
+        mass: 5 // 어코드는 무겁게
       };
     });
 
-    const edges = visiblePayload.edges.map((edge) => {
-      const edgeId = `${edge.type}:${edge.from}:${edge.to}`;
-      if (edge.type === "SIMILAR_TO") {
-        const isSelectedEdge =
-          selectedPerfumeId &&
-          (edge.from === selectedPerfumeId || edge.to === selectedPerfumeId);
+    const edges = displayPayload.edges.map(e => {
+      // SIMILAR_TO 엣지는 완전히 숨김
+      if (e.type === "SIMILAR_TO") {
         return {
-          id: edgeId,
-          from: edge.from,
-          to: edge.to,
-          value: edge.weight ?? 0.1,
-          color: {
-            color: "#B89138",
-            opacity: isSelectedEdge ? 0.8 : 0.15,
-          },
-          width: isSelectedEdge
-            ? edge.weight
-              ? Math.max(2, edge.weight * 5)
-              : 2
-            : 1,
-          smooth: true,
+          from: e.from, 
+          to: e.to, 
+          value: e.weight,
+          hidden: true, // 모든 유사 엣지 숨김
+          color: { color: "#C8A24D", opacity: 0 },
+          width: 0,
+          dashes: false,
+          smooth: { type: "continuous" }
         };
       }
+      // HAS_ACCORD 엣지는 선택된 향수와 관련된 것만 약하게 표시, 나머지는 완전히 숨김
+      const isFromSelected = selectedPerfumeId && (e.from === selectedPerfumeId || top5SimilarIds.has(e.from));
+      const isBlurEdge = selectedPerfumeId && !isFromSelected;
       return {
-        id: edgeId,
-        from: edge.from,
-        to: edge.to,
-        value: edge.weight ?? 0.1,
-        color: { color: "#9C8D7A", opacity: 0.4 },
+        from: e.from, 
+        to: e.to, 
+        value: e.weight,
+        hidden: isBlurEdge, // 관련 없는 엣지는 숨김
+        color: { color: "#9C8D7A", opacity: isFromSelected ? 0.3 : (isBlurEdge ? 0 : 0.08) },
+        width: isFromSelected ? 1.2 : (isBlurEdge ? 0 : 0.4),
         dashes: true,
+        smooth: { type: "continuous" }
       };
     });
 
     if (!networkRef.current) {
       nodesDataRef.current = new vis.DataSet(nodes);
       edgesDataRef.current = new vis.DataSet(edges);
-    }
-
-    const nodeIds = new Set(nodes.map((node) => node.id));
-    const edgeIds = new Set(edges.map((edge) => edge.id));
-
-    if (nodesDataRef.current) {
-      const existingNodeIds = nodesDataRef.current.getIds();
-      const removeNodeIds = existingNodeIds.filter(
-        (id: string) => !nodeIds.has(id)
-      );
-      if (removeNodeIds.length) {
-        nodesDataRef.current.remove(removeNodeIds);
-      }
-      nodesDataRef.current.update(nodes);
-    }
-
-    if (edgesDataRef.current) {
-      const existingEdgeIds = edgesDataRef.current.getIds();
-      const removeEdgeIds = existingEdgeIds.filter(
-        (id: string) => !edgeIds.has(id)
-      );
-      if (removeEdgeIds.length) {
-        edgesDataRef.current.remove(removeEdgeIds);
-      }
-      edgesDataRef.current.update(edges);
-    }
-
-    const data = {
-      nodes: nodesDataRef.current,
-      edges: edgesDataRef.current,
-    };
-    const options = {
-      interaction: { hover: true, navigationButtons: true },
-      physics: {
-        solver: "forceAtlas2Based",
-        stabilization: { iterations: 150 },
-      },
-      nodes: { shape: "dot" },
-      edges: { smooth: { type: "continuous" } },
-    };
-
-    if (!networkRef.current) {
-      networkRef.current = new vis.Network(containerRef.current, data, options);
-      networkRef.current.once("stabilizationIterationsDone", () => {
-        // 초기 배치 후 위치 고정
-        networkRef.current?.setOptions({ physics: false });
-      });
-    } else {
-      // 필터 변경 시 재배치 허용
-      networkRef.current.setOptions({ physics: true });
-      networkRef.current.once("stabilizationIterationsDone", () => {
-        networkRef.current?.setOptions({ physics: false });
-      });
-      networkRef.current.setData(data);
-    }
-
-    networkRef.current.off("click");
-    networkRef.current.on("click", (params: { nodes: string[] }) => {
-      const targetId = params.nodes?.[0];
-      if (targetId && !targetId.startsWith("accord_")) {
-        setSelectedPerfumeId(targetId);
+      try {
+        const options: any = {
+          interaction: { hover: true, navigationButtons: true, tooltipDelay: 200 },
+          physics: { 
+            enabled: !freezeMotion, 
+            solver: "forceAtlas2Based", 
+            forceAtlas2Based: { 
+              gravitationalConstant: selectedPerfumeId ? -260 : -140, 
+              centralGravity: selectedPerfumeId ? 0.03 : 0.01,
+              springLength: selectedPerfumeId ? 320 : 240, 
+              springConstant: selectedPerfumeId ? 0.02 : 0.04,
+              damping: 0.9,
+              avoidOverlap: 2.5 
+            },
+            stabilization: {
+              enabled: true,
+              iterations: 200
+            }
+          }
+        };
+        if (selectedPerfumeId) {
+          options.layout = { hierarchical: { enabled: false } };
+        }
+        networkRef.current = new vis.Network(
+          containerRef.current,
+          { nodes: nodesDataRef.current, edges: edgesDataRef.current },
+          options
+        );
+      } catch (err) {
+        console.warn("⚠️ vis-network 초기화 실패:", err);
         return;
       }
-      setSelectedPerfumeId(null);
-    });
-  }, [scriptReady, visiblePayload, selectedAccords, selectedPerfumeId]);
-
-  const handleReset = () => {
-    if (networkRef.current) {
-      networkRef.current.fit({ animation: true });
+      networkRef.current.on("click", (p: any) => setSelectedPerfumeId(p.nodes[0] && !p.nodes[0].startsWith("accord_") ? p.nodes[0] : null));
+      networkRef.current.once("stabilizationIterationsDone", () => {
+        if (!freezeMotion) {
+          networkRef.current?.setOptions({ physics: { enabled: false } });
+        }
+      });
+    } else {
+      // 노드와 엣지를 완전히 새로 설정 (추가/삭제가 제대로 반영되도록)
+      // 기존 노드와 새 노드 비교
+      const currentNodeIds = new Set(nodesDataRef.current.getIds() as string[]);
+      const newNodeIds = new Set(nodes.map(n => n.id));
+      
+      // 삭제할 노드 (기존에 있었지만 새로운 데이터에 없는 것)
+      const nodesToRemove = Array.from(currentNodeIds).filter(id => !newNodeIds.has(id));
+      if (nodesToRemove.length > 0) {
+        nodesDataRef.current.remove(nodesToRemove);
+      }
+      
+      // 추가/업데이트할 노드
+      nodesDataRef.current.update(nodes);
+      
+      // 엣지는 완전히 새로 설정 (구조가 복잡하므로)
+      edgesDataRef.current.clear();
+      edgesDataRef.current.add(edges);
+      
+      // 선택된 향수가 있으면 중앙에 배치
+      if (selectedPerfumeId) {
+        try {
+          networkRef.current.moveNode(selectedPerfumeId, 0, 0);
+        } catch (e) {
+          // 노드가 아직 렌더링되지 않은 경우 무시
+        }
+      }
+      
+      // physics 설정 동적 업데이트
+      const updatedOptions: any = {
+        physics: { 
+          enabled: !freezeMotion, 
+          solver: "forceAtlas2Based", 
+          forceAtlas2Based: { 
+            gravitationalConstant: selectedPerfumeId ? -260 : -140, 
+            centralGravity: selectedPerfumeId ? 0.03 : 0.01,
+            springLength: selectedPerfumeId ? 320 : 240, 
+            springConstant: selectedPerfumeId ? 0.02 : 0.04,
+            damping: 0.9,
+            avoidOverlap: 2.5
+          },
+          stabilization: {
+            enabled: true,
+            iterations: 200
+          }
+        }
+      };
+      if (selectedPerfumeId) {
+        updatedOptions.layout = { hierarchical: { enabled: false } };
+      }
+      networkRef.current.setOptions(updatedOptions);
+      if (!freezeMotion) {
+        networkRef.current.stabilize(200);
+        networkRef.current.once("stabilizationIterationsDone", () => {
+          networkRef.current?.setOptions({ physics: { enabled: false } });
+        });
+      }
     }
-  };
+  }, [scriptReady, displayPayload, selectedPerfumeId, freezeMotion, hoveredSimilarPerfumeId, fullPayload, top5SimilarIds]);
+
+  const totalPages = Math.ceil(filterOptions.brands.length / BRANDS_PER_PAGE) || 1;
+  const safeBrandPage = Math.min(brandPage, totalPages);
+  const visibleBrands = filterOptions.brands.slice((safeBrandPage - 1) * BRANDS_PER_PAGE, safeBrandPage * BRANDS_PER_PAGE);
 
   return (
-    <div className="min-h-screen bg-[#F5F2EA] text-[#1F1F1F] px-6 py-12 space-y-8">
-      <Script
-        src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"
-        strategy="afterInteractive"
-        onLoad={() => setScriptReady(true)}
-      />
-
-      <header className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="space-y-1">
-            <p className="text-xs uppercase tracking-[0.3em] text-[#7A6B57]">
-              perfume network
-            </p>
-            <h1 className="text-2xl font-semibold text-[#1F1F1F]">
-              전체 향수 관계 네트워크
-            </h1>
+    <div className="min-h-screen bg-[#F5F2EA] text-[#1F1F1F]">
+      <Script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js" strategy="afterInteractive" onLoad={() => setScriptReady(true)} />
+      
+      <div className="max-w-7xl mx-auto px-6 py-12 space-y-12">
+        <header className="flex items-center justify-between pb-8 border-b-2 border-[#E6DDCF]">
+          <div>
+            <p className="text-xs uppercase tracking-[0.3em] text-[#7A6B57]">perfume network</p>
+            <h1 className="text-4xl font-semibold mt-2">향수 지도</h1>
+            <p className="text-sm text-[#5C5448] mt-3">비슷하면서도 다른, 향수 지도로 새로운 취향을 발견해보세요.</p>
           </div>
-          <Link
-            href="/"
-            className="rounded-full border border-[#E2D7C5] bg-white/80 px-4 py-2 text-xs font-semibold text-[#5C5448] transition hover:bg-white"
-          >
-            메인으로
-          </Link>
-        </div>
-        <p className="text-sm text-[#5C5448]">
-          perfume_db 전체 데이터를 기반으로 관계 맵을 시각화합니다.
-        </p>
-      </header>
+          <Link href="/" className="h-10 px-6 flex items-center justify-center rounded-full border border-[#E2D7C5] bg-white text-[13px] font-semibold hover:bg-[#F8F4EC]">메인으로</Link>
+        </header>
 
-      <section className="grid gap-6 lg:grid-cols-[320px_1fr]">
-        <div className="space-y-6 rounded-3xl bg-white/80 border border-[#E2D7C5] p-5 shadow-sm">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold text-[#1F1F1F]">
-                시각화 파라미터
-              </p>
+        {/* 1단계: 분위기 필터 (어코드) */}
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">어떤 분위기를 원하세요?</h2>
+              <p className="text-xs text-[#7A6B57]">관심 있는 분위기를 선택해 원하는 향수를 찾아보세요.</p>
             </div>
-            <label className="block text-xs text-[#7A6B57]">
-              유사도 임계치 ({minSimilarity.toFixed(2)})
-            </label>
-            <input
-              type="range"
-              min="0.2"
-              max="0.9"
-              step="0.05"
-              value={minSimilarity}
-              onChange={(e) => setMinSimilarity(Number(e.target.value))}
-              className="w-full accent-[#C8A24D]"
-            />
-
-            <label className="block text-xs text-[#7A6B57] mt-4">
-              연결할 상위 어코드 수
-            </label>
-            <select
-              value={topAccords}
-              onChange={(e) => setTopAccords(Number(e.target.value))}
-              className="w-full rounded-xl border border-[#E1D7C8] bg-white px-3 py-2 text-sm text-[#1F1F1F] focus:outline-none focus:ring-2 focus:ring-[#C8A24D]/40"
-            >
-              {[1, 2, 3, 4, 5].map((count) => (
-                <option key={count} value={count}>
-                  {count}개
-                </option>
+            <div className="flex gap-2">
+              <button onClick={() => setIsAccordFilterOpen(!isAccordFilterOpen)} className="h-9 px-4 rounded-full border border-[#E2D7C5] bg-white text-xs font-semibold">{isAccordFilterOpen ? "▲ 접기" : "▼ 펼치기"}</button>
+            </div>
+          </div>
+          
+          {isAccordFilterOpen && (
+            <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-10 gap-3">
+              {filterOptions.accords.map(acc => (
+                <button key={acc} onClick={() => { setSelectedAccords(prev => prev.includes(acc) ? prev.filter(a => a !== acc) : [...prev, acc]); setSelectedPerfumeId(null); }}
+                  className={`relative aspect-square rounded-2xl border-2 transition-all ${selectedAccords.includes(acc) ? "border-[#C8A24D] bg-[#C8A24D]/10" : "border-[#E2D7C5] bg-white"}`}>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center p-2">
+                    <span className="text-2xl mb-1">{ACCORD_ICONS[acc] || "✨"}</span>
+                    <span className="text-[10px] font-semibold text-center">{fmtAccord(acc)}</span>
+                  </div>
+                </button>
               ))}
-            </select>
+            </div>
+          )}
+        </section>
 
-            <label className="block text-xs text-[#7A6B57] mt-4">
-              최대 향수 수 (디버깅용)
-            </label>
-            <input
-              type="number"
-              min="1"
-              placeholder="전체"
-              value={maxPerfumes}
-              onChange={(e) => setMaxPerfumes(e.target.value)}
-              className="w-full rounded-xl border border-[#E1D7C8] bg-white px-3 py-2 text-sm text-[#1F1F1F] focus:outline-none focus:ring-2 focus:ring-[#C8A24D]/40"
-            />
+        {/* 2단계: 세부 필터 (브랜드, 계절감, 상황, 성별) */}
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">더 꼼꼼하게 찾아보고 싶다면</h2>
+              <p className="text-xs text-[#7A6B57]">브랜드와 계절, 특별한 순간을 더해 나만의 취향을 더 선명하게 찾아보세요.</p>
+            </div>
+            <button onClick={() => setIsDetailFilterOpen(!isDetailFilterOpen)} className="h-9 px-4 rounded-full border border-[#E2D7C5] bg-white text-xs font-semibold">{isDetailFilterOpen ? "▲ 접기" : "▼ 펼치기"}</button>
+          </div>
+          
+          {isDetailFilterOpen && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[
+                { label: "브랜드", options: visibleBrands, selected: selectedBrands, setter: setSelectedBrands, formatter: fmtBrand, isBrand: true },
+                { label: "계절감", options: filterOptions.seasons, selected: selectedSeasons, setter: setSelectedSeasons, formatter: fmtSeason },
+                { label: "어울리는 상황", options: filterOptions.occasions, selected: selectedOccasions, setter: setSelectedOccasions, formatter: fmtOccasion },
+                { label: "어울리는 성별", options: filterOptions.genders, selected: selectedGenders, setter: setSelectedGenders, formatter: fmtGender }
+              ].map((group, i) => (
+                <div key={i} className="flex flex-col gap-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-semibold text-[#4D463A]">{group.label}</label>
+                    <button onClick={() => { group.setter([]); setSelectedPerfumeId(null); }} className="text-[10px] text-[#7A6B57]">초기화</button>
+                  </div>
+                  <div className="h-48 flex flex-col rounded-xl border border-[#E1D7C8] bg-white p-2">
+                    <div className="flex-1 overflow-y-auto">
+                      {group.options.map(opt => (
+                        <label key={opt} className="flex items-center gap-2 px-2 py-1.5 hover:bg-[#F5F2EA] text-sm cursor-pointer">
+                          <input type="checkbox" checked={group.selected.includes(opt)} onChange={() => { group.setter(prev => prev.includes(opt) ? prev.filter(v => v !== opt) : [...prev, opt]); setSelectedPerfumeId(null); }} className="accent-[#C8A24D]" />
+                          <span className="text-xs">{formatLabelWithEnglishPair(opt, group.formatter)}</span>
+                        </label>
+                      ))}
+                    </div>
+                    {group.isBrand && totalPages > 1 && (
+                      <div className="flex justify-between items-center px-2 pt-2 border-t border-[#F5F2EA]">
+                        <button onClick={() => setBrandPage(p => Math.max(1, p - 1))} disabled={safeBrandPage === 1} className="text-[10px] disabled:opacity-30">이전</button>
+                        <span className="text-[10px]">{safeBrandPage}/{totalPages}</span>
+                        <button onClick={() => setBrandPage(p => Math.min(totalPages, p + 1))} disabled={safeBrandPage === totalPages} className="text-[10px] disabled:opacity-30">다음</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <div className="border-t-2 border-[#E6DDCF]"></div>
+
+        {/* 3단계: 그래프 및 탐색 상세 정보 */}
+        <section className="space-y-4">
+          {/* 그래프 섹션 제목 */}
+          <div>
+            <h2 className="text-lg font-semibold">향수 지도</h2>
+            <p className="text-xs text-[#7A6B57]">궁금한 향수를 클릭하면, 유사한 향수가 나타나요.</p>
           </div>
 
-          <div className="space-y-3 border-t border-[#E6DDCF] pt-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold text-[#1F1F1F]">필터</p>
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedAccords([]);
-                  setSelectedBrands([]);
-                  setSelectedSeasons([]);
-                  setSelectedOccasions([]);
-                  setSelectedGenders([]);
-                }}
-                className="text-[11px] text-[#7A6B57] hover:text-[#5C5448]"
-              >
-                초기화
-              </button>
+          <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
+            {/* 왼쪽: 그래프 영역 및 컨트롤러 */}
+            <div className="space-y-3">
+              <div className="rounded-2xl border border-[#E6DDCF] bg-white/80 p-5 space-y-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <label className="text-[13px] font-bold">1. 표시할 향수 개수</label>
+                        <div className="group relative">
+                          <button className="w-4 h-4 rounded-full bg-[#E6DDCF] text-[#7A6B57] text-[10px] font-bold hover:bg-[#C8A24D] hover:text-white transition-colors flex items-center justify-center">
+                            ?
+                          </button>
+                          <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block z-50 w-64">
+                            <div className="bg-[#2E2B28] text-white text-xs rounded-lg p-3 shadow-lg">
+                              <p className="font-semibold mb-1">표시할 향수 개수</p>
+                              <p className="text-[11px] leading-relaxed">
+                                필터로 발견한 향수 중 그래프에 표시할 개수를 선택합니다. <span className="text-[#C8A24D] font-semibold">10~20개 정도를 권장해요.</span> 너무 많으면 화면이 복잡해집니다.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <span className="text-sm font-bold text-[#C8A24D]">{displayLimit}개</span>
+                    </div>
+                    <input 
+                      type="range" 
+                      min="1" 
+                      max={Math.min(100, filteredPayload ? filteredPayload.nodes.filter(n => n.type === "perfume").length : 100)} 
+                      value={displayLimit} 
+                      onChange={e => setDisplayLimit(Number(e.target.value))} 
+                      className="w-full h-1.5 accent-[#C8A24D]" 
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <label className="text-[13px] font-bold">2. 분위기 닮은 정도</label>
+                        <div className="group relative">
+                          <button className="w-4 h-4 rounded-full bg-[#E6DDCF] text-[#7A6B57] text-[10px] font-bold hover:bg-[#C8A24D] hover:text-white transition-colors flex items-center justify-center">
+                            ?
+                          </button>
+                          <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block z-50 w-64">
+                            <div className="bg-[#2E2B28] text-white text-xs rounded-lg p-3 shadow-lg">
+                              <p className="font-semibold mb-1">유사도 임계값</p>
+                              <p className="text-[11px] leading-relaxed">
+                                향수 간 분위기의 비슷한 정도로 <span className="text-[#C8A24D] font-semibold">0.65 이상을 권장해요.</span>
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <span className="text-sm font-bold text-[#C8A24D]">{minSimilarity.toFixed(2)}</span>
+                    </div>
+                    <input type="range" min="0" max="1" step="0.05" value={minSimilarity} onChange={e => setMinSimilarity(Number(e.target.value))} className="w-full h-1.5 accent-[#C8A24D]" />
+                  </div>
+                </div>
+                <div className="flex justify-between items-center pt-4 border-t border-[#E6DDCF]">
+                  <span className="text-xs text-[#7A6B57]">
+                    {filteredPayload ? filteredPayload.nodes.filter(n => n.type === "perfume").length : 0}개 향수 발견 
+                    <span className="mx-1">•</span> 
+                    {displayLimit}개 표시 중
+                  </span>
+                  <div className="flex gap-2">
+                    <button onClick={() => networkRef.current?.fit()} className="h-9 px-4 rounded-full border border-[#E2D7C5] bg-white text-xs font-semibold">화면 맞춤</button>
+                    <button onClick={() => setFreezeMotion(!freezeMotion)} className="h-9 px-4 rounded-full border border-[#E2D7C5] bg-white text-xs font-semibold">{freezeMotion ? "움직임 재개" : "움직임 멈춤"}</button>
+                    <button
+                      onClick={() => {
+                        if (!memberId) {
+                          setShowLoginPrompt(true);
+                          return;
+                        }
+                        setSelectedPerfumeId(null);
+                        setShowMyPerfumesOnly(prev => !prev);
+                      }}
+                      className={`h-9 px-4 rounded-full text-xs font-semibold border transition ${
+                        showMyPerfumesOnly
+                          ? "bg-[#C8A24D] text-white border-[#C8A24D]"
+                          : "bg-white text-[#7A6B57] border-[#E2D7C5] hover:bg-[#F8F4EC]"
+                      }`}
+                      title={memberId ? "내 향수 보기" : "로그인이 필요해요"}
+                    >
+                      {showMyPerfumesOnly ? "전체 향수 보기" : "내 향수 보기"}
+                    </button>
+                    {!memberId && (
+                      <span className="self-center text-[10px] text-[#9C8D7A]">로그인 필요</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              
+              <div className="h-[70vh] rounded-3xl border border-[#E2D7C5] bg-white/90 p-4 relative overflow-hidden">
+                {!fullPayload && (
+                  <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-10 flex flex-col items-center justify-center gap-4">
+                    <div className="w-10 h-10 border-4 border-[#C8A24D] border-t-transparent rounded-full animate-spin"></div>
+                    <p className="text-sm font-medium text-[#7A6B57]">{status}</p>
+                  </div>
+                )}
+                <div ref={containerRef} className="h-full w-full" />
+              </div>
             </div>
 
-            <label className="block text-xs text-[#7A6B57]">
-              카테고리 (어코드)
-            </label>
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setAccordOpen((prev) => !prev)}
-                className="flex w-full items-center justify-between rounded-xl border border-[#E1D7C8] bg-white px-3 py-2 text-sm text-[#1F1F1F] focus:outline-none focus:ring-2 focus:ring-[#C8A24D]/40"
-              >
-                <span>{formatSelection(selectedAccords, "전체")}</span>
-                <span className="text-xs text-[#7A6B57]">
-                  {accordOpen ? "닫기" : "선택"}
-                </span>
-              </button>
-              {accordOpen && (
-                <div className="absolute z-10 mt-2 max-h-52 w-full overflow-y-auto rounded-xl border border-[#E1D7C8] bg-white p-2 text-sm shadow-md">
-                  {filterOptions.accords.map((accord) => (
-                    <label
-                      key={accord}
-                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-[#F5F2EA]"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedAccords.includes(accord)}
-                        onChange={() =>
-                          toggleSelection(accord, selectedAccords, setSelectedAccords)
-                        }
-                        className="accent-[#C8A24D]"
-                      />
-                      <span>{accord}</span>
-                    </label>
-                  ))}
+            {/* 오른쪽: 향수 상세 패널 */}
+            <div className="rounded-3xl bg-white/80 border border-[#E2D7C5] p-6 min-h-[400px]">
+              {selectedPerfumeId && filteredPayload ? (() => {
+                const p = filteredPayload.nodes.find(n => n.id === selectedPerfumeId);
+                // 어코드 정보 생성
+                const accordEntries = Array.from(selectedPerfumeAccordWeights.entries()).sort((a,b) => b[1]-a[1]);
+                const primaryAccord = accordEntries[0]?.[0];
+                const accordList = accordEntries.slice(0, 5).map(([acc, _]) => acc);
+                const accordText = accordList.map((acc, idx) => 
+                  idx === 0 ? `${fmtAccord(acc)}(대표)` : fmtAccord(acc)
+                ).join(", ");
+                const statusBadge = getStatusBadge(p?.register_status);
+                
+                // 선택한 분위기 중 이 향수에 포함된 것들 찾기
+                const matchedAccords = selectedAccords.filter(acc => 
+                  accordList.map(a => a.toLowerCase()).includes(acc.toLowerCase())
+                );
+                
+                // 선택하지 않은 어코드 (새로운 분위기)
+                const unmatchedAccords = accordList.filter(acc => 
+                  !matchedAccords.some(m => m.toLowerCase() === acc.toLowerCase())
+                );
+                
+                return (
+                  <div className="space-y-5">
+                    {/* 선택한 향수 소개 */}
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <p className="text-sm text-[#7A6B57]">
+                          <span className="font-bold text-[#C8A24D] text-lg">{p?.label}</span> 향수를 선택하셨어요.
+                        </p>
+                        {statusBadge && (
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${statusBadge.className}`}>
+                            {statusBadge.label}
+                          </span>
+                        )}
+                      </div>
+                      
+                      <div className="space-y-2 text-sm leading-relaxed text-[#2E2B28]">
+                        {matchedAccords.length > 0 && (
+                          <p>
+                            이 향수는 선택하신 <span className="font-bold text-[#C8A24D]">{matchedAccords.map(fmtAccord).join(", ")}</span>가 포함되어 있고
+                            {unmatchedAccords.length > 0 && (
+                              <> <span className="font-semibold text-[#5C5448]">{unmatchedAccords.slice(0, 3).map(fmtAccord).join(", ")}</span>도 포함되어 있어요.</>
+                            )}
+                          </p>
+                        )}
+                        {matchedAccords.length === 0 && accordText && (
+                          <p>
+                            이 향수는 <span className="font-semibold text-[#5C5448]">{accordText}</span> 로 구성되어 있어요.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="border-t border-[#E6DDCF] pt-6 space-y-4">
+                      <p className="text-sm font-semibold text-[#4D463A]">유사한 향수 Top3</p>
+                      {similarPerfumes.length > 0 ? (
+                        <div className="space-y-3">
+                          {similarPerfumes.slice(0, 3).map(({ perfume, score, commonAccords, newAccords }, idx) => {
+                            // 추천 향수의 어코드 정보 가져오기
+                            const perfumeAccords = perfume.accords || [];
+                            const accordsText = perfumeAccords.slice(0, 4).map(fmtAccord).join(", ");
+                            const newAccordsText = newAccords.length > 0 
+                              ? newAccords.slice(0, 2).map(fmtAccord).join(", ")
+                              : "";
+                            
+                            return (
+                              <div key={perfume.id} 
+                                className="p-4 rounded-2xl border border-[#E6DDCF] bg-white hover:border-[#C8A24D] transition-all cursor-pointer group hover:shadow-md"
+                                onMouseEnter={() => setHoveredSimilarPerfumeId(perfume.id)} 
+                                onMouseLeave={() => setHoveredSimilarPerfumeId(null)}>
+                                <div className="flex justify-between items-start mb-3">
+                                  <div className="space-y-1">
+                                    <span className="text-sm font-bold group-hover:text-[#C8A24D] transition-colors block">{perfume.label}</span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[10px] text-[#7A6B57]">{fmtBrand(perfume.brand || "")}</span>
+                                      {getStatusBadge(perfume.register_status) && (
+                                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${getStatusBadge(perfume.register_status)!.className}`}>
+                                          {getStatusBadge(perfume.register_status)!.label}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <span className="text-[10px] font-bold text-[#C8A24D] bg-[#C8A24D]/10 px-2 py-1 rounded-md whitespace-nowrap ml-2">
+                                    유사도 {Math.round(score * 100)}%
+                                  </span>
+                                </div>
+                                
+                                <p className="text-xs text-[#2E2B28] leading-relaxed">
+                                  <span className="font-bold text-[#C8A24D]">{perfume.label}</span>은(는){" "}
+                                  {accordsText && (
+                                    <><span className="font-semibold text-[#5C5448]">{accordsText}</span> 로 구성되어있</>
+                                  )}
+                                  {newAccordsText ? (
+                                    <>지만 <span className="font-semibold text-[#C8A24D]">{newAccordsText}</span> 새로운 분위기도 느낄 수 있는 향수에요.</>
+                                  ) : (
+                                    <>어 비슷한 분위기를 즐길 수 있는 향수에요.</>
+                                  )}
+                                </p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="py-8 text-center bg-[#F8F4EC]/50 rounded-2xl border border-dashed border-[#E6DDCF]">
+                          <p className="text-xs text-[#7A6B57]">비슷한 향수를 찾을 수 없어요.<br/>닮은 정도를 조금 낮춰보세요.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })() : (
+                <div className="h-full flex flex-col items-center justify-center text-center py-12 space-y-4">
+                  <div className="w-16 h-16 rounded-full bg-[#F8F4EC] flex items-center justify-center text-3xl">✨</div>
+                  <div>
+                    <h3 className="text-lg font-semibold mb-1 text-[#C8A24D]">궁금한 향수를 클릭해보세요</h3>
+                  </div>
                 </div>
               )}
             </div>
-
-            <label className="block text-xs text-[#7A6B57] mt-3">
-              서브 필터
-            </label>
-            <div className="grid gap-2">
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setBrandOpen((prev) => !prev)}
-                  className="flex w-full items-center justify-between rounded-xl border border-[#E1D7C8] bg-white px-3 py-2 text-sm text-[#1F1F1F] focus:outline-none focus:ring-2 focus:ring-[#C8A24D]/40"
-                >
-                  <span>{formatSelection(selectedBrands, "브랜드 전체")}</span>
-                  <span className="text-xs text-[#7A6B57]">
-                    {brandOpen ? "닫기" : "선택"}
-                  </span>
-                </button>
-                {brandOpen && (
-                  <div className="absolute z-10 mt-2 max-h-52 w-full overflow-y-auto rounded-xl border border-[#E1D7C8] bg-white p-2 text-sm shadow-md">
-                    {filterOptions.brands.map((brand) => (
-                      <label
-                        key={brand}
-                        className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-[#F5F2EA]"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedBrands.includes(brand)}
-                          onChange={() =>
-                            toggleSelection(brand, selectedBrands, setSelectedBrands)
-                          }
-                          className="accent-[#C8A24D]"
-                        />
-                        <span>{brand}</span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setSeasonOpen((prev) => !prev)}
-                  className="flex w-full items-center justify-between rounded-xl border border-[#E1D7C8] bg-white px-3 py-2 text-sm text-[#1F1F1F] focus:outline-none focus:ring-2 focus:ring-[#C8A24D]/40"
-                >
-                  <span>{formatSelection(selectedSeasons, "계절 전체")}</span>
-                  <span className="text-xs text-[#7A6B57]">
-                    {seasonOpen ? "닫기" : "선택"}
-                  </span>
-                </button>
-                {seasonOpen && (
-                  <div className="absolute z-10 mt-2 max-h-52 w-full overflow-y-auto rounded-xl border border-[#E1D7C8] bg-white p-2 text-sm shadow-md">
-                    {filterOptions.seasons.map((season) => (
-                      <label
-                        key={season}
-                        className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-[#F5F2EA]"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedSeasons.includes(season)}
-                          onChange={() =>
-                            toggleSelection(
-                              season,
-                              selectedSeasons,
-                              setSelectedSeasons
-                            )
-                          }
-                          className="accent-[#C8A24D]"
-                        />
-                        <span>{season}</span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setOccasionOpen((prev) => !prev)}
-                  className="flex w-full items-center justify-between rounded-xl border border-[#E1D7C8] bg-white px-3 py-2 text-sm text-[#1F1F1F] focus:outline-none focus:ring-2 focus:ring-[#C8A24D]/40"
-                >
-                  <span>{formatSelection(selectedOccasions, "상황 전체")}</span>
-                  <span className="text-xs text-[#7A6B57]">
-                    {occasionOpen ? "닫기" : "선택"}
-                  </span>
-                </button>
-                {occasionOpen && (
-                  <div className="absolute z-10 mt-2 max-h-52 w-full overflow-y-auto rounded-xl border border-[#E1D7C8] bg-white p-2 text-sm shadow-md">
-                    {filterOptions.occasions.map((occasion) => (
-                      <label
-                        key={occasion}
-                        className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-[#F5F2EA]"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedOccasions.includes(occasion)}
-                          onChange={() =>
-                            toggleSelection(
-                              occasion,
-                              selectedOccasions,
-                              setSelectedOccasions
-                            )
-                          }
-                          className="accent-[#C8A24D]"
-                        />
-                        <span>{occasion}</span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setGenderOpen((prev) => !prev)}
-                  className="flex w-full items-center justify-between rounded-xl border border-[#E1D7C8] bg-white px-3 py-2 text-sm text-[#1F1F1F] focus:outline-none focus:ring-2 focus:ring-[#C8A24D]/40"
-                >
-                  <span>{formatSelection(selectedGenders, "성별 전체")}</span>
-                  <span className="text-xs text-[#7A6B57]">
-                    {genderOpen ? "닫기" : "선택"}
-                  </span>
-                </button>
-                {genderOpen && (
-                  <div className="absolute z-10 mt-2 max-h-52 w-full overflow-y-auto rounded-xl border border-[#E1D7C8] bg-white p-2 text-sm shadow-md">
-                    {filterOptions.genders.map((gender) => (
-                      <label
-                        key={gender}
-                        className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-[#F5F2EA]"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedGenders.includes(gender)}
-                          onChange={() =>
-                            toggleSelection(
-                              gender,
-                              selectedGenders,
-                              setSelectedGenders
-                            )
-                          }
-                          className="accent-[#C8A24D]"
-                        />
-                        <span>{gender}</span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
+          </div>
+        </section>
+      </div>
+      {showLoginPrompt && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center space-y-4">
+            <div className="text-3xl">🔒</div>
+            <h3 className="text-lg font-semibold text-[#2E2B28]">로그인이 필요해요</h3>
+            <p className="text-xs text-[#7A6B57]">
+              내 향수로 보기는 회원 전용 기능입니다. 로그인 후 더 편하게 이용할 수 있어요.
+            </p>
+            <div className="flex gap-2">
+              <Link href="/login" className="flex-1 h-9 rounded-full bg-[#C8A24D] text-white text-xs font-semibold flex items-center justify-center">
+                로그인하러 가기
+              </Link>
+              <button
+                onClick={() => setShowLoginPrompt(false)}
+                className="flex-1 h-9 rounded-full border border-[#E2D7C5] text-xs font-semibold"
+              >
+                닫기
+              </button>
             </div>
           </div>
-
-          <div className="space-y-2 rounded-2xl border border-[#E6DDCF] bg-[#F8F4EC] p-4 text-xs text-[#4D463A]">
-            <p>상태: {status}</p>
-            {error && <p className="text-[#B13C2E]">오류: {error}</p>}
-            {payload && (
-              <>
-                <p>향수: {visibleCounts.perfumes}개</p>
-                <p>어코드: {visibleCounts.accords}개</p>
-                <p>엣지: {visibleCounts.edges}개</p>
-                <p>생성 시간: {payload.meta.build_seconds}s</p>
-              </>
-            )}
-          </div>
-
-          <button
-            onClick={handleReset}
-            className="w-full rounded-xl bg-[#2E2B28] py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-[#1E1C1A]"
-          >
-            화면 맞춤
-          </button>
-
-          <div className="space-y-2 text-xs text-[#7A6B57]">
-            <p>요청 URL</p>
-            <p className="break-all text-[#5C5448]">{lastRequest}</p>
-          </div>
         </div>
-
-        <div className="space-y-3">
-          <div className="h-[70vh] rounded-3xl border border-[#E2D7C5] bg-white/90 p-4 shadow-sm">
-            <div ref={containerRef} className="h-full w-full" />
-          </div>
-          <div className="text-xs text-[#7A6B57]">
-            선 굵기는 유사도, 점선은 향수-어코드 연결입니다.
-          </div>
-        </div>
-      </section>
+      )}
     </div>
   );
 }

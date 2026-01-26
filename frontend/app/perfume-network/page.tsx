@@ -267,11 +267,69 @@ export default function PerfumeNetworkPage() {
   };
 
 
+  const myPerfumeIds = useMemo(() => {
+    if (!fullPayload) return new Set<string>();
+    // [개선] 내 향수 기준 ID 세트를 미리 파생
+    return new Set(
+      fullPayload.nodes
+        .filter((n): n is NetworkNode => n.type === "perfume" && !!n.register_status)
+        .map((n) => n.id)
+    );
+  }, [fullPayload]);
+
+  const myPerfumeFilters = useMemo(() => {
+    if (!fullPayload) return null;
+    const myPerfumes = fullPayload.nodes.filter(
+      (n): n is NetworkNode => n.type === "perfume" && !!n.register_status
+    );
+    const accordSet = new Set<string>();
+    const brandSet = new Set<string>();
+    const seasonSet = new Set<string>();
+    const occasionSet = new Set<string>();
+    const genderSet = new Set<string>();
+
+    myPerfumes.forEach((p) => {
+      if (p.primary_accord) accordSet.add(p.primary_accord);
+      (p.accords || []).forEach((acc) => accordSet.add(acc));
+      if (p.brand) brandSet.add(p.brand);
+      (p.seasons || []).forEach((s) => seasonSet.add(s));
+      (p.occasions || []).forEach((o) => occasionSet.add(o));
+      (p.genders || []).forEach((g) => genderSet.add(g));
+    });
+
+    return {
+      accords: Array.from(accordSet),
+      brands: Array.from(brandSet),
+      seasons: Array.from(seasonSet),
+      occasions: Array.from(occasionSet),
+      genders: Array.from(genderSet),
+    };
+  }, [fullPayload]);
+
+  const effectiveFilterOptions = useMemo(() => {
+    if (!showMyPerfumesOnly) return filterOptions;
+    // [개선] 내 향수 전용 보기에서는 필터 옵션도 내 향수 기준으로 제한
+    return (
+      myPerfumeFilters ?? {
+        accords: [],
+        brands: [],
+        seasons: [],
+        occasions: [],
+        genders: [],
+      }
+    );
+  }, [showMyPerfumesOnly, filterOptions, myPerfumeFilters]);
+
   // 클라이언트 필터링 로직
   const filteredPayload = useMemo(() => {
     if (!fullPayload) return null;
     
-    const perfumeNodes = fullPayload.nodes.filter(n => n.type === "perfume") as NetworkNode[];
+    // [개선] 내 향수 보기 활성화 시 내 향수 범위로 먼저 제한
+    const perfumeNodes = fullPayload.nodes.filter((n): n is NetworkNode => {
+      if (n.type !== "perfume") return false;
+      if (showMyPerfumesOnly && !myPerfumeIds.has(n.id)) return false;
+      return true;
+    });
     const visiblePerfumeNodes = perfumeNodes.filter(node => {
       if (selectedAccords.length > 0 && (!node.primary_accord || !selectedAccords.includes(node.primary_accord))) return false;
       if (selectedBrands.length > 0 && (!node.brand || !selectedBrands.includes(node.brand))) return false;
@@ -325,36 +383,7 @@ export default function PerfumeNetworkPage() {
     );
 
     return { nodes: finalNodes, edges: filteredEdges, meta: fullPayload.meta };
-  }, [fullPayload, minSimilarity, topAccords, selectedAccords, selectedBrands, selectedSeasons, selectedOccasions, selectedGenders, showMyPerfumesOnly]);
-
-  const myPerfumeFilters = useMemo(() => {
-    if (!fullPayload) return null;
-    const myPerfumes = fullPayload.nodes.filter(
-      (n): n is NetworkNode => n.type === "perfume" && !!n.register_status
-    );
-    const accordSet = new Set<string>();
-    const brandSet = new Set<string>();
-    const seasonSet = new Set<string>();
-    const occasionSet = new Set<string>();
-    const genderSet = new Set<string>();
-
-    myPerfumes.forEach((p) => {
-      if (p.primary_accord) accordSet.add(p.primary_accord);
-      (p.accords || []).forEach((acc) => accordSet.add(acc));
-      if (p.brand) brandSet.add(p.brand);
-      (p.seasons || []).forEach((s) => seasonSet.add(s));
-      (p.occasions || []).forEach((o) => occasionSet.add(o));
-      (p.genders || []).forEach((g) => genderSet.add(g));
-    });
-
-    return {
-      accords: Array.from(accordSet),
-      brands: Array.from(brandSet),
-      seasons: Array.from(seasonSet),
-      occasions: Array.from(occasionSet),
-      genders: Array.from(genderSet),
-    };
-  }, [fullPayload]);
+  }, [fullPayload, minSimilarity, topAccords, selectedAccords, selectedBrands, selectedSeasons, selectedOccasions, selectedGenders, showMyPerfumesOnly, myPerfumeIds]);
 
   useEffect(() => {
     if (!showMyPerfumesOnly || !myPerfumeFilters) return;
@@ -377,19 +406,24 @@ export default function PerfumeNetworkPage() {
     return weights;
   }, [fullPayload, selectedPerfumeId]);
 
-  // 유사 향수 목록 탐색 (fullPayload 기준으로 검색하되 minSimilarity 필터 적용)
+  // 유사 향수 목록 탐색 (필터된 범위 내에서만 계산)
   const similarPerfumes = useMemo(() => {
-    if (!fullPayload || !selectedPerfumeId) return [];
+    if (!filteredPayload || !selectedPerfumeId) return [];
     
     const scoreMap = new Map<string, number>();
-    fullPayload.edges.forEach(e => {
-      if (e.type === "SIMILAR_TO" && (e.weight ?? 0) >= minSimilarity) {
+    // [개선] 내 향수 보기/필터 적용 범위 내에서만 유사도 계산
+    filteredPayload.edges.forEach(e => {
+      if (e.type === "SIMILAR_TO") {
         if (e.from === selectedPerfumeId) scoreMap.set(e.to, e.weight ?? 0);
         else if (e.to === selectedPerfumeId) scoreMap.set(e.from, e.weight ?? 0);
       }
     });
 
-    const perfumeMap = new Map(fullPayload.nodes.filter(n => n.type === "perfume").map(n => [n.id, n as NetworkNode]));
+    const perfumeMap = new Map(
+      filteredPayload.nodes
+        .filter(n => n.type === "perfume")
+        .map(n => [n.id, n as NetworkNode])
+    );
     const selected = perfumeMap.get(selectedPerfumeId);
     if (!selected) return [];
 
@@ -404,13 +438,13 @@ export default function PerfumeNetworkPage() {
       .filter((x): x is NonNullable<typeof x> => x !== null)
       .sort((a, b) => b.score - a.score)
       .slice(0, 5);
-  }, [fullPayload, selectedPerfumeId, minSimilarity]);
+  }, [filteredPayload, selectedPerfumeId]);
 
   const top5SimilarIds = useMemo(() => new Set(similarPerfumes.map(s => s.perfume.id)), [similarPerfumes]);
 
   // 그래프 표시용 (displayLimit 적용하되 선택된 향수와 유사 향수는 항상 포함)
   const displayPayload = useMemo(() => {
-    if (!filteredPayload || !fullPayload) return null;
+    if (!filteredPayload) return null;
     
     const allPerfumes = filteredPayload.nodes.filter(n => n.type === "perfume");
     
@@ -421,18 +455,8 @@ export default function PerfumeNetworkPage() {
       top5SimilarIds.forEach(id => mustIncludeIds.add(id));
     }
     
-    // 필수 포함 향수 (filteredPayload에 없으면 fullPayload에서 가져오기)
-    const mustIncludePerfumes: NetworkNode[] = [];
-    mustIncludeIds.forEach(id => {
-      let perfume = allPerfumes.find(p => p.id === id);
-      if (!perfume) {
-        // filteredPayload에 없으면 fullPayload에서 찾기
-        perfume = fullPayload.nodes.find(n => n.id === id && n.type === "perfume") as NetworkNode;
-      }
-      if (perfume) {
-        mustIncludePerfumes.push(perfume);
-      }
-    });
+    // [개선] 필수 포함 향수도 필터 범위 내에서만 수집
+    const mustIncludePerfumes: NetworkNode[] = allPerfumes.filter(p => mustIncludeIds.has(p.id));
     
     const otherPerfumes = allPerfumes.filter(p => !mustIncludeIds.has(p.id));
     
@@ -447,30 +471,20 @@ export default function PerfumeNetworkPage() {
     
     const perfumeIds = new Set(perfumes.map(p => p.id));
     
-    // 엣지 수집 (fullPayload에서 필요한 엣지 가져오기)
-    const edges: NetworkEdge[] = [];
-    fullPayload.edges.forEach(e => {
+    // [개선] 엣지는 필터 범위 내에서만 수집
+    const edges = filteredPayload.edges.filter(e => {
       if (e.type === "SIMILAR_TO") {
-        // 유사도 엣지: 표시할 향수들 간의 연결만
-        if (perfumeIds.has(e.from) && perfumeIds.has(e.to) && (e.weight ?? 0) >= minSimilarity) {
-          edges.push(e);
-        }
-      } else if (e.type === "HAS_ACCORD" && perfumeIds.has(e.from)) {
-        // 어코드 엣지: 표시할 향수의 어코드만
-        edges.push(e);
+        return perfumeIds.has(e.from) && perfumeIds.has(e.to);
       }
+      return e.type === "HAS_ACCORD" && perfumeIds.has(e.from);
     });
     
-    // 선택한 어코드만 노드로 포함
-    const selectedAccordIds = new Set(selectedAccords.map(acc => `accord_${acc}`));
-    const accords = fullPayload.nodes.filter(n => 
-      n.type === "accord" && 
-      selectedAccordIds.has(n.id) && 
-      edges.some(e => e.to === n.id)
-    );
+    // 엣지에 연결된 어코드만 노드로 포함
+    const accordIds = new Set(edges.filter(e => e.type === "HAS_ACCORD").map(e => e.to));
+    const accords = filteredPayload.nodes.filter(n => n.type === "accord" && accordIds.has(n.id));
     
     return { nodes: [...accords, ...perfumes], edges };
-  }, [filteredPayload, fullPayload, displayLimit, selectedPerfumeId, top5SimilarIds, selectedAccords, minSimilarity]);
+  }, [filteredPayload, displayLimit, selectedPerfumeId, top5SimilarIds]);
 
   // vis-network 렌더링 및 인터랙션 설정
   useEffect(() => {
@@ -678,9 +692,9 @@ export default function PerfumeNetworkPage() {
     }
   }, [scriptReady, displayPayload, selectedPerfumeId, freezeMotion, hoveredSimilarPerfumeId, fullPayload, top5SimilarIds]);
 
-  const totalPages = Math.ceil(filterOptions.brands.length / BRANDS_PER_PAGE) || 1;
+  const totalPages = Math.ceil(effectiveFilterOptions.brands.length / BRANDS_PER_PAGE) || 1;
   const safeBrandPage = Math.min(brandPage, totalPages);
-  const visibleBrands = filterOptions.brands.slice((safeBrandPage - 1) * BRANDS_PER_PAGE, safeBrandPage * BRANDS_PER_PAGE);
+  const visibleBrands = effectiveFilterOptions.brands.slice((safeBrandPage - 1) * BRANDS_PER_PAGE, safeBrandPage * BRANDS_PER_PAGE);
 
   return (
     <div className="min-h-screen bg-[#F5F2EA] text-[#1F1F1F]">
@@ -710,7 +724,7 @@ export default function PerfumeNetworkPage() {
           
           {isAccordFilterOpen && (
             <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-10 gap-3">
-              {filterOptions.accords.map(acc => (
+              {effectiveFilterOptions.accords.map(acc => (
                 <button key={acc} onClick={() => { setSelectedAccords(prev => prev.includes(acc) ? prev.filter(a => a !== acc) : [...prev, acc]); setSelectedPerfumeId(null); }}
                   className={`relative aspect-square rounded-2xl border-2 transition-all ${selectedAccords.includes(acc) ? "border-[#C8A24D] bg-[#C8A24D]/10" : "border-[#E2D7C5] bg-white"}`}>
                   <div className="absolute inset-0 flex flex-col items-center justify-center p-2">
@@ -737,9 +751,9 @@ export default function PerfumeNetworkPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {[
                 { label: "브랜드", options: visibleBrands, selected: selectedBrands, setter: setSelectedBrands, formatter: fmtBrand, isBrand: true },
-                { label: "계절감", options: filterOptions.seasons, selected: selectedSeasons, setter: setSelectedSeasons, formatter: fmtSeason },
-                { label: "어울리는 상황", options: filterOptions.occasions, selected: selectedOccasions, setter: setSelectedOccasions, formatter: fmtOccasion },
-                { label: "어울리는 성별", options: filterOptions.genders, selected: selectedGenders, setter: setSelectedGenders, formatter: fmtGender }
+                { label: "계절감", options: effectiveFilterOptions.seasons, selected: selectedSeasons, setter: setSelectedSeasons, formatter: fmtSeason },
+                { label: "어울리는 상황", options: effectiveFilterOptions.occasions, selected: selectedOccasions, setter: setSelectedOccasions, formatter: fmtOccasion },
+                { label: "어울리는 성별", options: effectiveFilterOptions.genders, selected: selectedGenders, setter: setSelectedGenders, formatter: fmtGender }
               ].map((group, i) => (
                 <div key={i} className="flex flex-col gap-2">
                   <div className="flex justify-between items-center">

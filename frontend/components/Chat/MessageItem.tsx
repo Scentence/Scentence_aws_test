@@ -12,7 +12,7 @@ export type Message = {
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-// ✅ 1. 저장 버튼 컴포넌트
+// ✅ 1. 저장 버튼 컴포넌트 (기존 유지)
 const SaveButton = ({ id, name }: { id: string; name: string }) => {
     const [isSaved, setIsSaved] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -20,7 +20,6 @@ const SaveButton = ({ id, name }: { id: string; name: string }) => {
     const handleSave = async () => {
         let memberId = 0;
         try {
-            // localStorage에서 'localAuth'를 꺼내서 memberId 확인
             const localAuth = localStorage.getItem("localAuth");
             if (localAuth) {
                 const parsed = JSON.parse(localAuth);
@@ -89,7 +88,7 @@ const SaveButton = ({ id, name }: { id: string; name: string }) => {
     );
 };
 
-// ✅ 2. 텍스트 파서 및 이미지 렌더링 최적화
+// ✅ 2. 텍스트 파서 및 마크다운 스타일링
 const parseMessageContent = (text: string) => {
     if (!text) return null;
 
@@ -110,36 +109,80 @@ const parseMessageContent = (text: string) => {
                 key={index}
                 remarkPlugins={[remarkGfm]}
                 components={{
+                    // [기존 유지] 링크
                     a: ({ node, ...props }: any) => (
                         <a {...props} target="_blank" rel="noopener noreferrer" className="text-pink-600 hover:underline" />
                     ),
+                    
+                    // [기존 유지] 이미지 (Rounded-2xl 사각형 유지)
                     img: ({ node, ...props }: any) => {
-                        // [★수정] URL 패턴에 따른 이미지 스타일 분기 로직
                         const imageUrl = props.src || "";
                         const isSquare = imageUrl.includes("aspect_ratio=1:1");
-
                         return (
                             <span className="mx-auto my-6 block h-40 w-40 md:h-[250px] md:w-[250px] overflow-hidden rounded-2xl shadow-lg border border-slate-200 relative bg-white">
                                 <img
                                     {...props}
                                     className={`h-full w-full transition-all duration-300 ${isSquare
-                                            ? "object-contain p-2"  // 1:1 이미지는 여백을 주고 전체 표시
-                                            : "object-cover object-center scale-125" // 일반 이미지는 기존처럼 크롭 강조
+                                            ? "object-contain p-2"
+                                            : "object-cover object-center scale-125"
                                         }`}
                                     alt={props.alt || "Perfume Image"}
                                 />
                             </span>
                         );
                     },
+                    
+                    // [기존 유지] h2: 핑크색 보더 포인트 (브랜드명 등)
                     h2: ({ node, ...props }: any) => (
-                        <h2 {...props} className="text-xl font-bold mt-8 mb-3 text-[#393939] border-l-4 border-pink-500 pl-3" />
+                        <h2 {...props} className="text-lg font-bold mt-6 mb-3 text-[#393939] border-l-4 border-pink-500 pl-3 leading-none" />
                     ),
-                    hr: ({ node, ...props }: any) => <hr {...props} className="my-10 border-[#E5E4DE]" />,
+
+                    // [★신규 추가] h3: 소제목 (분위기, 향기 구성 등) 강조 스타일
+                    // 밑줄과 굵은 폰트로 섹션을 명확히 나눕니다.
+                    h3: ({ node, ...props }: any) => (
+                        <h3 {...props} className="text-base font-bold mt-6 mb-2 text-slate-800 border-b-2 border-slate-100 pb-1" />
+                    ),
+                    
+                    // [기존 유지] 기타 스타일
+                    hr: ({ node, ...props }: any) => <hr {...props} className="my-8 border-[#E5E4DE]" />,
                     em: ({ node, ...props }: any) => (
                         <em {...props} className="not-italic text-violet-600 font-bold mr-1" />
                     ),
                     strong: ({ node, ...props }: any) => <strong {...props} className="text-pink-600 font-extrabold" />,
-                    p: ({ node, ...props }: any) => <p {...props} className="mb-4 last:mb-0" />,
+                    p: ({ node, ...props }: any) => <p {...props} className="mb-3 last:mb-0 leading-relaxed text-slate-700" />,
+                    
+                    // [기존 유지] 리스트
+                    ul: ({ node, ...props }: any) => <ul {...props} className="list-disc pl-5 mb-4 space-y-1 text-sm" />,
+                    li: ({ node, ...props }: any) => <li {...props} className="pl-1" />,
+                    
+                    // [★디자인 수정] 인용구 (노트 설명, 코멘트 강조용)
+                    // 회색 박스 대신 깔끔한 핑크색 라인 스타일 적용
+                    blockquote: ({ node, ...props }: any) => (
+                        <blockquote 
+                            {...props} 
+                            className="my-3 pl-4 border-l-[3px] border-pink-300 text-sm text-slate-600 italic bg-transparent" 
+                        />
+                    ),
+
+                    // [기존 유지] 테이블
+                    table: ({ node, ...props }: any) => (
+                        <div className="overflow-x-auto my-4 rounded-lg border border-gray-100">
+                            <table {...props} className="w-full text-sm text-left text-gray-600" />
+                        </div>
+                    ),
+                    thead: ({ node, ...props }: any) => (
+                        <thead {...props} className="text-xs text-gray-500 uppercase bg-gray-50 border-b border-gray-100" />
+                    ),
+                    tbody: ({ node, ...props }: any) => (
+                        <tbody {...props} className="bg-white divide-y divide-gray-50" />
+                    ),
+                    tr: ({ node, ...props }: any) => <tr {...props} className="hover:bg-gray-50 transition-colors" />,
+                    th: ({ node, ...props }: any) => (
+                        <th {...props} className="px-4 py-2 font-semibold text-center whitespace-nowrap" />
+                    ),
+                    td: ({ node, ...props }: any) => (
+                        <td {...props} className="px-4 py-2 text-center whitespace-nowrap" />
+                    ),
                 }}
             >
                 {part}
@@ -148,23 +191,26 @@ const parseMessageContent = (text: string) => {
     });
 };
 
-// ✅ 3. 최종 조립
+// ✅ 3. 최종 조립 (기존 유지)
 const MessageItem = ({ message }: { message: Message }) => {
     if (message.role === "assistant" && !message.text) return null;
 
     return (
         <div className={`flex w-full ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`max-w-[85%] rounded-2xl px-5 py-4 text-sm leading-relaxed shadow-sm ${message.role === "user" ? "bg-[#E5E4DE] text-[#393939]" : "bg-white text-[#393939] border border-[#E5E4DE]"
+            <div className={`max-w-[85%] md:max-w-[75%] rounded-2xl px-5 py-4 text-sm leading-relaxed shadow-sm ${
+                message.role === "user" 
+                ? "bg-[#E5E4DE] text-[#393939]" 
+                : "bg-white text-[#393939] border border-[#E5E4DE]"
                 }`}>
                 <div className="mb-1 font-semibold uppercase tracking-[0.2em] text-[0.6rem] text-[#8E8E8E]">
                     {message.role === "user" ? "나" : "AI"}
                 </div>
                 {message.role === "assistant" ? (
-                    <div className="prose prose-stone prose-sm max-w-none">
+                    <div className="w-full break-words">
                         {parseMessageContent(message.text)}
                     </div>
                 ) : (
-                    <div className="whitespace-pre-wrap">{message.text}</div>
+                    <div className="whitespace-pre-wrap break-words">{message.text}</div>
                 )}
             </div>
         </div>

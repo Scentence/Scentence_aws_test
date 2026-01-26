@@ -36,7 +36,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 async def stream_generator(
     user_query: str, thread_id: str, member_id: int = 0
 ) -> Generator[str, None, None]:
@@ -80,9 +79,22 @@ async def stream_generator(
                     )
                     yield f"data: {data}\n\n"
 
-            # [A] Writer: 실시간 스트리밍
+            # [A] Writer & Info Agents: 실시간 답변 스트리밍
             if kind == "on_chat_model_stream":
-                if node_name == "writer":
+                
+                # [★추가] 내부용 헬퍼(번역기 등)의 출력은 화면에 보내지 않고 무시(Skip)
+                tags = event.get("tags", [])
+                if "internal_helper" in tags:
+                    continue
+
+                target_nodes = [
+                    "writer", 
+                    "perfume_describer", 
+                    "ingredient_specialist", 
+                    "similarity_curator",  # <--- 이거 추가 필수!
+                    "fallback_handler"     # <--- 이것도 추가 권장
+                ]
+                if node_name in target_nodes:
                     content = event["data"]["chunk"].content
                     if content:
                         full_ai_response += content
@@ -133,7 +145,6 @@ async def stream_generator(
     except Exception as e:
         error_msg = json.dumps({"type": "error", "content": str(e)}, ensure_ascii=False)
         yield f"data: {error_msg}\n\n"
-
 
 @app.post("/chat")
 async def chat_stream(request: ChatRequest):

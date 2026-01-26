@@ -1,6 +1,6 @@
+# backend/agent/graph.py
 import os
 import json
-import traceback
 import asyncio
 import itertools
 from typing import Literal, List, Dict, Any, Optional
@@ -11,7 +11,7 @@ from langchain_core.messages import SystemMessage, AIMessage, HumanMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
-# [Import] 로컬 모듈 - schemas.py의 모든 클래스를 가져옵니다.
+# [Import] 로컬 모듈
 from .schemas import (
     AgentState,
     UserPreferences,
@@ -19,8 +19,6 @@ from .schemas import (
     RoutingDecision,
     ResearchActionPlan,
     SearchStrategyPlan,
-    HardFilters,
-    StrategyFilters,
     ResearcherOutput,
     StrategyResult,
     PerfumeDetail,
@@ -44,22 +42,23 @@ from .prompts import (
 )
 from .database import save_recommendation_log
 
+# [정보 검색 전용 서브 그래프 임포트]
+from .graph_info import info_graph
+
 load_dotenv()
 
 # ==========================================
-# 1. 모델 설정 (성능 이원화)
+# 1. 모델 설정
 # ==========================================
 FAST_LLM = ChatOpenAI(model="gpt-4o-mini", temperature=0, streaming=True)
 SMART_LLM = ChatOpenAI(model="gpt-4.1", temperature=0, streaming=True)
 SUPER_SMART_LLM = ChatOpenAI(model="gpt-5.2", temperature=0, streaming=True)
 
-# ==========================================
-# 2. 유틸리티 및 보조 기능 함수
-# ==========================================
 
-
+# ==========================================
+# 2. 유틸리티
+# ==========================================
 def log_filters(h_filters: dict, s_filters: dict):
-    """현재 적용 중인 필터 조건을 가독성 좋게 출력합니다."""
     h_items = [f"{k.capitalize()}: {v}" for k, v in h_filters.items() if v]
     h_str = " | ".join(h_items) if h_items else "None"
 
@@ -77,11 +76,9 @@ def log_filters(h_filters: dict, s_filters: dict):
 async def smart_search_with_retry_async(
     h_filters: dict, s_filters: dict, exclude_ids: list = None, query_text: str = ""
 ):
-    """필터를 단계별로 완화하며 비동기적으로 향수를 검색합니다."""
     priority_order = ["note", "accord", "occasion"]
     active_keys = [k for k in priority_order if k in s_filters and s_filters[k]]
 
-    # 1차 시도 (전체 조건)
     results = await advanced_perfume_search_tool.ainvoke(
         {
             "hard_filters": h_filters,
@@ -93,7 +90,6 @@ async def smart_search_with_retry_async(
     if results:
         return results, "Perfect Match"
 
-    # 2차 시도 (필터 조합 완화 루프)
     for r in range(len(active_keys) - 1, 0, -1):
         for combo_keys in itertools.combinations(active_keys, r):
             temp_filters = {k: s_filters[k] for k in combo_keys}
@@ -110,20 +106,69 @@ async def smart_search_with_retry_async(
     return [], "No Results"
 
 
+async def call_info_graph_wrapper(state: AgentState):
+    """Sub-Graph Wrapper"""
+    print(f"\n🚀 [Main Graph] 'info_graph' 서브 그래프 호출...", flush=True)
+    current_query = state.get("user_query", "")
+
+    if not current_query and state.get("messages"):
+        last_msg = state["messages"][-1]
+        if isinstance(last_msg, HumanMessage):
+            current_query = last_msg.content
+
+    print(f"   👉 전달할 Query: {current_query}", flush=True)
+
+    subgraph_input = {
+        "user_query": current_query,
+        "messages": state.get("messages", []),
+    }
+
+    try:
+        result = await info_graph.ainvoke(subgraph_input)
+        print(f"✅ [Main Graph] 서브 그래프 완료. 결과 복귀.", flush=True)
+        return {"messages": result.get("messages", [])}
+
+    except Exception as e:
+        print(f"🚨 [Main Graph] 서브 그래프 에러: {e}", flush=True)
+        import traceback
+
+        traceback.print_exc()
+        return {"messages": [AIMessage(content="정보 검색 중 오류가 발생했습니다.")]}
+
+
 # ==========================================
 # 3. Node Functions
 # ==========================================
 
 
 def supervisor_node(state: AgentState):
+    """[Main Router]"""
     print("\n" + "=" * 60, flush=True)
-    print("👀 [Supervisor] 대화 분석 및 정보 추출 중...", flush=True)
-    current_prefs = state.get("user_preferences", {})
+    print("👀 [Supervisor] 사용자 의도 분류 중...", flush=True)
 
     if state.get("active_mode") == "interviewer":
+        print("   👉 인터뷰 진행 중 -> Interviewer로 이동", flush=True)
         return {"next_step": "interviewer"}
 
+    messages = [SystemMessage(content=SUPERVISOR_PROMPT)] + state["messages"]
+
+    try:
+        decision = SMART_LLM.with_structured_output(RoutingDecision).invoke(messages)
+        next_step = decision.next_step
+        print(f"   👉 분류 결과: {next_step}", flush=True)
+        return {"next_step": next_step}
+
+    except Exception as e:
+        print(f"   ⚠️ 분류 실패(Error): {e} -> 기본값 Writer로 이동", flush=True)
+        return {"next_step": "writer"}
+
+
+def interviewer_node(state: AgentState):
+    """[Interviewer]"""
+    print(f"\n🎤 [Interviewer] 추천 정보 분석 및 검증...", flush=True)
+    current_prefs = state.get("user_preferences", {})
     messages = [SystemMessage(content=INTERVIEWER_PROMPT)] + state["messages"]
+
     try:
         result = SMART_LLM.with_structured_output(InterviewResult).invoke(messages)
         new_prefs = result.user_preferences.dict(exclude_unset=True)
@@ -132,42 +177,26 @@ def supervisor_node(state: AgentState):
             **{k: v for k, v in new_prefs.items() if v is not None},
         }
 
-        if result.is_off_topic:
-            return {"next_step": "writer", "active_mode": None}
         if result.is_sufficient:
+            print(
+                f"      ✅ [Handover] 정보 확보 완료! Researcher로 전달: {json.dumps(updated_prefs, ensure_ascii=False)}",
+                flush=True,
+            )
             return {
                 "next_step": "researcher",
                 "user_preferences": updated_prefs,
-                "status": "추천 전략을 세우는 중입니다...",
+                "status": "모든 정보가 확인되었습니다. 추천 전략을 수립합니다...",
                 "active_mode": None,
             }
-        return {
-            "next_step": "interviewer",
-            "user_preferences": updated_prefs,
-            "active_mode": "interviewer",
-        }
-    except Exception:
-        return {"next_step": "interviewer"}
 
-
-def interviewer_node(state: AgentState):
-    print(f"\n🎤 [Interviewer] 정보 분석 및 추가 질문 생성...", flush=True)
-    messages = [SystemMessage(content=INTERVIEWER_PROMPT)] + state["messages"]
-    try:
-        result = SMART_LLM.with_structured_output(InterviewResult).invoke(messages)
-        if result.is_sufficient:
-            return {
-                "next_step": "researcher",
-                "status": "추천 전략을 세우는 중입니다...",
-                "active_mode": None,
-            }
         return {
             "messages": [AIMessage(content=result.response_message)],
-            "user_preferences": result.user_preferences.dict(),
+            "user_preferences": updated_prefs,
             "active_mode": "interviewer",
             "next_step": "end",
         }
-    except Exception:
+    except Exception as e:
+        print(f"Interviewer Error: {e}")
         return {"next_step": "writer"}
 
 
@@ -177,7 +206,6 @@ async def researcher_node(state: AgentState):
     user_prefs = state.get("user_preferences", {})
     current_context = json.dumps(user_prefs, ensure_ascii=False)
 
-    # 1. 하드 필터용 노트 전처리 (사용자 입력 노드를 DB 규격으로 변환)
     user_note = user_prefs.get("note")
     refined_hard_note = None
     if user_note:
@@ -185,29 +213,35 @@ async def researcher_node(state: AgentState):
         if matched:
             refined_hard_note = matched[0]
 
-    # 2. 전략 수립 (gpt-4o-mini 사용으로 지연 시간 단축)
     messages = [
         SystemMessage(content=RESEARCHER_SYSTEM_PROMPT),
         HumanMessage(
             content=f"사용자 요청 데이터: {current_context}\n위 데이터를 바탕으로 '이미지 강조, 보완, 반전'의 3가지 검색 전략을 세워주세요."
         ),
     ]
+
+    # 1. 전략 수립 호출
     plan_result = await SMART_LLM.with_structured_output(ResearchActionPlan).ainvoke(
         messages
     )
 
-    # 3. 개별 전략 처리 비동기 내부 함수 (중복 방지를 위해 후보군 전체 반환)
-    async def process_strategy_candidates(plan: SearchStrategyPlan):
-        # [로그] 각 전략의 시작 알림
-        print(f"   👉 [Parallel Task Start] {plan.strategy_name}", flush=True)
+    # [★할루시네이션 방지: 전략 수립 실패 처리]
+    if not plan_result or not plan_result.plans:
+        print(f"      ❌ [Result] 전략 수립 실패 (LLM 응답 없음)", flush=True)
+        return {
+            "research_results": {"results": []},
+            "messages": [AIMessage(content="[RESEARCH_FAILED]")],
+            "next_step": "writer",
+            "status": "추천 전략을 수립하는 데 어려움이 있습니다. 잠시 후 다시 시도해 주세요.",
+        }
 
+    async def process_strategy_candidates(plan: SearchStrategyPlan):
+        print(f"   👉 [Parallel Task] {plan.strategy_name}", flush=True)
         h_filters = plan.hard_filters.model_dump(exclude_none=True)
         if refined_hard_note:
             h_filters["note"] = refined_hard_note
-
         s_filters = plan.strategy_filters.model_dump(exclude_none=True)
 
-        # 소프트 필터용 노트 벡터 검색 및 LLM 최종 선택
         strategy_note_input = s_filters.get("note")
         if strategy_note_input:
             raw_keyword = (
@@ -218,7 +252,6 @@ async def researcher_node(state: AgentState):
             candidates = await lookup_note_by_vector_tool.ainvoke(
                 {"keyword": raw_keyword}
             )
-
             if candidates:
                 selection_messages = [
                     SystemMessage(
@@ -232,31 +265,18 @@ async def researcher_node(state: AgentState):
                 llm_selected = [
                     c for c in candidates if c.lower() in selected_res.content.lower()
                 ]
-                s_filters["note"] = (
-                    llm_sel if (llm_sel := llm_selected) else candidates[:1]
-                )
+                s_filters["note"] = llm_selected if llm_selected else candidates[:1]
 
-        # [로그] 현재 적용된 상세 필터 출력
         log_filters(h_filters, s_filters)
-
-        # 검색 결과 리스트 전체(candidates)를 비동기로 가져옵니다.
         db_perfumes, match_type = await smart_search_with_retry_async(
             h_filters, s_filters, query_text=plan.reason
         )
-
-        # [로그] 검색 결과 요약 출력
-        print(
-            f"      ✅ {plan.strategy_name}: {len(db_perfumes)}건 발견 ({match_type})",
-            flush=True,
-        )
-
         return {"plan": plan, "candidates": db_perfumes}
 
-    # 4. asyncio.gather를 통해 3가지 전략을 병렬로 동시 수행
+    # 2. 병렬 검색 실행
     tasks = [process_strategy_candidates(p) for p in plan_result.plans]
     all_candidates_results = await asyncio.gather(*tasks)
 
-    # 5. 중복 제거 및 전략별 고유 향수 최종 선택
     final_results = []
     seen_perfume_ids = set()
 
@@ -264,7 +284,6 @@ async def researcher_node(state: AgentState):
         plan = item["plan"]
         candidates = item["candidates"]
 
-        # 이미 다른 전략에서 선택된 향수는 제외하고 가장 순위가 높은 것을 선택합니다.
         selected_p = None
         for p in candidates:
             if p["id"] not in seen_perfume_ids:
@@ -272,11 +291,18 @@ async def researcher_node(state: AgentState):
                 seen_perfume_ids.add(p["id"])
                 break
 
-        # 만약 모든 후보가 중복이거나 결과가 없다면 해당 전략은 건너뜁니다.
         if not selected_p:
+            print(
+                f"      ❌ [Result] {plan.strategy_name}: 검색된 향수가 없거나 중복되어 선택 실패",
+                flush=True,
+            )
             continue
 
-        # DB 로그 저장 및 결과 객체 생성
+        print(
+            f"      ✅ [Result] {plan.strategy_name}: {selected_p.get('brand')} - {selected_p.get('name')} (ID: {selected_p.get('id')})",
+            flush=True,
+        )
+
         save_recommendation_log(
             member_id=current_member_id, perfumes=[selected_p], reason=plan.reason
         )
@@ -306,26 +332,62 @@ async def researcher_node(state: AgentState):
             )
         )
 
-    # 6. 최종 결과를 상태에 반영하고 작가 노드로 이동
+    # 3. 결과 반환 (기존 로직 유지)
+    if not final_results:
+        print(
+            f"      ❌ [Result] 모든 전략에서 추천 가능한 향수를 찾지 못했습니다.",
+            flush=True,
+        )
+        return {
+            "research_results": {"results": []},
+            "messages": [AIMessage(content="[RESEARCH_FAILED]")],
+            "next_step": "writer",
+            "status": "조건에 맞는 향수를 찾지 못했습니다. 😢 대안을 안내해 드릴게요...",
+        }
+
     return {
         "research_results": {"results": [r.dict() for r in final_results]},
         "messages": [AIMessage(content="[RESEARCH_DONE]")],
         "next_step": "writer",
+        "status": "전략에 맞는 향수들을 모두 찾았습니다! 답변을 작성합니다...",
     }
 
 
 async def writer_node(state: AgentState):
     print(f"\n✍️ [Writer] 답변 작성 중...", flush=True)
-    research_data = state.get("research_results", {})
-    results_list = research_data.get("results", [])
 
-    prompt = WRITER_RECOMMENDATION_PROMPT if results_list else WRITER_FAILURE_PROMPT
-    data_ctx = (
-        json.dumps(research_data, ensure_ascii=False, indent=2) if results_list else ""
-    )
+    research_data = state.get("research_results")
+    results_list = research_data.get("results", []) if research_data else []
 
+    # 1. 프롬프트 선택 로직 (기존 로직 유지)
+    if research_data is None:
+        prompt = WRITER_CHAT_PROMPT
+        data_ctx = ""
+    elif not results_list:
+        prompt = WRITER_FAILURE_PROMPT
+        data_ctx = ""
+    else:
+        prompt = WRITER_RECOMMENDATION_PROMPT
+        data_ctx = json.dumps(research_data, ensure_ascii=False, indent=2)
+
+    # [★할루시네이션 방지: 부분 성공 및 그라운딩 강화]
+    # 결과 개수가 3개 미만일 때 LLM이 부족한 개수를 채우기 위해 향수를 지어내는 것을 방지합니다.
+    hallucination_guard = ""
+    if 0 < len(results_list) < 3:
+        hallucination_guard = f"\n\n⚠️ [중요 경고] 현재 검색된 향수는 {len(results_list)}개뿐입니다. 부족한 개수를 채우기 위해 절대 다른 향수를 지어내지 마세요. 검색된 {len(results_list)}개의 향수만 정직하게 추천하세요."
+
+    # 이전 대화 맥락에 있는 과거 향수 정보를 무시하도록 지시합니다.
+    grounding_instruction = """
+[★데이터 준수 지침★]
+1. 반드시 아래 [참고 데이터] 섹션에 명시된 향수만 언급하세요.
+2. 이전 대화 맥락에 다른 향수가 있더라도, 현재 [참고 데이터]에 없다면 절대 추천하지 마세요.
+"""
+
+    # 2. 메시지 생성 및 호출
     messages = [
-        SystemMessage(content=f"{prompt}\n\n[참고 데이터]:\n{data_ctx}")
+        SystemMessage(
+            content=f"{prompt}{hallucination_guard}\n{grounding_instruction}\n\n[참고 데이터]:\n{data_ctx}"
+        )
     ] + state["messages"]
 
     response = await SUPER_SMART_LLM.ainvoke(messages)
@@ -336,24 +398,34 @@ async def writer_node(state: AgentState):
 # 4. Graph Build
 # ==========================================
 workflow = StateGraph(AgentState)
+
 workflow.add_node("supervisor", supervisor_node)
 workflow.add_node("interviewer", interviewer_node)
 workflow.add_node("researcher", researcher_node)
 workflow.add_node("writer", writer_node)
+workflow.add_node("info_retrieval_subgraph", call_info_graph_wrapper)
 
 workflow.add_edge(START, "supervisor")
+
 workflow.add_conditional_edges(
     "supervisor",
     lambda x: x["next_step"],
-    {"interviewer": "interviewer", "researcher": "researcher", "writer": "writer"},
+    {
+        "interviewer": "interviewer",
+        "info_retrieval": "info_retrieval_subgraph",
+        "writer": "writer",
+    },
 )
+
 workflow.add_conditional_edges(
     "interviewer",
     lambda x: x["next_step"],
     {"end": END, "researcher": "researcher", "writer": "writer"},
 )
+
 workflow.add_edge("researcher", "writer")
 workflow.add_edge("writer", END)
+workflow.add_edge("info_retrieval_subgraph", END)
 
 checkpointer = MemorySaver()
 app_graph = workflow.compile(checkpointer=checkpointer)

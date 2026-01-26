@@ -200,15 +200,27 @@ def search_perfumes(
 
         if hard_filters.get("gender"):
             g = hard_filters["gender"].lower()
-            tg = (
-                "Feminine"
-                if g in ["women", "female"]
-                else "Masculine" if g in ["men", "male"] else "Unisex"
-            )
-            where_clauses.append(
-                "m.perfume_id IN (SELECT perfume_id FROM TB_PERFUME_GENDER_R WHERE gender = %s)"
-            )
-            params.append(tg)
+            
+            if g in ["women", "female"]:
+                # 여성용 요청 시: 여성용 + 유니섹스 포함
+                where_clauses.append(
+                    "m.perfume_id IN (SELECT perfume_id FROM TB_PERFUME_GENDER_R WHERE gender IN (%s, %s))"
+                )
+                params.extend(["Feminine", "Unisex"]) # 여기서 값을 추가합니다.
+                
+            elif g in ["men", "male"]:
+                # 남성용 요청 시: 남성용 + 유니섹스 포함
+                where_clauses.append(
+                    "m.perfume_id IN (SELECT perfume_id FROM TB_PERFUME_GENDER_R WHERE gender IN (%s, %s))"
+                )
+                params.extend(["Masculine", "Unisex"]) # 여기서 값을 추가합니다.
+                
+            else:
+                # 유니섹스 요청 시: 오직 'Unisex'만 검색
+                where_clauses.append(
+                    "m.perfume_id IN (SELECT perfume_id FROM TB_PERFUME_GENDER_R WHERE gender = %s)"
+                )
+                params.append("Unisex") # 여기서 값을 추가합니다.
 
         if hard_filters.get("brand"):
             where_clauses.append("m.perfume_brand ILIKE %s")

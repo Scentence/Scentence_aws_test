@@ -4,7 +4,7 @@
  * 
  * 현재 사용되지 않음 - 향후 시즌별 페이지 구현 시 사용 예정
  */
-import type { Season } from "../types";
+import type { Season } from "@/app/perfume-wiki/types";
 import SeriesGrid from "./SeriesGrid";
 
 type SeasonSectionProps = {

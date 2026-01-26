@@ -25,7 +25,7 @@ export default function ShareButton() {
       <button
         type="button"
         onClick={handleShare}
-        className="flex items-center gap-2 px-4 py-2 rounded-full border border-[#EFEFEF] bg-white hover:border-[#C8A24D] transition-all"
+        className="flex items-center gap-2.5 px-5 py-2.5 rounded-full border border-[#EFEFEF] bg-white hover:border-[#C8A24D] hover:shadow-md transition-all duration-300"
         aria-label="공유하기"
       >
         <span className="text-lg text-[#777]">↗</span>
@@ -33,7 +33,7 @@ export default function ShareButton() {
       </button>
 
       {showToast && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 px-5 py-3 rounded-full bg-[#2B2B2B] text-white text-sm font-medium shadow-lg z-50 animate-fade-in">
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 px-6 py-3.5 rounded-full bg-[#2B2B2B] text-white text-sm font-medium shadow-xl z-50 animate-fade-in">
           링크가 복사되었습니다
         </div>
       )}

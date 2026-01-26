@@ -2,7 +2,7 @@
  * 시리즈 헤더 컴포넌트
  * 시리즈 상세 페이지 상단의 시리즈 정보 표시 영역
  */
-import type { Series } from "../types";
+import type { Series } from "@/app/perfume-wiki/types";
 
 type SeriesHeaderProps = {
   series: Series;
@@ -22,7 +22,7 @@ export default function SeriesHeader({ series }: SeriesHeaderProps) {
         <div className="space-y-3">
           <span className="inline-flex items-center gap-2 text-xs font-semibold text-[#8C6A1D]">
             <span className="w-1.5 h-1.5 rounded-full bg-[#C8A24D]" />
-            Series
+            {series.id}
           </span>
           <h1 className="text-2xl md:text-3xl font-bold text-[#1F1F1F]">
             {series.title}

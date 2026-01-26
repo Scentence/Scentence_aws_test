@@ -3,7 +3,7 @@
  * 시리즈 정보를 카드 형태로 표시하고 상세 페이지로 링크
  */
 import Link from "next/link";
-import type { Series } from "../types";
+import type { Series } from "@/app/perfume-wiki/types";
 
 type SeriesCardProps = {
   series: Series;
@@ -35,7 +35,7 @@ export default function SeriesCard({
         <h3 className="text-base font-bold text-[#2B2B2B] leading-snug">
           {seasonTitle}
         </h3>
-        <p className="text-[11px] text-[#999] pt-1">{`EP ${series.episodes.length}개`}</p>
+        <p className="text-[11px] text-[#999] pt-1">{`에피소드 ${series.episodes.length}개`}</p>
       </div>
     </Link>
   );

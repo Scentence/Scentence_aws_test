@@ -10,7 +10,7 @@ export default function EpisodeCTA() {
     {
       title: "일반 향수 추천",
       description: "나에게 딱 맞는 향수를 찾아보세요",
-      href: "/recommendation",
+      href: "/chat",
       bgColor: "bg-[#FFF8E7]",
       hoverColor: "hover:bg-[#FFF0D0]",
     },
@@ -24,19 +24,19 @@ export default function EpisodeCTA() {
     {
       title: "향수맵 바로가기",
       description: "향수의 세계를 시각적으로 탐색해보세요",
-      href: "/map",
+      href: "/perfume-network",
       bgColor: "bg-[#F0FFF4]",
       hoverColor: "hover:bg-[#E0FFE9]",
     },
   ];
 
   return (
-    <section className="py-12 px-6 rounded-3xl bg-gradient-to-br from-[#FDFBF8] to-[#F8F6F1] border border-[#F0F0F0]">
-      <div className="text-center mb-8">
-        <h3 className="text-2xl font-bold text-[#1F1F1F] mb-2">
+    <section className="py-14 px-8 md:px-10 rounded-3xl bg-gradient-to-br from-[#FDFBF8] to-[#F8F6F1] border border-[#F0F0F0] shadow-sm">
+      <div className="text-center mb-10">
+        <h3 className="text-xl md:text-2xl font-bold text-[#1F1F1F] mb-3">
           다음 단계를 시작해보세요
         </h3>
-        <p className="text-sm text-[#777]">
+        <p className="text-xs md:text-sm text-[#777]">
           이제 배운 내용을 바탕으로 실제 향수를 탐색해보는 건 어떨까요?
         </p>
       </div>
@@ -46,15 +46,15 @@ export default function EpisodeCTA() {
           <Link
             key={action.href}
             href={action.href}
-            className={`group flex flex-col p-6 rounded-2xl ${action.bgColor} ${action.hoverColor} transition-all border border-transparent hover:border-[#C8A24D] hover:shadow-md`}
+            className={`group flex flex-col p-7 rounded-2xl ${action.bgColor} ${action.hoverColor} transition-all duration-300 border border-transparent hover:border-[#C8A24D] hover:shadow-lg hover:-translate-y-1`}
           >
-            <h4 className="text-lg font-bold text-[#2B2B2B] mb-2">
+            <h4 className="text-base font-bold text-[#2B2B2B] mb-2.5">
               {action.title}
             </h4>
-            <p className="text-sm text-[#666] leading-relaxed">
+            <p className="text-xs text-[#666] leading-relaxed flex-1">
               {action.description}
             </p>
-            <span className="mt-4 text-[#C8A24D] text-sm font-semibold group-hover:translate-x-1 transition-transform inline-block">
+            <span className="mt-5 text-[#C8A24D] text-sm font-semibold group-hover:translate-x-2 transition-transform inline-block">
               바로가기 →
             </span>
           </Link>

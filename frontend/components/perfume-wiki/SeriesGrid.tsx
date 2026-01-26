@@ -3,7 +3,7 @@
  * 시리즈 목록을 반응형 그리드로 표시
  */
 import SeriesCard from "./SeriesCard";
-import type { Series } from "../types";
+import type { Series } from "@/app/perfume-wiki/types";
 
 type SeriesGridProps = {
   series: (Series & {

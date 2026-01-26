@@ -77,24 +77,27 @@ def analyze_user_input(user_text: str) -> PreferenceSummary:
         logger.warning("Langchain dependencies missing; using heuristic preferences.")
         return _heuristic_preferences(user_text)
 
-    prompt = ChatPromptTemplate.from_template(USER_PREFERENCE_PROMPT)
-    model = ChatOpenAI(model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"), temperature=0)
-    chain = prompt | model | StrOutputParser()
     response = ""
+    # LLM 호출/파싱 실패 시 휴리스틱으로 안전하게 폴백
     try:
+        prompt = ChatPromptTemplate.from_template(USER_PREFERENCE_PROMPT)
+        model = ChatOpenAI(model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"), temperature=0)
+        chain = prompt | model | StrOutputParser()
         response = chain.invoke({"user_input": user_text})
         payload = json.loads(response)
-    except Exception:
+    except Exception as exc:
         try:
             start = response.find("{")
             end = response.rfind("}")
             if start != -1 and end != -1:
                 payload = json.loads(response[start : end + 1])
             else:
-                logger.warning("LLM response not JSON; falling back to heuristics.")
-                return _heuristic_preferences(user_text)
+                raise ValueError("LLM response missing JSON payload")
         except Exception:
-            logger.warning("Failed to parse LLM response; falling back to heuristics.")
+            logger.warning(
+                "LLM preference extraction failed; falling back to heuristics.",
+                exc_info=exc,
+            )
             return _heuristic_preferences(user_text)
 
     raw_keywords = payload.get("keywords", []) if isinstance(payload, dict) else []

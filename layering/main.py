@@ -6,31 +6,55 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 try:  # pragma: no cover - fallback for script execution
-    from .agent.database import LayeringDataError, PerfumeRepository, check_db_health
+    from .agent.database import (
+        LayeringDataError,
+        PerfumeRepository,
+        check_db_health,
+        save_recommendation_feedback,
+        save_my_perfume,
+        save_recommendation_results,
+    )
     from .agent.graph import analyze_user_input, analyze_user_query, suggest_perfume_options
     from .agent.schemas import (
         LayeringError,
         LayeringErrorResponse,
         LayeringRequest,
         LayeringResponse,
+        RecommendationFeedbackRequest,
+        RecommendationFeedbackResponse,
+        SaveResult,
         UserQueryRequest,
         UserQueryResponse,
     )
     from .agent.tools import rank_recommendations
 except ImportError:  # pragma: no cover
-    from agent.database import LayeringDataError, PerfumeRepository, check_db_health
+    from agent.database import (
+        LayeringDataError,
+        PerfumeRepository,
+        check_db_health,
+        save_recommendation_feedback,
+        save_my_perfume,
+        save_recommendation_results,
+    )
     from agent.graph import analyze_user_input, analyze_user_query, suggest_perfume_options
     from agent.schemas import (
         LayeringError,
         LayeringErrorResponse,
         LayeringRequest,
         LayeringResponse,
+        RecommendationFeedbackRequest,
+        RecommendationFeedbackResponse,
+        SaveResult,
         UserQueryRequest,
         UserQueryResponse,
     )
     from agent.tools import rank_recommendations
 
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+)
 app = FastAPI(title="Layering Service")
 logger = logging.getLogger("layering")
 DEBUG_ERROR_DETAILS = os.getenv("LAYERING_DEBUG_ERRORS", "").lower() in {
@@ -106,12 +130,41 @@ def health() -> dict[str, str]:
 @app.post("/layering/recommend", response_model=LayeringResponse)
 def layering_recommend(payload: LayeringRequest) -> LayeringResponse:
     try:
+        logger.info(
+            "Layering recommend request received (member_id=%s, save_recommendations=%s, save_my_perfume=%s)",
+            payload.member_id,
+            payload.save_recommendations,
+            payload.save_my_perfume,
+        )
+        if not payload.member_id:
+            logger.info("Layering recommend request has no member_id")
         repo = get_repository()
         recommendations, total_available = rank_recommendations(
             payload.base_perfume_id,
             payload.keywords,
             repo,
         )
+        save_results = []
+        if payload.member_id and payload.save_recommendations:
+            # 추천 결과 저장 요청이 있을 때만 recom_db에 기록
+            save_results.append(
+                save_recommendation_results(payload.member_id, recommendations)
+            )
+        if payload.member_id and payload.save_my_perfume:
+            try:
+                base_perfume = repo.get_perfume(payload.base_perfume_id)
+                save_results.append(save_my_perfume(payload.member_id, base_perfume))
+            except KeyError:
+                save_results.append(
+                    SaveResult(
+                        target="my_perfume",
+                        saved=False,
+                        saved_count=0,
+                        message="base perfume not found",
+                    )
+                )
+        if payload.member_id:
+            logger.info("Layering recommend save_results=%s", save_results)
     except LayeringDataError as exc:
         logger.exception("Layering data error during recommendation")
         error_payload = build_error_response(
@@ -163,12 +216,21 @@ def layering_recommend(payload: LayeringRequest) -> LayeringResponse:
         total_available=total_available,
         recommendations=recommendations,
         note=note,
+        save_results=save_results,
     )
 
 
 @app.post("/layering/analyze", response_model=UserQueryResponse)
 def layering_analyze(payload: UserQueryRequest) -> UserQueryResponse:
     try:
+        logger.info(
+            "Layering analyze request received (member_id=%s, save_recommendations=%s, save_my_perfume=%s)",
+            payload.member_id,
+            payload.save_recommendations,
+            payload.save_my_perfume,
+        )
+        if not payload.member_id:
+            logger.info("Layering analyze request has no member_id")
         repo = get_repository()
         preferences = analyze_user_input(payload.user_text)
         keywords = preferences.keywords
@@ -178,6 +240,7 @@ def layering_analyze(payload: UserQueryRequest) -> UserQueryResponse:
         base_perfume_id = None
         clarification_prompt = None
         clarification_options: list[str] = []
+        save_results = []
 
         if analysis.pairing_analysis:
             recommendation = analysis.pairing_analysis.result
@@ -194,6 +257,27 @@ def layering_analyze(payload: UserQueryRequest) -> UserQueryResponse:
             note = "No perfume names detected from the query."
             clarification_prompt = "레이어링할 향수 이름을 알려주세요. 예: CK One, Wood Sage & Sea Salt"
             clarification_options = suggest_perfume_options(payload.user_text, repo)
+
+        if payload.member_id and payload.save_recommendations and recommendation:
+            # 추천 결과 저장 요청이 있을 때만 recom_db에 기록
+            save_results.append(
+                save_recommendation_results(payload.member_id, [recommendation])
+            )
+        if payload.member_id and payload.save_my_perfume and base_perfume_id:
+            try:
+                base_perfume = repo.get_perfume(base_perfume_id)
+                save_results.append(save_my_perfume(payload.member_id, base_perfume))
+            except KeyError:
+                save_results.append(
+                    SaveResult(
+                        target="my_perfume",
+                        saved=False,
+                        saved_count=0,
+                        message="base perfume not found",
+                    )
+                )
+        if payload.member_id:
+            logger.info("Layering analyze save_results=%s", save_results)
     except LayeringDataError as exc:
         logger.exception("Layering data error during analysis")
         error_payload = build_error_response(
@@ -243,4 +327,27 @@ def layering_analyze(payload: UserQueryRequest) -> UserQueryResponse:
         clarification_prompt=clarification_prompt,
         clarification_options=clarification_options,
         note=note,
+        save_results=save_results,
     )
+
+
+@app.post(
+    "/layering/recommendation/feedback",
+    response_model=RecommendationFeedbackResponse,
+)
+def save_layering_feedback(
+    payload: RecommendationFeedbackRequest,
+) -> RecommendationFeedbackResponse:
+    logger.info(
+        "Layering feedback received (member_id=%s, perfume_id=%s, preference=%s)",
+        payload.member_id,
+        payload.perfume_id,
+        payload.preference,
+    )
+    save_result = save_recommendation_feedback(
+        payload.member_id,
+        payload.perfume_id,
+        payload.perfume_name,
+        payload.preference,
+    )
+    return RecommendationFeedbackResponse(save_result=save_result)

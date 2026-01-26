@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -61,10 +61,28 @@ class PerfumeVector(BaseModel):
 class LayeringRequest(BaseModel):
     base_perfume_id: str = Field(..., description="Base perfume identifier")
     keywords: List[str] = Field(default_factory=list)
+    member_id: Optional[int] = Field(
+        default=None, description="Member identifier for saving results"
+    )
+    save_recommendations: bool = Field(
+        default=True, description="Persist recommendations when member_id is set"
+    )
+    save_my_perfume: bool = Field(
+        default=False, description="Save base perfume to my collection"
+    )
 
 
 class UserQueryRequest(BaseModel):
     user_text: str = Field(..., description="Free-form user question")
+    member_id: Optional[int] = Field(
+        default=None, description="Member identifier for saving results"
+    )
+    save_recommendations: bool = Field(
+        default=True, description="Persist recommendations when member_id is set"
+    )
+    save_my_perfume: bool = Field(
+        default=False, description="Save detected base perfume to my collection"
+    )
 
 
 class ScoreBreakdown(BaseModel):
@@ -89,12 +107,33 @@ class LayeringCandidate(BaseModel):
     layered_vector: List[float] = Field(default_factory=list)
 
 
+class SaveResult(BaseModel):
+    target: str = Field(description="Save target identifier")
+    saved: bool
+    saved_count: int = 0
+    message: Optional[str] = None
+
+
+class RecommendationFeedbackRequest(BaseModel):
+    member_id: int = Field(..., description="Member identifier")
+    perfume_id: str = Field(..., description="Recommended perfume identifier")
+    perfume_name: str = Field(..., description="Recommended perfume name")
+    preference: Literal["GOOD", "BAD", "NEUTRAL"] = Field(
+        ..., description="Satisfaction value for the recommendation"
+    )
+
+
+class RecommendationFeedbackResponse(BaseModel):
+    save_result: SaveResult
+
+
 class LayeringResponse(BaseModel):
     base_perfume_id: str
     keywords: List[str]
     total_available: int
     recommendations: List[LayeringCandidate]
     note: Optional[str] = None
+    save_results: List[SaveResult] = Field(default_factory=list)
 
 
 class DetectedPerfume(BaseModel):
@@ -133,6 +172,7 @@ class UserQueryResponse(BaseModel):
     clarification_prompt: Optional[str] = None
     clarification_options: List[str] = Field(default_factory=list)
     note: Optional[str] = None
+    save_results: List[SaveResult] = Field(default_factory=list)
 
 
 class LayeringError(BaseModel):

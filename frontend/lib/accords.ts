@@ -69,3 +69,53 @@ export const ACCORD_COLORS: Record<(typeof BACKEND_ACCORDS)[number], string> = {
   Aquatic: "#5FBED7",
   Synthetic: "#7FA1D6",
 };
+
+/** 어코드 한글명 매핑 */
+export const ACCORD_LABELS: Partial<Record<(typeof BACKEND_ACCORDS)[number], string>> & Record<string, string> = {
+  Animal: "애니멀",
+  Aquatic: "아쿠아틱",
+  Chypre: "시프레",
+  Citrus: "시트러스",
+  Creamy: "크리미",
+  Earthy: "얼씨",
+  Floral: "플로럴",
+  Fougère: "푸제르",
+  Fruity: "프루티",
+  Gourmand: "구르망",
+  Green: "그린",
+  Leathery: "레더리",
+  Oriental: "오리엔탈",
+  Powdery: "파우더리",
+  Resinous: "수지향",
+  Smoky: "스모키",
+  Spicy: "스파이시",
+  Sweet: "스위트",
+  Synthetic: "인공향",
+  Woody: "우디",
+  Fresh: "프레시",
+};
+
+/** 어코드 설명 */
+export const ACCORD_DESCRIPTIONS: Partial<Record<(typeof BACKEND_ACCORDS)[number], string>> & Record<string, string> = {
+  Animal: "관능적이고 야성적인 매력, 은은한 무스크와 암브레트의 깊이",
+  Aquatic: "시원하고 청량한 물결, 바다와 빗소리가 주는 맑은 느낌",
+  Chypre: "우아하고 세련된 클래식, 모스와 베르가못의 조화로운 깊이",
+  Citrus: "상쾌하고 생동감 넘치는 활력, 레몬과 오렌지의 밝은 에너지",
+  Creamy: "부드럽고 포근한 감촉, 바닐라와 산달우드의 따스한 포옹",
+  Earthy: "자연 그대로의 흙내음, 이끼와 뿌리가 주는 안정감",
+  Floral: "화사하고 우아한 꽃의 향연, 로즈와 재스민의 낭만적 순간",
+  Fougère: "청량하고 허브향 가득한 고전미, 라벤더와 쿠마린의 조화",
+  Fruity: "달콤하고 싱그러운 과실향, 복숭아와 베리의 즐거운 산뜻함",
+  Gourmand: "달콤하고 맛있는 디저트 같은 향기, 카라멜과 초콜릿의 유혹",
+  Green: "신선하고 생기 넘치는 풀잎향, 새싹과 이파리의 생명력",
+  Leathery: "강렬하고 터프한 가죽 향기, 스웨이드와 담배의 카리스마",
+  Oriental: "이국적이고 신비로운 감각, 스파이스와 레진의 깊은 매혹",
+  Powdery: "부드럽고 포근한 파우더 감촉, 아이리스와 바이올렛의 온화함",
+  Resinous: "따뜻하고 깊은 수지의 향연, 엠버와 미르의 묵직한 감성",
+  Smoky: "깊고 그윽한 훈연향, 인센스와 연기가 주는 미스터리",
+  Spicy: "따뜻하고 자극적인 향신료, 시나몬과 페퍼의 열정적 에너지",
+  Sweet: "달콤하고 사랑스러운 감미로움, 프랄린과 캔디의 행복한 순간",
+  Synthetic: "현대적이고 세련된 인공향, 독특하고 실험적인 감각",
+  Woody: "깊고 차분한 나무의 향기, 시더와 샌달우드의 안정감",
+  Fresh: "시원하고 깨끗한 청량감, 민트와 유칼립투스의 상쾌함",
+};

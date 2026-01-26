@@ -4,9 +4,9 @@
  */
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import SeriesHeader from "../_components/SeriesHeader";
-import EpisodeListItem from "../_components/EpisodeListItem";
-import Pagination from "../_components/Pagination";
+import SeriesHeader from "@/components/perfume-wiki/SeriesHeader";
+import EpisodeListItem from "@/components/perfume-wiki/EpisodeListItem";
+import Pagination from "@/components/perfume-wiki/Pagination";
 import perfumeWikiData from "../_data/perfumeWiki.json";
 import type { PerfumeWikiData, Series } from "../types";
 
@@ -71,17 +71,17 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
         </Link>
       </header>
 
-      <main className="pt-[120px] pb-24 px-6 md:px-10 max-w-6xl mx-auto space-y-10">
+      <main className="pt-[120px] pb-24 px-6 md:px-10 max-w-5xl mx-auto space-y-12">
         <SeriesHeader series={series} />
 
-        <section className="space-y-4">
+        <section className="space-y-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold text-[#1F1F1F]">
+            <h2 className="text-xl font-bold text-[#1F1F1F]">
               에피소드 리스트
             </h2>
-            <span className="text-xs text-[#999]">{`총 ${series.episodes.length}개`}</span>
+            <span className="text-sm text-[#999] font-medium">{`총 ${series.episodes.length}개`}</span>
           </div>
-          <div className="space-y-4">
+          <div>
             {episodes.map((episode) => (
               <EpisodeListItem
                 key={episode.id}

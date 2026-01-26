@@ -6,96 +6,32 @@
       "description": "향의 기본을 차근차근 익히는 첫 연재",
       "series": [
         {
-          "id": "s1-1",
-          "title": "향이 변하는 이야기",
-          "summary": "처음 만난 향이 하루 끝까지 어떻게 달라지는지",
+          "id": "series-1-1",
+          "title": "향수 입문 클래스",
+          "summary": "향의 기본을 차근차근 익히는 첫 연재",
           "thumbnail": "/perfumes/perfume_wiki_default.png",
           "episodes": [
             {
-              "id": "s1-1-ep1",
+              "id": "episode-1",
               "tag": "입문",
-              "title": "EP1 처음 만난 향",
-              "summary": "첫 인상으로 향을 이해하는 방법",
+              "title": "향이 변하는 이야기",
+              "summary": "처음 만난 향이 하루 끝까지 어떻게 달라지는지",
               "date": "2026.01.26",
               "thumbnail": "/perfumes/perfume_wiki_default.png"
             },
             {
-              "id": "s1-1-ep2",
+              "id": "episode-2",
               "tag": "입문",
-              "title": "EP2 조금 친해진 향",
-              "summary": "시간이 지나면서 드러나는 향의 레이어",
+              "title": "향의 지속과 퍼짐",
+              "summary": "향이 머무는 시간과 공간의 차이",
               "date": "2026.01.26",
               "thumbnail": "/perfumes/perfume_wiki_default.png"
             },
             {
-              "id": "s1-1-ep3",
+              "id": "episode-3",
               "tag": "입문",
-              "title": "EP3 하루 끝까지 남는 향",
-              "summary": "잔향이 주는 감정과 기억",
-              "date": "2026.01.26",
-              "thumbnail": "/perfumes/perfume_wiki_default.png"
-            }
-          ]
-        },
-        {
-          "id": "s1-2",
-          "title": "향의 지속과 퍼짐",
-          "summary": "향이 머무는 시간과 공간의 차이",
-          "thumbnail": "/perfumes/perfume_wiki_default.png",
-          "episodes": [
-            {
-              "id": "s1-2-ep1",
-              "tag": "지속",
-              "title": "EP1 나만 느끼는 향 vs 주변도 느끼는 향",
-              "summary": "확산력의 기준과 체감의 차이",
-              "date": "2026.01.26",
-              "thumbnail": "/perfumes/perfume_wiki_default.png"
-            },
-            {
-              "id": "s1-2-ep2",
-              "tag": "지속",
-              "title": "EP2 잠깐 스쳐가는 향 vs 하루 종일 머무는 향",
-              "summary": "지속력에 영향을 주는 요소들",
-              "date": "2026.01.26",
-              "thumbnail": "/perfumes/perfume_wiki_default.png"
-            }
-          ]
-        },
-        {
-          "id": "s1-3",
-          "title": "향수의 진하기 레벨",
-          "summary": "강도와 무드가 달라지는 농도 이야기",
-          "thumbnail": "/perfumes/perfume_wiki_default.png",
-          "episodes": [
-            {
-              "id": "s1-3-ep1",
-              "tag": "농도",
-              "title": "EP1 가볍게 산책하는 향",
-              "summary": "데일리로 쓰기 좋은 라이트한 농도",
-              "date": "2026.01.26",
-              "thumbnail": "/perfumes/perfume_wiki_default.png"
-            },
-            {
-              "id": "s1-3-ep2",
-              "tag": "농도",
-              "title": "EP2 데일리로 입는 향",
-              "summary": "일상에서 부담 없는 진하기",
-              "date": "2026.01.26",
-              "thumbnail": "/perfumes/perfume_wiki_default.png"
-            },
-            {
-              "id": "s1-3-ep3",
-              "tag": "농도",
-              "title": "EP3 특별한 날의 진한 향",
-              "summary": "기억에 남는 순간을 만드는 농도",
-              "date": "2026.01.26",
-              "thumbnail": "/perfumes/perfume_wiki_default.png"
-            },
-            {
-              "id": "s1-3-ep4",
-              "tag": "Special",
-              "title": "Special EP 농도는 진함, 향은 행동이다",
-              "summary": "강함보다 매력적인 농도의 균형",
+              "title": "향수의 진하기 레벨",
+              "summary": "강도와 무드가 달라지는 농도 이야기",
               "date": "2026.01.26",
               "thumbnail": "/perfumes/perfume_wiki_default.png"
             }
@@ -106,66 +42,50 @@
     {
       "id": "series-2",
       "title": "향의 성격 탐구",
-      "description": "계열별로 향의 성격을 탐색하는 시즌",
+      "description": "계열별로 향의 성격을 탐색하는 시리즈",
       "series": [
         {
-          "id": "s2-1",
-          "title": "상쾌한 향의 계열",
-          "summary": "깨끗하고 밝은 향의 스펙트럼",
+          "id": "series-2-1",
+          "title": "향의 성격 탐구",
+          "summary": "계열별로 향의 성격을 탐색하는 시리즈",
           "thumbnail": "/perfumes/perfume_wiki_default.png",
           "episodes": [
             {
-              "id": "s2-1-ep1",
+              "id": "episode-1",
               "tag": "시트러스",
-              "title": "EP1 시트러스, 햇살처럼 상쾌한 향의 시작",
+              "title": "시트러스, 햇살처럼 상쾌한 향의 시작",
               "summary": "밝고 경쾌한 향을 여는 노트",
               "date": "2026.01.26",
               "thumbnail": "/perfumes/perfume_wiki_default.png"
             },
             {
-              "id": "s2-1-ep2",
+              "id": "episode-2",
               "tag": "프레시",
-              "title": "EP2 프레시/아쿠아틱, 깨끗함을 담은 투명한 향",
+              "title": "프레시/아쿠아틱, 깨끗함을 담은 투명한 향",
               "summary": "물결처럼 산뜻한 향의 인상",
               "date": "2026.01.26",
               "thumbnail": "/perfumes/perfume_wiki_default.png"
-            }
-          ]
-        },
-        {
-          "id": "s2-2",
-          "title": "부드럽고 깊은 향의 계열",
-          "summary": "우아하고 깊은 향의 결을 알아보기",
-          "thumbnail": "/perfumes/perfume_wiki_default.png",
-          "episodes": [
+            },
             {
-              "id": "s2-2-ep1",
+              "id": "episode-3",
               "tag": "플로럴",
-              "title": "EP1 플로럴, 향수의 중심이 되는 꽃의 세계",
+              "title": "플로럴, 향수의 중심이 되는 꽃의 세계",
               "summary": "꽃향이 만드는 균형감",
               "date": "2026.01.26",
               "thumbnail": "/perfumes/perfume_wiki_default.png"
             },
             {
-              "id": "s2-2-ep2",
+              "id": "episode-4",
               "tag": "우디",
-              "title": "EP2 우디, 숲속에 들어온 듯한 깊은 향",
+              "title": "우디, 숲속에 들어온 듯한 깊은 향",
               "summary": "잔향을 길게 만드는 깊이",
               "date": "2026.01.26",
               "thumbnail": "/perfumes/perfume_wiki_default.png"
-            }
-          ]
-        },
-        {
-          "id": "s2-3",
-          "title": "달콤한 향의 계열",
-          "summary": "디저트처럼 매력적인 향의 포인트",
-          "thumbnail": "/perfumes/perfume_wiki_default.png",
-          "episodes": [
+            },
             {
-              "id": "s2-3-ep1",
+              "id": "episode-5",
               "tag": "구르망",
-              "title": "EP1 스위트/구르망, 디저트처럼 중독적인 향",
+              "title": "스위트/구르망, 디저트처럼 중독적인 향",
               "summary": "달콤함으로 기억되는 향",
               "date": "2026.01.26",
               "thumbnail": "/perfumes/perfume_wiki_default.png"
@@ -180,47 +100,31 @@
       "description": "향을 잘 활용하는 노하우 모음",
       "series": [
         {
-          "id": "s3-1",
-          "title": "향이 살아나는 위치",
-          "summary": "향이 예쁘게 퍼지는 포인트",
+          "id": "series-3-1",
+          "title": "향을 잘 쓰는 사람들의 비밀",
+          "summary": "향을 잘 활용하는 노하우 모음",
           "thumbnail": "/perfumes/perfume_wiki_default.png",
           "episodes": [
             {
-              "id": "s3-1-ep1",
+              "id": "episode-1",
               "tag": "활용",
-              "title": "EP1 향이 가장 예쁘게 퍼지는 자리들",
+              "title": "향이 살아나는 위치",
               "summary": "위치에 따라 달라지는 향의 분위기",
               "date": "2026.01.26",
               "thumbnail": "/perfumes/perfume_wiki_default.png"
-            }
-          ]
-        },
-        {
-          "id": "s3-2",
-          "title": "향을 오래 즐기는 기술",
-          "summary": "부드럽게 오래 남기는 방법",
-          "thumbnail": "/perfumes/perfume_wiki_default.png",
-          "episodes": [
+            },
             {
-              "id": "s3-2-ep1",
+              "id": "episode-2",
               "tag": "활용",
-              "title": "EP1 과하지 않게 오래 남기는 방법",
+              "title": "과하지 않게 오래 남기는 방법",
               "summary": "레이어링과 보습의 역할",
               "date": "2026.01.26",
               "thumbnail": "/perfumes/perfume_wiki_default.png"
-            }
-          ]
-        },
-        {
-          "id": "s3-3",
-          "title": "나만의 향 만들기",
-          "summary": "조합으로 만드는 나만의 무드",
-          "thumbnail": "/perfumes/perfume_wiki_default.png",
-          "episodes": [
+            },
             {
-              "id": "s3-3-ep1",
+              "id": "episode-3",
               "tag": "조합",
-              "title": "EP1 나만의 향을 만드는 조합의 재미",
+              "title": "나만의 향을 만드는 조합의 재미",
               "summary": "레이어링으로 개성을 만드는 법",
               "date": "2026.01.26",
               "thumbnail": "/perfumes/perfume_wiki_default.png"
@@ -235,31 +139,23 @@
       "description": "향을 오래 지키는 관리 습관",
       "series": [
         {
-          "id": "s4-1",
-          "title": "향이 망가지는 이유",
-          "summary": "향이 변해버리는 순간을 정리",
+          "id": "series-4-1",
+          "title": "향 관리 교실",
+          "summary": "향을 오래 지키는 관리 습관",
           "thumbnail": "/perfumes/perfume_wiki_default.png",
           "episodes": [
             {
-              "id": "s4-1-ep1",
+              "id": "episode-1",
               "tag": "관리",
-              "title": "EP1 향이 변해버리는 순간들",
+              "title": "향이 변해버리는 순간들",
               "summary": "온도, 빛, 공기의 영향",
               "date": "2026.01.26",
               "thumbnail": "/perfumes/perfume_wiki_default.png"
-            }
-          ]
-        },
-        {
-          "id": "s4-2",
-          "title": "향을 지키는 습관",
-          "summary": "향을 오래 지키는 작은 실천",
-          "thumbnail": "/perfumes/perfume_wiki_default.png",
-          "episodes": [
+            },
             {
-              "id": "s4-2-ep1",
+              "id": "episode-2",
               "tag": "관리",
-              "title": "EP1 향을 오래 지키는 작은 습관",
+              "title": "향을 오래 지키는 작은 습관",
               "summary": "보관 위치와 사용 루틴",
               "date": "2026.01.26",
               "thumbnail": "/perfumes/perfume_wiki_default.png"
@@ -274,56 +170,16 @@
       "description": "계절에 맞는 향을 고르는 기준",
       "series": [
         {
-          "id": "s5-1",
-          "title": "날씨와 향의 변화",
-          "summary": "날씨가 향에 주는 영향",
+          "id": "series-5-1",
+          "title": "계절과 향의 관계",
+          "summary": "계절에 맞는 향을 고르는 기준",
           "thumbnail": "/perfumes/perfume_wiki_default.png",
           "episodes": [
             {
-              "id": "s5-1-ep1",
+              "id": "episode-1",
               "tag": "계절",
-              "title": "EP1 날씨가 향의 분위기를 바꾸는 순간들",
+              "title": "날씨가 향의 분위기를 바꾸는 순간들",
               "summary": "온도 변화에 따라 달라지는 향",
-              "date": "2026.01.26",
-              "thumbnail": "/perfumes/perfume_wiki_default.png"
-            }
-          ]
-        },
-        {
-          "id": "s5-2",
-          "title": "계절별 추천 향 연재",
-          "summary": "계절에 따라 추천하는 향 모음",
-          "thumbnail": "/perfumes/perfume_wiki_default.png",
-          "episodes": [
-            {
-              "id": "s5-2-ep1",
-              "tag": "봄",
-              "title": "EP1 봄에 가장 잘 어울리는 향",
-              "summary": "부드럽고 따뜻한 향의 시작",
-              "date": "2026.01.26",
-              "thumbnail": "/perfumes/perfume_wiki_default.png"
-            },
-            {
-              "id": "s5-2-ep2",
-              "tag": "여름",
-              "title": "EP2 여름에 상쾌한 향 고르는 법",
-              "summary": "가볍고 산뜻한 조합",
-              "date": "2026.01.26",
-              "thumbnail": "/perfumes/perfume_wiki_default.png"
-            },
-            {
-              "id": "s5-2-ep3",
-              "tag": "가을",
-              "title": "EP3 가을에 깊어지는 향",
-              "summary": "우디와 앰버의 균형",
-              "date": "2026.01.26",
-              "thumbnail": "/perfumes/perfume_wiki_default.png"
-            },
-            {
-              "id": "s5-2-ep4",
-              "tag": "겨울",
-              "title": "EP4 겨울에 포근한 향",
-              "summary": "머스크와 바닐라의 포근함",
               "date": "2026.01.26",
               "thumbnail": "/perfumes/perfume_wiki_default.png"
             }

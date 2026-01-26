@@ -1,16 +1,22 @@
 /**
  * 에피소드 상세 페이지
  * 에피소드의 전체 콘텐츠와 관련 정보를 표시
+ * 
+ * 📝 제목 및 콘텐츠 수정 방법:
+ * 1. 에피소드 제목/요약 수정: app/perfume-wiki/_data/perfumeWiki.json 파일에서 해당 에피소드의 title, summary 필드 수정
+ * 2. 본문 콘텐츠 수정: perfumeWiki.json 파일에서 해당 에피소드에 content 배열 추가/수정
+ *    예시: "content": [{ "subtitle": "섹션 제목", "paragraphs": ["단락1", "단락2"] }]
+ * 3. 관련 키워드 수정: perfumeWiki.json 파일에서 해당 에피소드에 tags 배열 추가/수정
  */
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import EpisodeHero from "../../_components/EpisodeHero";
-import EpisodeContentSection from "../../_components/EpisodeContentSection";
-import EpisodeCTA from "../../_components/EpisodeCTA";
-import SeriesRelatedCard from "../../_components/SeriesRelatedCard";
-import TagList from "../../_components/TagList";
-import LikeButton from "../../_components/LikeButton";
-import ShareButton from "../../_components/ShareButton";
+import EpisodeHero from "@/components/perfume-wiki/EpisodeHero";
+import EpisodeContentSection from "@/components/perfume-wiki/EpisodeContentSection";
+import EpisodeCTA from "@/components/perfume-wiki/EpisodeCTA";
+import SeriesRelatedCard from "@/components/perfume-wiki/SeriesRelatedCard";
+import TagList from "@/components/perfume-wiki/TagList";
+import LikeButton from "@/components/perfume-wiki/LikeButton";
+import ShareButton from "@/components/perfume-wiki/ShareButton";
 import perfumeWikiData from "../../_data/perfumeWiki.json";
 import type { PerfumeWikiData, Series, Episode, ContentSection } from "../../types";
 
@@ -49,7 +55,9 @@ function findSeriesAndEpisode(
 
 /**
  * 에피소드 콘텐츠가 없을 경우 사용할 기본 콘텐츠
- * (향후 실제 데이터로 대체 예정)
+ * 
+ * 📝 기본 콘텐츠 수정: 아래 함수의 내용을 수정하거나,
+ *    app/perfume-wiki/_data/perfumeWiki.json에서 해당 에피소드에 content 필드 추가
  */
 function getDefaultContent(): ContentSection[] {
   return [
@@ -80,6 +88,7 @@ export default async function EpisodePage({ params }: EpisodePageProps) {
   const { series, episode, episodeNumber } = result;
 
   // 콘텐츠와 태그 설정 (없을 경우 기본값 사용)
+  // 📝 기본 태그 수정: 아래 배열을 수정하거나, perfumeWiki.json에서 해당 에피소드에 tags 배열 추가
   const content = episode.content || getDefaultContent();
   const tags = episode.tags || ["향수입문", "향의변화", "탑노트", "미들노트"];
 
@@ -101,45 +110,51 @@ export default async function EpisodePage({ params }: EpisodePageProps) {
         </Link>
       </header>
 
-      <main className="pt-[80px] pb-24">
+      <main className="pt-[80px] pb-32">
         {/* Hero Section */}
-        <div className="px-6 md:px-10 max-w-7xl mx-auto mb-12">
+        <div className="px-6 md:px-10 max-w-4xl mx-auto mb-16">
           <EpisodeHero
             episode={episode}
             seriesTitle={series.title}
+            seriesId={seriesId}
             episodeNumber={episodeNumber}
           />
         </div>
 
         {/* Like & Share Buttons */}
-        <div className="px-6 md:px-10 max-w-3xl mx-auto mb-12">
-          <div className="flex items-center gap-3">
+        <div className="px-6 md:px-10 max-w-4xl mx-auto mb-16">
+          <div className="flex items-center gap-3 justify-center md:justify-start">
             <LikeButton />
             <ShareButton />
           </div>
         </div>
 
         {/* Content Section */}
-        <div className="px-6 md:px-10 mb-20">
+        <div className="px-6 md:px-10 max-w-4xl mx-auto mb-20">
           <EpisodeContentSection content={content} />
         </div>
 
-        {/* CTA Section */}
-        <div className="px-6 md:px-10 max-w-7xl mx-auto mb-20">
-          <EpisodeCTA />
-        </div>
-
-        {/* Series Related Section */}
-        <div className="px-6 md:px-10 max-w-5xl mx-auto mb-16">
-          <SeriesRelatedCard series={series} currentEpisodeId={episode.id} />
+        {/* Divider */}
+        <div className="px-6 md:px-10 max-w-4xl mx-auto mb-16">
+          <div className="h-px bg-gradient-to-r from-transparent via-[#E0E0E0] to-transparent" />
         </div>
 
         {/* Tags Section */}
-        <div className="px-6 md:px-10 max-w-3xl mx-auto">
-          <div className="space-y-4">
+        <div className="px-6 md:px-10 max-w-4xl mx-auto mb-20">
+          <div className="space-y-5">
             <h3 className="text-sm font-bold text-[#555]">관련 키워드</h3>
             <TagList tags={tags} />
           </div>
+        </div>
+
+        {/* Series Related Section */}
+        <div className="px-6 md:px-10 max-w-4xl mx-auto mb-20">
+          <SeriesRelatedCard series={series} currentEpisodeId={episode.id} />
+        </div>
+
+        {/* CTA Section */}
+        <div className="px-6 md:px-10 max-w-4xl mx-auto">
+          <EpisodeCTA />
         </div>
       </main>
     </div>

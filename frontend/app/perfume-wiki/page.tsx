@@ -3,7 +3,7 @@
  * 각 시즌의 대표 시리즈를 카드 형태로 렌더링
  */
 import Link from "next/link";
-import SeriesGrid from "./_components/SeriesGrid";
+import SeriesGrid from "@/components/perfume-wiki/SeriesGrid";
 import perfumeWikiData from "./_data/perfumeWiki.json";
 import type { PerfumeWikiData } from "./types";
 

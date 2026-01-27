@@ -156,9 +156,20 @@ export default function ChatPage() {
                                     const lastMsg = updated[lastIndex];
 
                                     if (lastMsg.role === "assistant") {
+                                        let nextChunk = data.content;
+                                        const prevText = lastMsg.text;
+                                        const prevTrimmed = prevText.trimEnd();
+                                        if (
+                                            prevTrimmed.endsWith("---") &&
+                                            !prevText.endsWith("\n") &&
+                                            typeof nextChunk === "string" &&
+                                            nextChunk.startsWith("##")
+                                        ) {
+                                            nextChunk = `\n${nextChunk}`;
+                                        }
                                         updated[lastIndex] = {
                                             ...lastMsg,
-                                            text: lastMsg.text + data.content
+                                            text: prevText + nextChunk
                                         };
                                     }
                                     return updated;

@@ -102,7 +102,13 @@ const parseMessageContent = (text: string) => {
             return <SaveButton key={index} id={match[1]} name={match[2]} />;
         }
 
-        if (!part.trim()) return null;
+        if (!part.trim()) {
+            return (
+                <span key={index} className="whitespace-pre-wrap">
+                    {part}
+                </span>
+            );
+        }
 
         return (
             <ReactMarkdown

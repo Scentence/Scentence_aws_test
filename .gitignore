@@ -61,3 +61,8 @@ ngrok.yml
 
 .pytest_cache
 .pytest_cache/
+
+.claude
+.claude/
+
+docs/

@@ -10,7 +10,7 @@ import PerfumeDetailModal from "@/components/archives/PerfumeDetailModal";
 import HistoryModal from '@/components/archives/HistoryModal'; // <--- [추가]
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const MEMBER_ID = 1;
+// const MEMBER_ID = 1;
 
 interface MyPerfume {
     my_perfume_id: number;
@@ -34,23 +34,25 @@ export default function ArchivesPage() {
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [isKorean, setIsKorean] = useState(true); // Default: Korean
     const [isHistoryOpen, setIsHistoryOpen] = useState(false); // <--- [추가] 중요!
+    const [memberId, setMemberId] = useState<number>(0); // 추가
 
     const fetchPerfumes = async () => {
+        if (memberId === 0) return;
         try {
-            const res = await fetch(`${API_URL}/users/${MEMBER_ID}/perfumes`);
+            const res = await fetch(`${API_URL}/users/${memberId}/perfumes`);
             if (res.ok) {
                 const data = await res.json();
                 const mapped = data.map((item: any) => ({
-                    my_perfume_id: item.perfume_id, // my_perfume_id는 DB에 없으므로 PK인 perfume_id 사용
+                    my_perfume_id: item.perfume_id,
                     perfume_id: item.perfume_id,
                     name: item.perfume_name,
-                    name_kr: item.name_kr, // Added
+                    name_kr: item.name_kr,
                     brand: item.brand || "Unknown",
                     image_url: item.image_url || null,
                     register_status: item.register_status,
-                    register_dt: item.register_dt, // Added
+                    register_dt: item.register_dt,
                     preference: item.preference,
-                    status: item.register_status // CabinetShelf 호환
+                    status: item.register_status
                 }));
                 setCollection(mapped);
             }
@@ -59,11 +61,30 @@ export default function ArchivesPage() {
         }
     };
 
+    // 1. 초기 로드 시 로그인 정보 파싱
     useEffect(() => {
-        fetchPerfumes();
+        const localAuth = localStorage.getItem("localAuth");
+        if (localAuth) {
+            try {
+                const parsed = JSON.parse(localAuth);
+                if (parsed.memberId) {
+                    setMemberId(Number(parsed.memberId));
+                }
+            } catch (e) {
+                console.error("Auth parsing failed", e);
+            }
+        }
     }, []);
 
+    // 2. memberId가 설정되면 데이터 로드
+    useEffect(() => {
+        if (memberId > 0) {
+            fetchPerfumes();
+        }
+    }, [memberId]);
+
     const handleAdd = async (perfume: any, status: string) => {
+        if (memberId === 0) return;
         try {
             const payload = {
                 perfume_id: perfume.perfume_id,
@@ -72,7 +93,7 @@ export default function ArchivesPage() {
                 register_reason: "USER",
                 preference: "NEUTRAL"
             };
-            await fetch(`${API_URL}/users/${MEMBER_ID}/perfumes`, {
+            await fetch(`${API_URL}/users/${memberId}/perfumes`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload)
@@ -83,8 +104,9 @@ export default function ArchivesPage() {
     };
 
     const handleUpdateStatus = async (id: number, status: string) => {
+        if (memberId === 0) return;
         try {
-            await fetch(`${API_URL}/users/${MEMBER_ID}/perfumes/${id}`, {
+            await fetch(`${API_URL}/users/${memberId}/perfumes/${id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ register_status: status })
@@ -97,19 +119,20 @@ export default function ArchivesPage() {
     };
 
     const handleDelete = async (id: number, rating?: number) => {
+        if (memberId === 0) return;
         try {
             if (rating !== undefined) {
                 let pref = "NEUTRAL";
                 if (rating === 3) pref = "GOOD";
                 if (rating === 1) pref = "BAD";
 
-                await fetch(`${API_URL}/users/${MEMBER_ID}/perfumes/${id}`, {
+                await fetch(`${API_URL}/users/${memberId}/perfumes/${id}`, {
                     method: "PATCH",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ register_status: "HAD", preference: pref })
                 });
             } else {
-                await fetch(`${API_URL}/users/${MEMBER_ID}/perfumes/${id}`, {
+                await fetch(`${API_URL}/users/${memberId}/perfumes/${id}`, {
                     method: "DELETE"
                 });
             }
@@ -119,8 +142,9 @@ export default function ArchivesPage() {
     };
 
     const handleUpdatePreference = async (id: number, preference: string) => {
+        if (memberId === 0) return;
         try {
-            await fetch(`${API_URL}/users/${MEMBER_ID}/perfumes/${id}`, {
+            await fetch(`${API_URL}/users/${memberId}/perfumes/${id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ register_status: "HAD", preference: preference })
@@ -262,7 +286,7 @@ export default function ArchivesPage() {
                 </div>
             </Link>
 
-            {isSearchOpen && <PerfumeSearchModal memberId={String(MEMBER_ID)} onClose={() => setIsSearchOpen(false)} onAdd={handleAdd} />}
+            {isSearchOpen && <PerfumeSearchModal memberId={String(memberId)} onClose={() => setIsSearchOpen(false)} onAdd={handleAdd} />}
             {selectedPerfume && <PerfumeDetailModal perfume={selectedPerfume} onClose={() => setSelectedPerfume(null)} onUpdateStatus={handleUpdateStatus} onDelete={handleDelete} onUpdatePreference={handleUpdatePreference} isKorean={isKorean} />}
         </div>
     );

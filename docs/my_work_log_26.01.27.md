@@ -3,7 +3,7 @@
 
 ```python
 # [1] 상단 import 부분에 perfumes 추가
-from routers import users, perfumes  # <--- perfumes 추가 (16번줄)
+from routers import users, perfumes  # <--- perfumes 추가 (15번줄)
 
 # [2] app 생성 후 include_router 추가 (users 등록된 곳 아래에)
 app.include_router(users.router)
@@ -114,7 +114,7 @@ def search_perfumes(q: str = Query(..., min_length=1, description="검색어")):
 ### backend/routers/users.py 수정
 
 ```python
-from agent.database import get_recom_db_connection, get_db_connection, release_recom_db_connection, release_db_connection # 추가 26.01.26 ksu
+from agent.database import get_recom_db_connection, get_db_connection, release_recom_db_connection, release_db_connection, add_my_perfume # 추가 26.01.26 ksu
 
 # 하단에 추가 26.01.26 ksu
 # ============================================================

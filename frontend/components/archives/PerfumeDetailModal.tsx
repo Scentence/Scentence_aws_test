@@ -132,17 +132,7 @@ export default function PerfumeDetailModal({ perfume, onClose, onUpdateStatus, o
                                                 보유 (HAVE)
                                             </button>
 
-                                            <button
-                                                onClick={() => onUpdateStatus(perfume.my_perfume_id, 'HAD')}
-                                                className={`
-                                                    flex-1 py-3 text-sm font-bold rounded-xl border transition-all
-                                                    ${perfume.status === 'HAD'
-                                                        ? 'bg-amber-500 text-white border-amber-500 shadow-lg shadow-amber-200'
-                                                        : 'bg-white text-gray-400 border-gray-100 hover:bg-amber-50 hover:text-amber-600'}
-                                                `}
-                                            >
-                                                경험 (HAD)
-                                            </button>
+                                            {/* HAD 버튼 제거됨 (삭제 기능으로 대체) */}
 
                                             <button
                                                 onClick={() => onUpdateStatus(perfume.my_perfume_id, 'RECOMMENDED')}

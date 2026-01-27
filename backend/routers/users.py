@@ -10,8 +10,7 @@ import os
 import uuid
 import shutil
 from datetime import datetime, timedelta
-# from agent.database import add_my_perfume
-from agent.database import get_recom_db_connection, get_db_connection, release_recom_db_connection, release_db_connection # 추가 26.01.26 ksu
+from agent.database import get_recom_db_connection, get_db_connection, release_recom_db_connection, release_db_connection, add_my_perfume # 추가 26.01.26 ksu
 
 # 이 라우터는 '/users'로 시작하는 모든 요청을 처리합니다.
 router = APIRouter(prefix="/users", tags=["users"])
@@ -39,7 +38,6 @@ class LocalRegisterRequest(BaseModel):
 class LocalLoginRequest(BaseModel):
     email: str
     password: str
-
 
 class UpdateProfileRequest(BaseModel):
     nickname: Optional[str] = None

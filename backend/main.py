@@ -12,9 +12,10 @@ from langchain_core.messages import HumanMessage, AIMessage
 # 모듈 임포트
 from agent.schemas import ChatRequest
 from agent.graph import app_graph
-
+# 수정했습니다.
+# from routers import users
 from agent.database import save_chat_message, get_chat_history, get_user_chat_list
-from routers import users, perfumes #perfumes 추가
+from routers import users, perfumes # 향수옷장 perfumes 추가 ksu
 
 app = FastAPI(title="Perfume Re-Act Chatbot")
 
@@ -22,8 +23,9 @@ uploads_dir = os.path.join(os.getcwd(), "uploads")
 os.makedirs(uploads_dir, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 
+# [추가됨] 유저 라우터 등록 (로그인/회원가입 기능 활성화)
 app.include_router(users.router)
-app.include_router(perfumes.router) #perfumes 추가
+app.include_router(perfumes.router) # 향수옷장 perfumes 추가 ksu
 
 origins = [
     "http://localhost:3000",
@@ -44,26 +46,7 @@ async def stream_generator(
 
     save_chat_message(thread_id, member_id, "user", user_query)
     config = {"configurable": {"thread_id": thread_id}}
-
-    db_history = get_chat_history(thread_id)
-    restored_messages = []
-
-    for msg in db_history:
-        if msg["role"] == "user" and msg["text"] == user_query:
-            continue
-        if msg["role"] == "user":
-            restored_messages.append(HumanMessage(content=msg["text"]))
-        else:
-            restored_messages.append(AIMessage(content=msg["text"]))
-
-    inputs = {
-        "messages": restored_messages + [HumanMessage(content=user_query)],
-        "member_id": member_id,
-    }
-
-    full_ai_response = ""
-    did_stream_parallel_reco = False
-    pending_parallel_reco_separator = False
+    inputs = {"messages": [HumanMessage(content=user_query)], "member_id": member_id}
 
     try:
         async for event in app_graph.astream_events(
@@ -85,45 +68,10 @@ async def stream_generator(
 
             # [A] Writer & Info Agents: 실시간 답변 스트리밍
             if kind == "on_chat_model_stream":
-                
-                # [★추가] 내부용 헬퍼(번역기 등)의 출력은 화면에 보내지 않고 무시(Skip)
-                tags = event.get("tags", [])
-                if "internal_helper" in tags:
-                    continue
-
-                target_nodes = [
-                    # Recommendation graph
-                    "parallel_reco",
-                    # Legacy / other graphs
-                    "writer",
-                    "perfume_describer",
-                    "ingredient_specialist",
-                    "similarity_curator",  # <--- 이거 추가 필수!
-                    "fallback_handler",     # <--- 이것도 추가 권장
-                ]
-                # NOTE: LangGraph's node name comes from workflow.add_node("<name>", ...).
-                # We include a prefix fallback in case the runtime metadata differs.
-                if node_name in target_nodes or node_name.startswith("parallel_reco"):
+                # interviewer를 여기서 제외! (JSON 노출 방지)
+                if node_name == "writer":
                     content = event["data"]["chunk"].content
                     if content:
-                        if node_name == "parallel_reco" or node_name.startswith(
-                            "parallel_reco"
-                        ):
-                            if pending_parallel_reco_separator and content.lstrip().startswith(
-                                "##"
-                            ):
-                                content = f"\n\n{content.lstrip()}"
-                                pending_parallel_reco_separator = False
-                            content = content.replace("---##", "---\n\n##").replace(
-                                "--- ##", "---\n\n##"
-                            )
-                        if node_name == "parallel_reco" or node_name.startswith(
-                            "parallel_reco"
-                        ):
-                            did_stream_parallel_reco = True
-                            if content.strip().endswith("---"):
-                                pending_parallel_reco_separator = True
-                        full_ai_response += content
                         data = json.dumps(
                             {"type": "answer", "content": content}, ensure_ascii=False
                         )
@@ -132,29 +80,13 @@ async def stream_generator(
             # [B] Interviewer: 결과 전송
             elif kind == "on_chain_end" and node_name == "interviewer":
                 output = event["data"].get("output")
-                if output and isinstance(output, dict):
-                    messages = output.get("messages")
-                    if messages and len(messages) > 0:
-                        last_msg = messages[-1]
-                        if hasattr(last_msg, "content") and last_msg.content:
-                            full_ai_response += last_msg.content
-                            data = json.dumps(
-                                {"type": "answer", "content": last_msg.content},
-                                ensure_ascii=False,
-                            )
-                            yield f"data: {data}\n\n"
 
-            # [B-2] parallel_reco: 완성된 결과 전송 (non-streaming)
-            elif kind == "on_chain_end" and node_name == "parallel_reco":
-                output = event["data"].get("output")
+                # 메시지가 존재한다면 (추가 질문이 있는 경우)
                 if output and isinstance(output, dict):
                     messages = output.get("messages")
                     if messages and len(messages) > 0:
                         last_msg = messages[-1]
                         if hasattr(last_msg, "content") and last_msg.content:
-                            if did_stream_parallel_reco:
-                                continue
-                            full_ai_response += last_msg.content
                             data = json.dumps(
                                 {"type": "answer", "content": last_msg.content},
                                 ensure_ascii=False,

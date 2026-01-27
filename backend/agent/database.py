@@ -43,43 +43,17 @@ recom_db_pool = pool.ThreadedConnectionPool(1, 20, **RECOM_DB_CONFIG)
 
 # [최적화] 동기/비동기 OpenAI 클라이언트 이원화
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-async_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 BRAND_CACHE = []
 
 
+# [복구 및 최적화] 커넥션 풀을 사용하는 핵심 함수 4인방
+
 # [함수 수정] 풀에서 연결 가져오기 및 반납 로직
 def get_db_connection():
-    return perfume_db_pool.getconn()
+    return psycopg2.connect(**DB_CONFIG)
 
 
-def release_db_connection(conn):
-    perfume_db_pool.putconn(conn)
-
-
-def get_recom_db_connection():
-    return recom_db_pool.getconn()
-
-
-def release_recom_db_connection(conn):
-    recom_db_pool.putconn(conn)
-
-
-# [최적화] 비동기 임베딩 생성 (API 블로킹 방지)
-async def get_embedding_async(text: str) -> List[float]:
-    try:
-        if not text:
-            return []
-        response = await async_client.embeddings.create(
-            input=text.replace("\n", " "), model="text-embedding-3-small"
-        )
-        return response.data[0].embedding
-    except Exception as e:
-        print(f"⚠️ Embedding Error: {e}")
-        return []
-
-
-# 기존 동기 함수 (필요 시 유지)
 def get_embedding(text: str) -> List[float]:
     try:
         if not text:
@@ -328,8 +302,25 @@ async def rerank_perfumes_async(
 
 
 # ==========================================
-# 4. 추천 로그 및 저장 (Connection Pool 적용)
+# 6. Recom DB 연결 및 저장 함수 (디버깅 강화판)
 # ==========================================
+
+# [설정] 추천/회원 데이터용 DB 설정
+RECOM_DB_CONFIG = {
+    **DB_CONFIG,
+    "dbname": os.getenv("RECOM_DB_NAME", "recom_db"),
+}
+
+
+def get_recom_db_connection():
+    # 연결 시도 직전에 접속 정보 출력
+    print(
+        f"   🔌 [DB접속시도] DB명: {RECOM_DB_CONFIG['dbname']} | Host: {RECOM_DB_CONFIG['host']}",
+        flush=True,
+    )
+    return psycopg2.connect(**RECOM_DB_CONFIG)
+
+
 def save_recommendation_log(
     member_id: int, perfumes: List[Dict[str, Any]], reason: str
 ):
@@ -342,6 +333,15 @@ def save_recommendation_log(
         for p in perfumes:
             cur.execute(sql, (member_id, p.get("id"), p.get("name"), reason))
         conn.commit()
+        print(
+            f"   ✅ [Success] 추천 이력 저장 완료! (DB: {RECOM_DB_CONFIG['dbname']})",
+            flush=True,
+        )
+
+    except Exception as e:
+        print(f"   🔥 [Error] 추천 이력 저장 실패: {e}", flush=True)
+        if conn:
+            conn.rollback()
     finally:
         cur.close()
         release_recom_db_connection(conn)
@@ -357,10 +357,14 @@ def add_my_perfume(member_id: int, perfume_id: int, perfume_name: str):
         )
         if cur.fetchone():
             return {"status": "already_exists", "message": "이미 저장된 향수입니다."}
-        cur.execute(
-            "INSERT INTO TB_MEMBER_MY_PERFUME_T (MEMBER_ID, PERFUME_ID, PERFUME_NAME, REGISTER_STATUS, PREFERENCE) VALUES (%s, %s, %s, 'RECOMMENDED', 'GOOD')",
-            (member_id, perfume_id, perfume_name),
-        )
+
+        # 2. 신규 저장
+        insert_sql = """
+            INSERT INTO TB_MEMBER_MY_PERFUME_T
+            (MEMBER_ID, PERFUME_ID, PERFUME_NAME, REGISTER_STATUS, PREFERENCE)
+            VALUES (%s, %s, %s, 'HAVE', 'GOOD')
+        """
+        cur.execute(insert_sql, (member_id, perfume_id, perfume_name))
         conn.commit()
         return {"status": "success", "message": "향수가 저장되었습니다."}
     finally:
@@ -395,6 +399,151 @@ def save_chat_message(
                 json.dumps(meta, ensure_ascii=False) if meta else None,
             ),
         )
+        conn.commit()
+    finally:
+        cur.close()
+        release_recom_db_connection(conn)
+
+
+def get_chat_history(thread_id: str) -> List[Dict[str, Any]]:
+    conn = get_recom_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute(
+            "SELECT ROLE as role, MESSAGE as text, META_DATA as metadata FROM TB_CHAT_MESSAGE_T WHERE THREAD_ID = %s ORDER BY CREATED_DT ASC",
+            (thread_id,),
+        )
+        return [dict(row) for row in cur.fetchall()]
+    finally:
+        cur.close()
+        release_recom_db_connection(conn)
+
+
+def get_user_chat_list(member_id: int) -> List[Dict[str, Any]]:
+    if not member_id:
+        return []
+    conn = get_recom_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute(
+            "SELECT THREAD_ID as thread_id, TITLE as title, LAST_CHAT_DT as last_chat_dt FROM TB_CHAT_THREAD_T WHERE MEMBER_ID = %s AND IS_DELETED = 'N' ORDER BY LAST_CHAT_DT DESC LIMIT 30",
+            (member_id,),
+        )
+        rows = cur.fetchall()
+        results = []
+        for r in rows:
+            res = dict(r)
+            if res["last_chat_dt"]:
+                res["last_chat_dt"] = res["last_chat_dt"].isoformat()
+            results.append(res)
+        return results
+    finally:
+        cur.close()
+        release_recom_db_connection(conn)
+
+
+def lookup_note_by_string(keyword: str) -> List[str]:
+    """사용자 입력 텍스트와 일치하거나 유사한 노트를 DB에서 찾습니다."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    keyword_clean = keyword.strip().lower()
+    found_notes = set()
+
+    try:
+        # 1. 완전 일치 확인
+        cur.execute(
+            "SELECT note FROM TB_PERFUME_NOTES_M WHERE LOWER(note) = %s LIMIT 1",
+            (keyword_clean,),
+        )
+        row = cur.fetchone()
+        if row:
+            return [row[0]]
+
+        # 2. 유사도 기반 검색 (Levenshtein distance)
+        cur.execute("SELECT DISTINCT note FROM TB_PERFUME_NOTES_M")
+        all_notes = [r[0] for r in cur.fetchall() if r[0]]
+
+        for db_note in all_notes:
+            if len(keyword_clean) < 3:
+                if keyword_clean == db_note.lower():
+                    found_notes.add(db_note)
+                continue
+            if distance(keyword_clean, db_note.lower()) <= 2:
+                found_notes.add(db_note)
+
+        return list(found_notes)
+    except Exception as e:
+        print(f"⚠️ Lookup String Note Error: {e}")
+        return []
+    finally:
+        cur.close()
+        release_db_connection(conn)
+
+
+def lookup_note_by_vector(keyword: str) -> List[str]:
+    """벡터 검색을 통해 유사한 노트 후보군을 찾습니다."""
+    # 비동기가 아닌 동기식 도구에서 호출되므로 동기 방식으로 구현
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # get_embedding은 동기 함수 사용
+        query_vector = get_embedding(keyword)
+        if not query_vector:
+            return []
+        sql = "SELECT note FROM TB_NOTE_EMBEDDING_M ORDER BY embedding <=> %s::vector LIMIT 10"
+        cur.execute(sql, (query_vector,))
+        return [r[0] for r in cur.fetchall()]
+    except Exception as e:
+        print(f"⚠️ Lookup Vector Note Error: {e}")
+        return []
+    finally:
+        cur.close()
+        release_db_connection(conn)
+
+# ==========================================
+# 7. 채팅 시스템 (Connection Pool 적용)
+# ==========================================
+
+def save_chat_message(
+    thread_id: str, member_id: int, role: str, message: str, meta: dict = None
+):
+    conn = get_recom_db_connection()
+    try:
+        cur = conn.cursor()
+        # 제목으로 쓸 내용을 50자로 잡고 공백을 제거합니다.
+        title_snippet = message[:50].strip()
+
+        cur.execute(
+            """
+            INSERT INTO TB_CHAT_THREAD_T (THREAD_ID, MEMBER_ID, TITLE, LAST_CHAT_DT, IS_DELETED) 
+            VALUES (%s, %s, %s, CURRENT_TIMESTAMP, 'N')
+            ON CONFLICT (THREAD_ID) DO UPDATE SET 
+                MEMBER_ID = EXCLUDED.MEMBER_ID,
+                LAST_CHAT_DT = CURRENT_TIMESTAMP, 
+                IS_DELETED = 'N',
+                -- [수정] 유저가 질문했을 때만, 그리고 제목이 없거나 '-'일 때만 업데이트
+                TITLE = CASE 
+                    WHEN %s = 'user' AND (TB_CHAT_THREAD_T.TITLE IS NULL OR TB_CHAT_THREAD_T.TITLE IN ('', '-'))
+                    THEN EXCLUDED.TITLE 
+                    ELSE TB_CHAT_THREAD_T.TITLE 
+                END
+        """,
+            (thread_id, member_id, title_snippet, role), # role 파라미터 추가 완료
+        )
+
+        cur.execute(
+            "INSERT INTO TB_CHAT_MESSAGE_T (THREAD_ID, MEMBER_ID, ROLE, MESSAGE, META_DATA) VALUES (%s, %s, %s, %s, %s)",
+            (
+                thread_id,
+                member_id,
+                role,
+                message,
+                json.dumps(meta, ensure_ascii=False) if meta else None,
+            ),
+        )
+
+        print(f"📡 [DEBUG] 저장 성공 - 역할: {role}, 방ID: {thread_id}", flush=True)
+
         conn.commit()
     finally:
         cur.close()

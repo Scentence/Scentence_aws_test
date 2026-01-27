@@ -22,6 +22,9 @@ class InfoState(Dict):
     # 실패 메시지 (fallback_handler로 전달)
     fail_msg: Optional[str]          # 실패/범위 밖/추천 없음 시 사용자에게 전달할 메시지
     
+    # 사용자 모드 (메인 그래프에서 전달)
+    user_mode: Optional[str]         # BEGINNER 또는 EXPERT
+    
     # 메시지 기록
     messages: List[Any] 
 

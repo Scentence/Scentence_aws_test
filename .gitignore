@@ -56,13 +56,15 @@ ngrok.yml
 .backup
 .backup/
 
+.claude
+.claude/
+
+docs/
+
 .sisyphus
 .sisyphus/
 
 .pytest_cache
 .pytest_cache/
-
-.claude
-.claude/
 
 docs/

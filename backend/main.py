@@ -60,6 +60,8 @@ async def stream_generator(
     }
 
     full_ai_response = ""
+    did_stream_parallel_reco = False
+    pending_parallel_reco_separator = False
 
     try:
         async for event in app_graph.astream_events(
@@ -102,6 +104,23 @@ async def stream_generator(
                 if node_name in target_nodes or node_name.startswith("parallel_reco"):
                     content = event["data"]["chunk"].content
                     if content:
+                        if node_name == "parallel_reco" or node_name.startswith(
+                            "parallel_reco"
+                        ):
+                            if pending_parallel_reco_separator and content.lstrip().startswith(
+                                "##"
+                            ):
+                                content = f"\n\n{content.lstrip()}"
+                                pending_parallel_reco_separator = False
+                            content = content.replace("---##", "---\n\n##").replace(
+                                "--- ##", "---\n\n##"
+                            )
+                        if node_name == "parallel_reco" or node_name.startswith(
+                            "parallel_reco"
+                        ):
+                            did_stream_parallel_reco = True
+                            if content.strip().endswith("---"):
+                                pending_parallel_reco_separator = True
                         full_ai_response += content
                         data = json.dumps(
                             {"type": "answer", "content": content}, ensure_ascii=False
@@ -131,6 +150,8 @@ async def stream_generator(
                     if messages and len(messages) > 0:
                         last_msg = messages[-1]
                         if hasattr(last_msg, "content") and last_msg.content:
+                            if did_stream_parallel_reco:
+                                continue
                             full_ai_response += last_msg.content
                             data = json.dumps(
                                 {"type": "answer", "content": last_msg.content},

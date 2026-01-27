@@ -39,6 +39,8 @@ from .prompts import (
     WRITER_CHAT_PROMPT,
     WRITER_RECOMMENDATION_PROMPT,
     WRITER_RECOMMENDATION_PROMPT_EXPERT,
+    WRITER_RECOMMENDATION_PROMPT_SINGLE,
+    WRITER_RECOMMENDATION_PROMPT_EXPERT_SINGLE,
     NOTE_SELECTION_PROMPT,
 )
 from .database import save_recommendation_log
@@ -356,41 +358,49 @@ async def parallel_reco_node(state: AgentState):
         
         data_ctx = json.dumps(section_data, ensure_ascii=False, indent=2)
 
-        section_system = (
-            "당신은 향수를 잘 모르는 초보자를 위한 세상에서 가장 친절하고 감각적인 '향수 도슨트(Docent)'입니다.\n"
-            "아래 [참고 데이터]에 있는 향수 1개만 사용해서, '단 하나의 추천 섹션'만 작성하세요.\n\n"
-            "**[★ ZERO HALLUCINATION POLICY ★]**\n"
-            "1. **데이터 그라운딩(Grounding)**: 반드시 제공된 [참고 데이터] 내의 정보만 사용하세요. 데이터에 없는 향수나 성분을 절대 지어내지 마세요.\n"
-            "2. **수량 엄수**: 데이터가 1개이므로, 다른 향수를 절대 창작하지 마세요. 제공된 향수만 추천하세요.\n\n"
-            "[★작성 규칙 - 필독★]\n\n"
-            "1. **[도입부]**:\n"
-            "   - **절대 금지**: 전체 도입부, '요청하신 3가지 전략', '수립한 전략대로' 같은 표현 사용 금지.\n"
-            f"   - 바로 '## {priority}.' 로 시작하세요.\n\n"
-            "2. **[추천 이유 (Logical Connection) - ★이미지 전략 합성]**:\n"
-            "   - **브릿지(Bridge) 설명**: **사용자의 정보(대상, 계절 등)**와 **리서처가 전달한 전략적 의도(strategy_reason)**를 하나의 유기적인 문장으로 합쳐서 설명하세요.\n"
-            "   - **핵심**: 리서처의 분석 내용을 그대로 읽어주는 것이 아니라, 도슨트로서 사용자에게 말을 건네는 따뜻한 문투로 재구성하세요.\n"
-            "   - **일상어 변환**: '우디', '스파이시', '머스크' 등 전문 용어를 직접 쓰지 말고 느낌으로 풀어서 전달하세요.\n\n"
-            "3. **[향 묘사 및 용어]**:\n"
-            "   - **일상어 변환**: '탑/미들/베이스' 용어 금지. '꽃집에 들어선 듯한 향', '포근한 살냄새'처럼 풀어서 설명하세요.\n"
-            "   - **성별 표현**: '유니섹스' 대신 '남성에게, 여성에게, 남녀 모두에게 잘 어울려요' 형태로 표현하세요.\n\n"
-            "4. **[형식 규칙]**:\n"
-            f"   - 출력은 반드시 '## {priority}.' 로 시작하세요.\n"
-            "   - 섹션 안에 '---' 구분선을 출력하지 마세요 (구분선은 바깥에서 붙입니다).\n"
-            "   - 반드시 이미지 마크다운을 포함하세요: ![이름](이미지링크)\n"
-            "   - 마지막 줄에 반드시 저장 태그를 포함하세요: [[SAVE:향수ID:향수명]]\n\n"
-            f"[모드]\n"
-            f"- USER_MODE={USER_MODE}\n"
-            "- 자연스럽고 산뜻한 한국어로 작성하세요.\n\n"
-            "[참고 데이터]:\n"
-            f"{data_ctx}"
-        )
+        if USER_MODE == "BEGINNER":
+            section_system = WRITER_RECOMMENDATION_PROMPT_SINGLE
+        else:
+            section_system = WRITER_RECOMMENDATION_PROMPT_EXPERT_SINGLE
 
-        messages = [SystemMessage(content=section_system)] + state["messages"]
+        messages = [SystemMessage(content=section_system)] + state["messages"] + [
+            HumanMessage(
+                content=(
+                    f"[섹션 번호]: {priority}\n"
+                    f"[도입부 포함]: {'예' if priority == 1 else '아니오'}\n"
+                    f"[출력 규칙]: 도입부 포함이 '아니오'이면 첫 줄을 반드시 '## {priority}.'로 시작하고 도입부 문장을 쓰지 마세요.\n\n"
+                    f"[참고 데이터]:\n{data_ctx}"
+                )
+            )
+        ]
 
         try:
             response = await SUPER_SMART_LLM.ainvoke(messages)
             print(f"      ✅ [Strategy {priority}] 작성 완료 ({len(response.content)} chars)", flush=True)
-            return response.content
+            result_text = response.content
+            if result_text:
+                header_index = result_text.find("##")
+                if priority != 1 and header_index > 0:
+                    result_text = result_text[header_index:]
+                if result_text.startswith("##"):
+                    lines = result_text.splitlines()
+                    header_line = lines[0]
+                    after = header_line[2:].lstrip()
+                    idx = 0
+                    while idx < len(after) and after[idx].isdigit():
+                        idx += 1
+                    if idx < len(after) and after[idx] == ".":
+                        idx += 1
+                    if idx < len(after) and after[idx] == " ":
+                        idx += 1
+                    rest = after[idx:]
+                    lines[0] = (
+                        f"## {priority}. {rest}" if rest else f"## {priority}."
+                    )
+                    result_text = "\n".join(lines)
+            if result_text and not result_text.rstrip().endswith("---"):
+                result_text = f"{result_text.rstrip()}\n---"
+            return result_text
         except Exception as e:
             print(f"      ❌ [Strategy {priority}] 작성 실패: {e}", flush=True)
             return None
@@ -402,7 +412,7 @@ async def parallel_reco_node(state: AgentState):
         asyncio.create_task(prepare_strategy("이미지 보완", 2)),
         asyncio.create_task(prepare_strategy("이미지 반전", 3)),
     ]
-    
+
     # Phase 2: Sequential output generation with streaming
     # Wait for prep in order, then generate output with streaming
     results = []
@@ -410,11 +420,11 @@ async def parallel_reco_node(state: AgentState):
         data1 = await prep_tasks[0]
         result1 = await generate_output(data1) if data1 else None
         results.append(result1)
-        
+
         data2 = await prep_tasks[1]
         result2 = await generate_output(data2) if data2 else None
         results.append(result2)
-        
+
         data3 = await prep_tasks[2]
         result3 = await generate_output(data3) if data3 else None
         results.append(result3)
@@ -437,8 +447,7 @@ async def parallel_reco_node(state: AgentState):
             continue
 
         if full_text:
-            # Add separator with clean boundaries
-            full_text = f"{full_text}\n\n---\n\n{result_text}"
+            full_text = f"{full_text}\n\n{result_text}"
         else:
             full_text = result_text
 

@@ -10,7 +10,7 @@ import os
 import uuid
 import shutil
 from datetime import datetime, timedelta
-from agent.database import get_recom_db_connection, get_db_connection, release_recom_db_connection, release_db_connection, add_my_perfume # 추가 26.01.26 ksu
+from agent.database import add_my_perfume
 
 # 이 라우터는 '/users'로 시작하는 모든 요청을 처리합니다.
 router = APIRouter(prefix="/users", tags=["users"])
@@ -38,6 +38,7 @@ class LocalRegisterRequest(BaseModel):
 class LocalLoginRequest(BaseModel):
     email: str
     password: str
+
 
 class UpdateProfileRequest(BaseModel):
     nickname: Optional[str] = None
@@ -912,170 +913,3 @@ def save_my_perfume(req: SavePerfumeRequest):
 
     # 이미 저장된 경우도 성공(200)으로 처리하되 메시지만 다르게 줄 수 있음
     return result
-
-# 추가 26.01.26 ksu
-# ============================================================
-# [NEW] My Perfume Archives API
-# ============================================================
-
-class MyPerfumeRequest(BaseModel):
-    perfume_id: int
-    perfume_name: str
-    register_status: str  # HAVE, HAD, RECOMMENDED
-    register_reason: Optional[str] = "USER"
-    preference: Optional[str] = "NEUTRAL"
-
-class UpdatePerfumeStatusRequest(BaseModel):
-    register_status: str
-    preference: Optional[str] = None
-
-
-
-@router.get("/{member_id}/perfumes")
-def get_my_perfumes(member_id: int):
-    """내 향수 목록 조회 (Basic Info + My Status + Brand/Image)"""
-    
-    # 1. 내 향수 목록 (recom_db)
-    conn_user = get_recom_db_connection()
-    my_perfumes = []
-    try:
-        # recom_db의 내 향수 테이블 조회
-        # (이미지 등 상세 정보가 필요하다면 추후 perfume_db와 조인이 필요하지만, 
-        #  현재 구조상 간단히 저장된 스냅샷 이름이나 ID를 반환하고
-        #  Frontend에서 이미지를 위해 별도 호출하거나, 여기서 perfume_db를 추가 연결해야 합니다.
-        #  일단 Frontend의 collection 구조에 맞춰 데이터 반환)
-        cur = conn_user.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("""
-            SELECT 
-                p.member_id, p.perfume_id, p.perfume_name, p.register_status, p.preference,
-                p.register_dt
-            FROM tb_member_my_perfume_t p
-            WHERE p.member_id = %s
-            ORDER BY p.register_dt DESC
-        """, (member_id,))
-        my_perfumes = cur.fetchall()
-        cur.close() # Cursor는 닫아도 됨
-    except Exception as e:
-        print(f"Error fetching my perfumes: {e}")
-        return []
-    finally:
-        # cur.close()
-        # conn_user.close()
-        release_recom_db_connection(conn_user) # Pull 반환
-
-    if not my_perfumes:
-        return []
-
-    # 2. 향수 세부 정보 (perfume_db) 가져오기
-    perfume_ids = [p['perfume_id'] for p in my_perfumes]
-    
-    conn_perfume = get_db_connection()
-    details_map = {}
-    try:
-        with conn_perfume.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            if perfume_ids:
-                fmt = ','.join(['%s'] * len(perfume_ids))
-                cur.execute(f"""
-                    SELECT perfume_id, perfume_brand, img_link
-                    FROM tb_perfume_basic_m
-                    WHERE perfume_id IN ({fmt})
-                """, tuple(perfume_ids))
-                rows = cur.fetchall()
-                for r in rows:
-                    details_map[r['perfume_id']] = r
-    except Exception as e:
-        print(f"Error fetching perfume details: {e}")
-    finally:
-        # conn_perfume_close = getattr(conn_perfume, 'close', None)
-        # if conn_perfume_close:
-        #     conn_perfume_close()
-        # Note: In a pool scenario, we should use return_connection logic if defined, 
-        # but here we follow the simplified pattern used in this file or agent.database
-        # Assuming get_db_connection returns a raw conn that needs closing or returning.
-        # Ideally: agent.database.release_db_connection(conn_perfume) but we don't have it imported here yet.
-        # For now, close() is safe if it's a standard connection, or we should import release logic.
-        release_db_connection(conn_perfume) # Pool 반환
-
-    # 3. 데이터 병합
-    result = []
-    for p in my_perfumes:
-        pid = p['perfume_id']
-        detail = details_map.get(pid, {})
-        merged = {
-            **p,
-            "brand": detail.get('perfume_brand', "Unknown"),
-            "image_url": detail.get('img_link', None)
-        }
-        result.append(merged)
-
-    return result
-
-
-@router.post("/{member_id}/perfumes")
-def add_my_perfume_api(member_id: int, req: MyPerfumeRequest):
-    """향수 등록 (HAVE / HAD 등)"""
-    conn = get_recom_db_connection()
-    cur = conn.cursor()
-    try:
-        # Upsert Logic
-        cur.execute("""
-            INSERT INTO tb_member_my_perfume_t 
-            (member_id, perfume_id, perfume_name, register_status, preference, register_reason, register_dt)
-            VALUES (%s, %s, %s, %s, %s, %s, NOW())
-            ON CONFLICT (member_id, perfume_id) 
-            DO UPDATE SET 
-                register_status = EXCLUDED.register_status,
-                preference = EXCLUDED.preference,
-                alter_dt = NOW()
-        """, (member_id, req.perfume_id, req.perfume_name, req.register_status, req.preference, req.register_reason))
-        conn.commit()
-        return {"status": "ok"}
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cur.close()
-        release_recom_db_connection(conn) # Pool 반환
-
-
-@router.patch("/{member_id}/perfumes/{perfume_id}")
-def update_my_perfume(member_id: int, perfume_id: int, req: UpdatePerfumeStatusRequest):
-    """향수 상태 변경 (HAVE <-> WANT 등)"""
-    conn = get_recom_db_connection()
-    cur = conn.cursor()
-    try:
-        cur.execute("""
-            UPDATE tb_member_my_perfume_t
-            SET register_status = %s, preference = COALESCE(%s, preference), alter_dt = NOW()
-            WHERE member_id = %s AND perfume_id = %s
-        """, (req.register_status, req.preference, member_id, perfume_id))
-        conn.commit()
-        return {"status": "ok"}
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cur.close()
-        # conn.close()
-        release_recom_db_connection(conn)
-
-
-@router.delete("/{member_id}/perfumes/{perfume_id}")
-def delete_my_perfume(member_id: int, perfume_id: int):
-    """향수 삭제"""
-    conn = get_recom_db_connection()
-    cur = conn.cursor()
-    try:
-        cur.execute("""
-            DELETE FROM tb_member_my_perfume_t
-            WHERE member_id = %s AND perfume_id = %s
-        """, (member_id, perfume_id))
-        conn.commit()
-        return {"status": "ok"}
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cur.close()
-        # conn.close()
-        release_recom_db_connection(conn)

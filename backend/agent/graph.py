@@ -345,20 +345,30 @@ async def parallel_reco_node(state: AgentState):
         data_ctx = json.dumps(section_data, ensure_ascii=False, indent=2)
 
         section_system = (
-            "당신은 향수를 잘 모르는 초보자를 위한 친절한 향수 도슨트입니다.\n"
+            "당신은 향수를 잘 모르는 초보자를 위한 세상에서 가장 친절하고 감각적인 '향수 도슨트(Docent)'입니다.\n"
             "아래 [참고 데이터]에 있는 향수 1개만 사용해서, '단 하나의 추천 섹션'만 작성하세요.\n\n"
-            f"[형식 규칙]\n"
-            f"- 출력은 반드시 '## {priority}.' 로 시작하세요.\n"
-            "- 도입부/마무리 멘트/추가 질문/경고 문구(예: '현재 참고 데이터...')를 절대 쓰지 마세요.\n"
-            "- 섹션 안에 '---' 구분선을 출력하지 마세요 (구분선은 바깥에서 붙입니다).\n"
-            "- 반드시 이미지 마크다운을 포함하세요: ![이름](이미지링크)\n"
-            "- 마지막 줄에 반드시 저장 태그를 포함하세요: [[SAVE:향수ID:향수명]]\n"
-            "- 데이터에 없는 향수/노트/정보를 지어내지 마세요.\n\n"
-            f"[작성 톤]\n"
-            "- 자연스럽고 산뜻한 한국어\n"
-            "- '탑/미들/베이스' 같은 용어는 BEGINNER에선 피하고, EXPERT에선 허용\n\n"
+            "**[★ ZERO HALLUCINATION POLICY ★]**\n"
+            "1. **데이터 그라운딩(Grounding)**: 반드시 제공된 [참고 데이터] 내의 정보만 사용하세요. 데이터에 없는 향수나 성분을 절대 지어내지 마세요.\n"
+            "2. **수량 엄수**: 데이터가 1개이므로, 다른 향수를 절대 창작하지 마세요. 제공된 향수만 추천하세요.\n\n"
+            "[★작성 규칙 - 필독★]\n\n"
+            "1. **[도입부]**:\n"
+            "   - **절대 금지**: 전체 도입부, '요청하신 3가지 전략', '수립한 전략대로' 같은 표현 사용 금지.\n"
+            f"   - 바로 '## {priority}.' 로 시작하세요.\n\n"
+            "2. **[추천 이유 (Logical Connection) - ★이미지 전략 합성]**:\n"
+            "   - **브릿지(Bridge) 설명**: **사용자의 정보(대상, 계절 등)**와 **리서처가 전달한 전략적 의도(strategy_reason)**를 하나의 유기적인 문장으로 합쳐서 설명하세요.\n"
+            "   - **핵심**: 리서처의 분석 내용을 그대로 읽어주는 것이 아니라, 도슨트로서 사용자에게 말을 건네는 따뜻한 문투로 재구성하세요.\n"
+            "   - **일상어 변환**: '우디', '스파이시', '머스크' 등 전문 용어를 직접 쓰지 말고 느낌으로 풀어서 전달하세요.\n\n"
+            "3. **[향 묘사 및 용어]**:\n"
+            "   - **일상어 변환**: '탑/미들/베이스' 용어 금지. '꽃집에 들어선 듯한 향', '포근한 살냄새'처럼 풀어서 설명하세요.\n"
+            "   - **성별 표현**: '유니섹스' 대신 '남성에게, 여성에게, 남녀 모두에게 잘 어울려요' 형태로 표현하세요.\n\n"
+            "4. **[형식 규칙]**:\n"
+            f"   - 출력은 반드시 '## {priority}.' 로 시작하세요.\n"
+            "   - 섹션 안에 '---' 구분선을 출력하지 마세요 (구분선은 바깥에서 붙입니다).\n"
+            "   - 반드시 이미지 마크다운을 포함하세요: ![이름](이미지링크)\n"
+            "   - 마지막 줄에 반드시 저장 태그를 포함하세요: [[SAVE:향수ID:향수명]]\n\n"
             f"[모드]\n"
-            f"- USER_MODE={USER_MODE}\n\n"
+            f"- USER_MODE={USER_MODE}\n"
+            "- 자연스럽고 산뜻한 한국어로 작성하세요.\n\n"
             "[참고 데이터]:\n"
             f"{data_ctx}"
         )
@@ -366,28 +376,26 @@ async def parallel_reco_node(state: AgentState):
         messages = [SystemMessage(content=section_system)] + state["messages"]
 
         try:
-            response = await SUPER_SMART_LLM_NO_STREAM.ainvoke(messages)
+            response = await SUPER_SMART_LLM.ainvoke(messages)
             print(f"      ✅ [Strategy {priority}] 작성 완료 ({len(response.content)} chars)", flush=True)
             return response.content
         except Exception as e:
             print(f"      ❌ [Strategy {priority}] 작성 실패: {e}", flush=True)
             return None
 
-    # Launch 3 parallel tasks (preserves parallel execution speed)
-    tasks = [
-        asyncio.create_task(process_strategy("이미지 강조", 1)),
-        asyncio.create_task(process_strategy("이미지 보완", 2)),
-        asyncio.create_task(process_strategy("이미지 반전", 3)),
-    ]
-
-    # Wait for tasks in order (1→2→3) to maintain section sequence
-    # Tasks run in parallel, but we await them sequentially to guarantee order
-    # Total time is still max(task1, task2, task3), not sum()
+    # Execute strategies sequentially to enable streaming for each section
+    # Section 1 streams → Section 2 streams → Section 3 streams
+    # Total time is sum(task1, task2, task3), but each section streams in real-time
+    results = []
     try:
-        result1 = await tasks[0]  # Strategy 1
-        result2 = await tasks[1]  # Strategy 2
-        result3 = await tasks[2]  # Strategy 3
-        results = [result1, result2, result3]
+        result1 = await process_strategy("이미지 강조", 1)
+        results.append(result1)
+        
+        result2 = await process_strategy("이미지 보완", 2)
+        results.append(result2)
+        
+        result3 = await process_strategy("이미지 반전", 3)
+        results.append(result3)
     except (Exception, asyncio.CancelledError) as e:
         print(f"   ⚠️ [Parallel Reco] Task cancelled or failed: {e}", flush=True)
         return {

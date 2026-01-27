@@ -148,6 +148,9 @@ export default function PerfumeNetworkPage() {
   const [isGeneratingCard, setIsGeneratingCard] = useState(false);
   const [showCardModal, setShowCardModal] = useState(false);
   const [generatedCard, setGeneratedCard] = useState<any>(null);
+  const [generatedCardId, setGeneratedCardId] = useState<string | null>(null);
+  const [cardTriggerReady, setCardTriggerReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // vis-network 참조
   const containerRef = useRef<HTMLDivElement>(null);
@@ -237,6 +240,10 @@ export default function PerfumeNetworkPage() {
       
       if (response.ok) {
         const result = await response.json();
+        console.log("API Response:", result);
+        
+        // 조건 충족 상태 업데이트
+        setCardTriggerReady(result.card_trigger_ready);
         
         // 카드 생성 조건 충족 체크
         if (result.card_trigger_ready && !showCardTrigger) {
@@ -255,30 +262,108 @@ export default function PerfumeNetworkPage() {
     
     setShowCardTrigger(false);
     setIsGeneratingCard(true);
+    setError(null);
     
     try {
-      const response = await fetch(
-        `${SESSION_API_BASE}/session/${scentSessionId}/generate-card`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        }
-      );
+      const url = `${SESSION_API_BASE}/session/${scentSessionId}/generate-card`;
+      console.log("📡 카드 생성 API 요청:", url);
+      
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      
+      console.log("📥 API 응답 상태:", response.status, response.statusText);
       
       if (response.ok) {
-        const data = await response.json();
+        const rawText = await response.text();
+        console.log("📥 응답 원문:", rawText.substring(0, 200) + (rawText.length > 200 ? "..." : ""));
+        console.log("📥 응답 길이:", rawText.length);
+        
+        let data: any = {};
+        try {
+          data = rawText ? JSON.parse(rawText) : {};
+        } catch (parseError) {
+          console.error("❌ 응답 JSON 파싱 실패:", parseError);
+          console.error("   원문 전체:", rawText);
+          setError("서버 응답을 읽을 수 없습니다. 다시 시도해주세요.");
+          return;
+        }
+
+        console.log("✅ 카드 생성 API 응답 파싱 성공");
+        console.log("📋 응답 타입:", typeof data);
+        console.log("📋 응답 키 목록:", Object.keys(data));
+        console.log("📋 각 키의 값:");
+        console.log("   - card:", typeof data.card, data.card ? "존재" : "없음");
+        console.log("   - session_id:", data.session_id);
+        console.log("   - card_id:", data.card_id);
+        console.log("   - generation_method:", data.generation_method);
+        
+        // 필수 필드 검증
+        if (!data.card) {
+          console.error("❌ CRITICAL: API 응답에 card 데이터가 없습니다!");
+          console.error("   전체 응답:", data);
+          setError("카드 데이터를 받아오지 못했습니다. 다시 시도해주세요.");
+          return;
+        }
+        
+        if (!data.card_id) {
+          console.error("❌ CRITICAL: API 응답에 card_id가 없습니다!");
+          console.error("   응답 구조:", Object.keys(data));
+          console.error("   전체 응답:", data);
+
+          // card 내부에 card_id가 들어오는 구형/변형 응답 구조 대응
+          if (data.card && data.card.card_id) {
+            data.card_id = data.card.card_id;
+            console.log("✅ card_id 보정 성공 (card 내부에서 발견):", data.card_id);
+          } else {
+            setError("카드 ID를 받아오지 못했습니다. 서버 로그를 확인해주세요.");
+            return;
+          }
+        }
+        
+        if (!data.session_id) {
+          console.error("❌ CRITICAL: API 응답에 session_id가 없습니다!");
+          setError("세션 ID를 받아오지 못했습니다.");
+          return;
+        }
+        
+        // 모든 검증 통과
+        const cardIdString = String(data.card_id);
+        console.log("✅ 모든 필수 필드 검증 통과");
+        console.log("   - card_id (변환):", cardIdString);
+        console.log("   - session_id:", data.session_id);
+        
+        // 상태를 한 번에 업데이트하여 레이스 컨디션 방지
         setGeneratedCard(data.card);
-        setShowCardModal(true);
-        console.log("✅ 카드 생성 성공:", data);
+        setGeneratedCardId(cardIdString);
+        
+        // 데이터가 확실히 설정된 것을 확인한 후 모달 표시
+        if (data.card && cardIdString) {
+          setShowCardModal(true);
+          console.log("✅ 상태 업데이트 및 모달 표시 완료");
+        }
+        
+        console.log("✅ 상태 업데이트 완료");
       } else {
-        const error = await response.json();
-        alert(`카드 생성 실패: ${error.detail || "알 수 없는 오류"}`);
+        const errorData = await response.json().catch(() => ({ detail: "알 수 없는 오류" }));
+        console.error("❌ API 에러:", response.status, errorData);
+        setError(errorData.detail || "카드 생성에 실패했습니다.");
       }
     } catch (error) {
-      console.error("❌ 카드 생성 에러:", error);
-      alert("카드 생성 중 오류가 발생했습니다. 다시 시도해주세요.");
+      console.error("❌ 카드 생성 예외:", error);
+      setError("카드 생성 중 오류가 발생했습니다. 다시 시도해주세요.");
     } finally {
       setIsGeneratingCard(false);
+    }
+  };
+
+  // 고정 버튼 클릭 핸들러
+  const handleFixedButtonClick = () => {
+    if (cardTriggerReady) {
+      handleGenerateCard();
+    } else {
+      alert("아직 정보가 충분하지 않아요. 관심있는 향수를 더 클릭해보세요!");
     }
   };
 
@@ -1179,29 +1264,147 @@ export default function PerfumeNetworkPage() {
       )}
 
       {/* 로딩 오버레이 */}
-      {isGeneratingCard && (
-        <LoadingOverlay message="당신의 취향을 분석하고 있어요..." />
+      {isGeneratingCard && <LoadingOverlay />}
+
+      {/* 에러 배너 */}
+      {error && (
+        <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50 max-w-md w-full mx-6 animate-fade-in">
+          <div className="bg-white border-2 border-red-300 rounded-2xl shadow-2xl p-6">
+            <div className="flex items-start gap-4">
+              {/* 아이콘 */}
+              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+                <span className="text-2xl">⚠️</span>
+              </div>
+              
+              {/* 메시지 */}
+              <div className="flex-1">
+                <h3 className="text-base font-bold text-red-700 mb-1">
+                  오류가 발생했습니다
+                </h3>
+                <p className="text-sm text-red-600 leading-relaxed">
+                  {error}
+                </p>
+              </div>
+              
+              {/* 닫기 버튼 */}
+              <button
+                onClick={() => setError(null)}
+                className="flex-shrink-0 w-8 h-8 rounded-full hover:bg-red-100 flex items-center justify-center transition-colors"
+                aria-label="닫기"
+              >
+                <svg
+                  className="w-5 h-5 text-red-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+            
+            {/* 액션 버튼 */}
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={handleGenerateCard}
+                className="flex-1 py-2.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl font-semibold hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all"
+              >
+                다시 시도하기
+              </button>
+              <button
+                onClick={() => setError(null)}
+                className="px-6 py-2.5 border-2 border-red-200 text-red-600 rounded-xl font-semibold hover:bg-red-50 transition-colors"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
+      {/* 고정 버튼 (하단 우측) */}
+      <div className="fixed bottom-6 right-6 z-50">
+        <button
+          onClick={handleFixedButtonClick}
+          className={`relative w-16 h-16 rounded-full shadow-2xl flex items-center justify-center text-3xl transition-all duration-300 group ${
+            cardTriggerReady
+              ? "bg-gradient-to-br from-[#6B4E71] via-[#8B6E8F] to-[#9B7EAC] animate-pulse-glow hover:scale-110"
+              : "bg-gradient-to-br from-[#6B4E71] to-[#8B6E8F] hover:scale-105 hover:shadow-xl"
+          }`}
+          title={
+            cardTriggerReady
+              ? "향기카드 만들기 (준비 완료!)"
+              : "더 많은 향수를 탐색해보세요"
+          }
+        >
+          {/* 반짝이는 효과 (조건 충족 시) */}
+          {cardTriggerReady && (
+            <div className="absolute inset-0 rounded-full bg-gradient-to-r from-transparent via-white to-transparent opacity-30 animate-shimmer"></div>
+          )}
+          
+          {/* 아이콘 */}
+          <span className={`relative z-10 transition-transform duration-300 ${
+            cardTriggerReady ? "group-hover:rotate-12" : "group-hover:scale-110"
+          }`}>
+            🫧
+          </span>
+          
+          {/* 조건 충족 시 작은 뱃지 */}
+          {cardTriggerReady && (
+            <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white text-xs font-bold animate-bounce">
+              !
+            </span>
+          )}
+        </button>
+        
+        {/* 툴팁 (조건 충족 시) */}
+        {cardTriggerReady && (
+          <div className="absolute bottom-full right-0 mb-3 bg-[#2E2B28] text-white px-4 py-2 rounded-lg text-xs font-medium whitespace-nowrap shadow-lg animate-fade-in">
+            <div className="relative">
+              향기카드 만들기 준비 완료! 🎉
+              {/* 화살표 */}
+              <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1">
+                <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-[#2E2B28]"></div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* 카드 결과 모달 */}
-      {showCardModal && generatedCard && (
-        <ScentCardModal
-          card={generatedCard}
-          onClose={() => {
-            setShowCardModal(false);
-            setGeneratedCard(null);
-          }}
-          onSave={() => {
-            // TODO: 카드 저장 API 호출
-            alert("카드가 저장되었습니다!");
-          }}
-          onContinueExplore={() => {
-            setShowCardModal(false);
-            setGeneratedCard(null);
-            // 탐색 계속
-          }}
-        />
-      )}
+      {showCardModal && generatedCard && (() => {
+        // 모달 렌더링 시 cardId 로깅
+        console.log("🔍 모달 렌더링 - cardId 전달:", generatedCardId);
+        console.log("🔍 모달 렌더링 - sessionId 전달:", scentSessionId);
+        
+        return (
+          <ScentCardModal
+            card={generatedCard}
+            onClose={() => {
+              setShowCardModal(false);
+              setGeneratedCard(null);
+              setGeneratedCardId(null);
+            }}
+            onSave={() => {
+              // TODO: 카드 저장 API 호출
+              alert("카드가 저장되었습니다!");
+            }}
+            onContinueExplore={() => {
+              setShowCardModal(false);
+              setGeneratedCard(null);
+              setGeneratedCardId(null);
+            }}
+            sessionId={scentSessionId || undefined}
+            cardId={generatedCardId || undefined}
+            isLoggedIn={!!memberId}
+          />
+        );
+      })()}
     </div>
   );
 }

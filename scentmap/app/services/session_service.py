@@ -19,6 +19,38 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 _mbti_data_cache = None
 
 
+def get_mbti_image_url(mbti_code: Optional[str]) -> str:
+    """
+    MBTI 코드별 이미지 URL 반환
+    
+    Args:
+        mbti_code: MBTI 향 코드 (예: "FN", "CW", "SF", "WT")
+    
+    Returns:
+        이미지 URL (현재는 고정 이미지 반환)
+    
+    TODO: MBTI 코드별 이미지 준비 후 매핑 로직 구현
+    예정 매핑:
+    - "FN" (Floral Natural): /images/mbti/floral-natural.jpg
+    - "CW" (Citrus Woody): /images/mbti/citrus-woody.jpg
+    - "SF" (Spicy Fresh): /images/mbti/spicy-fresh.jpg
+    - "WT" (Woody Transparent): /images/mbti/woody-transparent.jpg
+    ... (16종)
+    """
+    # TODO: MBTI별 이미지가 준비되면 아래 로직 활성화
+    # mbti_image_mapping = {
+    #     "FN": "/images/mbti/floral-natural.jpg",
+    #     "CW": "/images/mbti/citrus-woody.jpg",
+    #     "SF": "/images/mbti/spicy-fresh.jpg",
+    #     "WT": "/images/mbti/woody-transparent.jpg",
+    #     # ... 나머지 12종
+    # }
+    # return mbti_image_mapping.get(mbti_code, "/perfumes/perfume_wiki_default.png")
+    
+    # 현재는 고정 이미지 반환
+    return "/perfumes/intp.png"
+
+
 def load_mbti_data() -> List[Dict]:
     """
     MBTI 데이터 로드 (캐싱)
@@ -372,6 +404,34 @@ def generate_template_card(session_id: str) -> Dict:
         # 세션 데이터 조회
         with get_recom_db_connection() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                # 기존 카드가 있는지 먼저 확인
+                cur.execute("""
+                    SELECT 
+                        card_id,
+                        card_data,
+                        generation_method
+                    FROM TB_SCENT_CARD_RESULT_T
+                    WHERE session_id = %s
+                    ORDER BY created_dt DESC
+                    LIMIT 1
+                """, (session_id,))
+                
+                existing_card = cur.fetchone()
+                if existing_card:
+                    existing_card_id = str(existing_card['card_id'])
+                    logger.info(f"♻️ 기존 템플릿 카드 반환: session={session_id}, card_id={existing_card_id}")
+                    
+                    result_dict = {
+                        "card": existing_card['card_data'],
+                        "session_id": session_id,
+                        "card_id": existing_card_id,
+                        "generation_method": existing_card['generation_method']
+                    }
+                    
+                    logger.info(f"📦 기존 템플릿 카드 반환 데이터 검증: card_id={result_dict.get('card_id')}, keys={list(result_dict.keys())}")
+                    return result_dict
+                
+                # 기존 카드가 없으면 새로 생성
                 cur.execute("""
                     SELECT 
                         member_id,
@@ -427,10 +487,40 @@ def generate_template_card(session_id: str) -> Dict:
             "title": title,
             "story": story,
             "accords": accords,
-            "created_at": datetime.now().isoformat()
+            "created_at": datetime.now().isoformat(),
+            
+            # [NEW] 다음 단계 CTA
+            "next_actions": [
+                {
+                    "type": "chatbot",
+                    "title": "더 정확한 추천을 받고싶나요?",
+                    "description": "센텐스의 추천챗봇을 이용해보세요!",
+                    "button_text": "추천챗봇 시작하기",
+                    "link": "/chat"
+                },
+                {
+                    "type": "layering",
+                    "title": "레이어링에 관심있으신가요?",
+                    "description": "레이어링추천서비스도 이용해보세요!",
+                    "button_text": "레이어링 추천받기",
+                    "link": "/layering"
+                }
+            ],
+            
+            # [NEW] 카드 이미지 (MBTI별 이미지, 현재는 고정)
+            "image_url": get_mbti_image_url(None)
         }
         
+        # [NEW] MBTI 안내 (회원이지만 MBTI 없는 경우)
+        if session['member_id']:
+            card_data["mbti_prompt"] = {
+                "message": "MBTI를 알려주시면 더 좋아요!",
+                "options": ["ISTJ", "ISFJ", "INFJ", "INTJ", "ISTP", "ISFP", "INFP", "INTP",
+                           "ESTJ", "ESFJ", "ENFJ", "ENTJ", "ESTP", "ESFP", "ENFP", "ENTP"]
+            }
+        
         # 카드 결과 저장
+        card_id = None
         with get_recom_db_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
@@ -440,12 +530,20 @@ def generate_template_card(session_id: str) -> Dict:
                         card_data,
                         generation_method
                     ) VALUES (%s, %s, %s, %s)
+                    RETURNING card_id
                 """, (
                     session_id,
                     session['member_id'],
                     psycopg2.extras.Json(card_data),
                     'template'
                 ))
+                result = cur.fetchone()
+                if not result or not result[0]:
+                    logger.error(f"❌ CRITICAL: INSERT 후 card_id를 받지 못함!")
+                    raise ValueError("DB에서 card_id를 받아오지 못했습니다")
+                
+                card_id = result[0]
+                logger.info(f"🆔 템플릿 카드 INSERT 완료: card_id={card_id} (type: {type(card_id)})")
                 
                 # 세션 업데이트
                 cur.execute("""
@@ -458,16 +556,26 @@ def generate_template_card(session_id: str) -> Dict:
                 
                 conn.commit()
         
-        logger.info(f"✅ 템플릿 카드 생성 완료: {session_id}")
+        if not card_id:
+            logger.error(f"❌ CRITICAL: card_id가 None입니다!")
+            raise ValueError("카드 ID 생성에 실패했습니다")
         
-        return {
+        logger.info(f"✅ 템플릿 카드 생성 완료: session={session_id}, card_id={card_id}")
+        
+        result_dict = {
             "card": card_data,
             "session_id": session_id,
+            "card_id": str(card_id),
             "generation_method": "template"
         }
+        
+        logger.info(f"📦 템플릿 카드 반환 데이터 검증: card_id={result_dict.get('card_id')}, keys={list(result_dict.keys())}")
+        
+        return result_dict
     
     except Exception as e:
-        logger.error(f"❌ 템플릿 카드 생성 실패: {e}")
+        logger.error(f"❌ 템플릿 카드 생성 실패: {e}", exc_info=True)
+        logger.error(f"   session_id: {session_id}")
         raise
 
 
@@ -488,6 +596,36 @@ def generate_llm_card(session_id: str, use_simple_model: bool = False) -> Dict:
         # 세션 데이터 조회
         with get_recom_db_connection() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                # 기존 카드가 있는지 먼저 확인
+                cur.execute("""
+                    SELECT 
+                        card_id,
+                        card_data,
+                        generation_method,
+                        generation_time_ms
+                    FROM TB_SCENT_CARD_RESULT_T
+                    WHERE session_id = %s
+                    ORDER BY created_dt DESC
+                    LIMIT 1
+                """, (session_id,))
+                
+                existing_card = cur.fetchone()
+                if existing_card:
+                    existing_card_id = str(existing_card['card_id'])
+                    logger.info(f"♻️ 기존 LLM 카드 반환: session={session_id}, card_id={existing_card_id}")
+                    
+                    result_dict = {
+                        "card": existing_card['card_data'],
+                        "session_id": session_id,
+                        "card_id": existing_card_id,
+                        "generation_method": existing_card['generation_method'],
+                        "generation_time_ms": existing_card['generation_time_ms']
+                    }
+                    
+                    logger.info(f"📦 기존 LLM 카드 반환 데이터 검증: card_id={result_dict.get('card_id')}, keys={list(result_dict.keys())}")
+                    return result_dict
+                
+                # 기존 카드가 없으면 새로 생성
                 cur.execute("""
                     SELECT 
                         member_id,
@@ -538,6 +676,8 @@ def generate_llm_card(session_id: str, use_simple_model: bool = False) -> Dict:
 
 위 MBTI 정보를 활용하여 "{mbti_profile['mbti']}인 당신은..."과 같이 자연스럽게 스토리에 녹여주세요."""
         
+        mbti_code_fragment = f',\n  "mbti_code": "{mbti_profile["code"]}"' if mbti_profile else ""
+
         prompt = f"""사용자가 향수맵에서 다음 분위기를 선택했습니다:
 
 {accord_info}{mbti_section}
@@ -557,7 +697,7 @@ def generate_llm_card(session_id: str, use_simple_model: bool = False) -> Dict:
   "story": "짧은 스토리 (2-3문장, 주어진 설명만 활용{', MBTI 정보 포함' if mbti_profile else ''})",
   "accords": [
     {{"name": "{descriptions[0]['accord']}", "description": "{descriptions[0]['desc1']}"}}
-  ]{f',\n  "mbti_code": "{mbti_profile["code"]}"' if mbti_profile else ''}
+  ]{mbti_code_fragment}
 }}
 
 중요: accords 배열에는 반드시 위에서 제공된 모든 어코드를 포함하세요."""
@@ -599,7 +739,28 @@ def generate_llm_card(session_id: str, use_simple_model: bool = False) -> Dict:
                 "title": card.title,
                 "story": card.story,
                 "accords": [{"name": acc.name, "description": acc.description} for acc in card.accords],
-                "created_at": datetime.now().isoformat()
+                "created_at": datetime.now().isoformat(),
+                
+                # [NEW] 다음 단계 CTA
+                "next_actions": [
+                    {
+                        "type": "chatbot",
+                        "title": "더 정확한 추천을 받고싶나요?",
+                        "description": "센텐스의 추천챗봇을 이용해보세요!",
+                        "button_text": "추천챗봇 시작하기",
+                        "link": "/chat"
+                    },
+                    {
+                        "type": "layering",
+                        "title": "레이어링에 관심있으신가요?",
+                        "description": "레이어링추천서비스도 이용해보세요!",
+                        "button_text": "레이어링 추천받기",
+                        "link": "/layering"
+                    }
+                ],
+                
+                # [NEW] 카드 이미지 (MBTI별 이미지, 현재는 고정)
+                "image_url": get_mbti_image_url(mbti_profile['code'] if mbti_profile else None)
             }
             
             # MBTI 정보 추가 (있는 경우)
@@ -607,10 +768,19 @@ def generate_llm_card(session_id: str, use_simple_model: bool = False) -> Dict:
                 card_data["mbti"] = user_mbti
                 card_data["mbti_code"] = llm_output.get("mbti_code", mbti_profile['code'])
                 card_data["mbti_headline"] = mbti_profile['headline']
+            else:
+                # [NEW] MBTI 안내 (회원이지만 MBTI 없는 경우)
+                if session['member_id']:
+                    card_data["mbti_prompt"] = {
+                        "message": "MBTI를 알려주시면 더 좋아요!",
+                        "options": ["ISTJ", "ISFJ", "INFJ", "INTJ", "ISTP", "ISFP", "INFP", "INTP",
+                                   "ESTJ", "ESFJ", "ENFJ", "ENTJ", "ESTP", "ESFP", "ENFP", "ENTP"]
+                    }
             
             generation_time_ms = int((time.time() - start_time) * 1000)
             
             # 카드 결과 저장
+            card_id = None
             with get_recom_db_connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
@@ -622,6 +792,7 @@ def generate_llm_card(session_id: str, use_simple_model: bool = False) -> Dict:
                             llm_model,
                             generation_time_ms
                         ) VALUES (%s, %s, %s, %s, %s, %s)
+                        RETURNING card_id
                     """, (
                         session_id,
                         session['member_id'],
@@ -630,6 +801,13 @@ def generate_llm_card(session_id: str, use_simple_model: bool = False) -> Dict:
                         model,
                         generation_time_ms
                     ))
+                    result = cur.fetchone()
+                    if not result or not result[0]:
+                        logger.error(f"❌ CRITICAL: INSERT 후 card_id를 받지 못함!")
+                        raise ValueError("DB에서 card_id를 받아오지 못했습니다")
+                    
+                    card_id = result[0]
+                    logger.info(f"🆔 LLM 카드 INSERT 완료: card_id={card_id} (type: {type(card_id)})")
                     
                     # 세션 업데이트
                     cur.execute("""
@@ -642,23 +820,36 @@ def generate_llm_card(session_id: str, use_simple_model: bool = False) -> Dict:
                     
                     conn.commit()
             
-            logger.info(f"✅ LLM 카드 생성 완료: {session_id}, 소요시간: {generation_time_ms}ms")
+            if not card_id:
+                logger.error(f"❌ CRITICAL: card_id가 None입니다!")
+                raise ValueError("카드 ID 생성에 실패했습니다")
             
-            return {
+            logger.info(f"✅ LLM 카드 생성 완료: session={session_id}, card_id={card_id}, 소요시간: {generation_time_ms}ms")
+            
+            result_dict = {
                 "card": card_data,
                 "session_id": session_id,
+                "card_id": str(card_id),
                 "generation_method": "llm_full",
                 "generation_time_ms": generation_time_ms
             }
+            
+            logger.info(f"📦 LLM 카드 반환 데이터 검증: card_id={result_dict.get('card_id')}, keys={list(result_dict.keys())}")
+            
+            return result_dict
         
         except Exception as validation_error:
-            logger.warning(f"⚠️ Pydantic 검증 실패, 템플릿으로 폴백: {validation_error}")
-            return generate_template_card(session_id)
+            logger.warning(f"⚠️ Pydantic 검증 실패, 템플릿으로 폴백: {validation_error}", exc_info=True)
+            fallback_result = generate_template_card(session_id)
+            logger.info(f"📦 폴백 결과 (Pydantic 실패): card_id={fallback_result.get('card_id')}")
+            return fallback_result
     
     except Exception as e:
-        logger.error(f"❌ LLM 카드 생성 실패, 템플릿으로 폴백: {e}")
+        logger.error(f"❌ LLM 카드 생성 실패, 템플릿으로 폴백: {e}", exc_info=True)
         # 폴백: 템플릿 카드 생성
-        return generate_template_card(session_id)
+        fallback_result = generate_template_card(session_id)
+        logger.info(f"📦 폴백 결과 (LLM 실패): card_id={fallback_result.get('card_id')}")
+        return fallback_result
 
 
 def save_card(card_id: str, member_id: int) -> Dict:

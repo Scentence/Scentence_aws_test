@@ -6,14 +6,19 @@ from scentmap.app.schemas.session_schema import (
     SessionStartResponse,
     ActivityLogRequest,
     ActivityLogResponse,
-    GenerateCardResponse
+    GenerateCardResponse,
+    SaveCardRequest,
+    SaveCardResponse,
+    MyCardsResponse
 )
 from scentmap.app.services.session_service import (
     create_session,
     update_session_activity,
     check_card_trigger,
     generate_template_card,
-    generate_llm_card
+    generate_llm_card,
+    save_card,
+    get_my_cards
 )
 
 router = APIRouter(prefix="/session", tags=["session"])
@@ -78,6 +83,10 @@ def generate_card(
     - OpenAI GPT를 활용한 자연스러운 스토리 생성
     - 실패 시 자동으로 템플릿 폴백
     
+    Phase 3: MBTI 통합
+    - 회원인 경우 MBTI 정보를 카드에 포함
+    - "INFJ인 당신은..." 형태로 개인화
+    
     Query Parameters:
     - use_template: True이면 LLM 없이 템플릿만 사용
     - use_simple_model: True이면 gpt-4o-mini, False이면 gpt-4o (기본: True)
@@ -87,7 +96,7 @@ def generate_card(
             # 템플릿 모드: LLM 없이 고정 문구
             card = generate_template_card(session_id)
         else:
-            # LLM 모드: 자연스러운 스토리 생성 (폴백 포함)
+            # LLM 모드: 자연스러운 스토리 생성 (MBTI 통합, 폴백 포함)
             card = generate_llm_card(session_id, use_simple_model=use_simple_model)
         
         return GenerateCardResponse(**card)
@@ -95,3 +104,49 @@ def generate_card(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"카드 생성 실패: {str(e)}")
+
+
+@router.post("/{session_id}/save-card", response_model=SaveCardResponse)
+def save_generated_card(
+    session_id: str,
+    request: SaveCardRequest,
+    member_id: int = Query(..., description="회원 ID (필수)")
+):
+    """
+    생성된 카드 저장 (회원 전용)
+    
+    Phase 3: 카드 저장 기능
+    - 회원만 카드를 저장할 수 있음
+    - 마이페이지에서 저장된 카드 조회 가능
+    """
+    try:
+        result = save_card(request.card_id, member_id)
+        
+        if not result["success"]:
+            raise HTTPException(status_code=400, detail=result["message"])
+        
+        return SaveCardResponse(**result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"카드 저장 실패: {str(e)}")
+
+
+@router.get("/my-cards", response_model=MyCardsResponse)
+def get_member_cards(
+    member_id: int = Query(..., description="회원 ID (필수)"),
+    limit: int = Query(20, ge=1, le=100, description="조회 개수 (1-100)"),
+    offset: int = Query(0, ge=0, description="오프셋")
+):
+    """
+    내 카드 조회 (회원 전용)
+    
+    Phase 3: 마이페이지 카드 조회
+    - 저장된 카드 목록 조회
+    - 페이지네이션 지원
+    """
+    try:
+        result = get_my_cards(member_id, limit, offset)
+        return MyCardsResponse(**result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"카드 조회 실패: {str(e)}")

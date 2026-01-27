@@ -15,6 +15,110 @@ logger = logging.getLogger(__name__)
 # OpenAI 클라이언트 초기화
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+# MBTI 데이터 캐시
+_mbti_data_cache = None
+
+
+def load_mbti_data() -> List[Dict]:
+    """
+    MBTI 데이터 로드 (캐싱)
+    
+    Returns:
+        MBTI 데이터 리스트
+    """
+    global _mbti_data_cache
+    
+    if _mbti_data_cache is not None:
+        return _mbti_data_cache
+    
+    try:
+        # data 폴더의 perfume_mbti.json 파일 읽기
+        data_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            "data",
+            "perfume_mbti.json"
+        )
+        
+        with open(data_path, 'r', encoding='utf-8') as f:
+            _mbti_data_cache = json.load(f)
+        
+        logger.info(f"✅ MBTI 데이터 로드 완료: {len(_mbti_data_cache)}개")
+        return _mbti_data_cache
+    
+    except Exception as e:
+        logger.error(f"❌ MBTI 데이터 로드 실패: {e}")
+        return []
+
+
+def get_mbti_profile(mbti: str) -> Optional[Dict]:
+    """
+    특정 MBTI의 향 프로필 조회
+    
+    Args:
+        mbti: MBTI 유형 (예: "INFJ")
+    
+    Returns:
+        MBTI 향 프로필 또는 None
+    """
+    mbti_data = load_mbti_data()
+    
+    for profile in mbti_data:
+        if profile.get("mbti") == mbti.upper():
+            return profile
+    
+    logger.warning(f"⚠️ MBTI 프로필을 찾을 수 없음: {mbti}")
+    return None
+
+
+def get_member_mbti(member_id: int) -> Optional[str]:
+    """
+    회원 MBTI 조회
+    
+    Args:
+        member_id: 회원 ID
+    
+    Returns:
+        MBTI 유형 또는 None
+    """
+    try:
+        # TODO: 실제 회원 DB에서 MBTI 조회
+        # 현재는 더미 데이터 반환 (테스트용)
+        # 추후 TB_MEMBER_MBTI_T 또는 TB_MEMBER_PROFILE_T에서 조회
+        
+        with get_recom_db_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                # 임시: 회원 ID를 MBTI로 매핑 (테스트용)
+                # 실제 구현 시 아래 쿼리를 사용
+                # cur.execute("""
+                #     SELECT mbti 
+                #     FROM TB_MEMBER_MBTI_T 
+                #     WHERE member_id = %s
+                # """, (member_id,))
+                # 
+                # result = cur.fetchone()
+                # return result['mbti'] if result else None
+                
+                # 임시 매핑 (테스트용)
+                test_mbtis = {
+                    1: "INFJ",
+                    2: "ENFP",
+                    3: "INTJ",
+                    4: "ISFJ",
+                    5: "ESTP"
+                }
+                
+                mbti = test_mbtis.get(member_id)
+                if mbti:
+                    logger.info(f"✅ 회원 MBTI 조회 완료: member_id={member_id}, mbti={mbti}")
+                else:
+                    logger.warning(f"⚠️ 회원 MBTI 없음: member_id={member_id}")
+                
+                return mbti
+    
+    except Exception as e:
+        logger.error(f"❌ 회원 MBTI 조회 실패: {e}")
+        return None
+
 
 def create_session(member_id: Optional[int] = None) -> Dict:
     """
@@ -369,7 +473,7 @@ def generate_template_card(session_id: str) -> Dict:
 
 def generate_llm_card(session_id: str, use_simple_model: bool = False) -> Dict:
     """
-    LLM 기반 향기카드 생성
+    LLM 기반 향기카드 생성 (MBTI 통합)
     
     Args:
         session_id: 세션 ID
@@ -408,14 +512,35 @@ def generate_llm_card(session_id: str, use_simple_model: bool = False) -> Dict:
         if not descriptions:
             raise ValueError("어코드 설명을 찾을 수 없습니다")
         
+        # 회원 MBTI 조회 (회원인 경우)
+        mbti_profile = None
+        user_mbti = None
+        if session['member_id']:
+            user_mbti = get_member_mbti(session['member_id'])
+            if user_mbti:
+                mbti_profile = get_mbti_profile(user_mbti)
+        
         # LLM 프롬프트 구성
         accord_info = ""
         for desc in descriptions:
             accord_info += f"- {desc['accord']}: {desc['desc1']}, {desc['desc2']}, {desc['desc3']}\n"
         
+        # MBTI 정보 추가 (회원인 경우)
+        mbti_section = ""
+        if mbti_profile:
+            mbti_section = f"""
+
+[사용자 MBTI 정보]
+- MBTI: {mbti_profile['mbti']}
+- 향 코드: {mbti_profile['code']}
+- 향 성격: {mbti_profile['headline']}
+- 인상: {mbti_profile['impression']}
+
+위 MBTI 정보를 활용하여 "{mbti_profile['mbti']}인 당신은..."과 같이 자연스럽게 스토리에 녹여주세요."""
+        
         prompt = f"""사용자가 향수맵에서 다음 분위기를 선택했습니다:
 
-{accord_info}
+{accord_info}{mbti_section}
 
 위 설명을 바탕으로 짧고 자연스러운 향기카드를 작성하세요.
 
@@ -424,14 +549,15 @@ def generate_llm_card(session_id: str, use_simple_model: bool = False) -> Dict:
 - 2-3문장으로 간결하게
 - 친근하고 따뜻한 톤
 - 제목은 5-7자로 짧고 감성적으로
+{"- MBTI 정보가 있다면 자연스럽게 스토리에 녹여주세요" if mbti_profile else ""}
 
 [출력 형식 - JSON]
 {{
   "title": "카드 제목 (5-7자)",
-  "story": "짧은 스토리 (2-3문장, 주어진 설명만 활용)",
+  "story": "짧은 스토리 (2-3문장, 주어진 설명만 활용{', MBTI 정보 포함' if mbti_profile else ''})",
   "accords": [
     {{"name": "{descriptions[0]['accord']}", "description": "{descriptions[0]['desc1']}"}}
-  ]
+  ]{f',\n  "mbti_code": "{mbti_profile["code"]}"' if mbti_profile else ''}
 }}
 
 중요: accords 배열에는 반드시 위에서 제공된 모든 어코드를 포함하세요."""
@@ -475,6 +601,12 @@ def generate_llm_card(session_id: str, use_simple_model: bool = False) -> Dict:
                 "accords": [{"name": acc.name, "description": acc.description} for acc in card.accords],
                 "created_at": datetime.now().isoformat()
             }
+            
+            # MBTI 정보 추가 (있는 경우)
+            if mbti_profile:
+                card_data["mbti"] = user_mbti
+                card_data["mbti_code"] = llm_output.get("mbti_code", mbti_profile['code'])
+                card_data["mbti_headline"] = mbti_profile['headline']
             
             generation_time_ms = int((time.time() - start_time) * 1000)
             
@@ -527,3 +659,130 @@ def generate_llm_card(session_id: str, use_simple_model: bool = False) -> Dict:
         logger.error(f"❌ LLM 카드 생성 실패, 템플릿으로 폴백: {e}")
         # 폴백: 템플릿 카드 생성
         return generate_template_card(session_id)
+
+
+def save_card(card_id: str, member_id: int) -> Dict:
+    """
+    생성된 카드 저장 (회원용)
+    
+    Args:
+        card_id: 카드 ID (UUID)
+        member_id: 회원 ID
+    
+    Returns:
+        저장 결과
+    """
+    try:
+        with get_recom_db_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                # 카드 존재 여부 및 소유권 확인
+                cur.execute("""
+                    SELECT card_id, member_id 
+                    FROM TB_SCENT_CARD_RESULT_T
+                    WHERE card_id = %s
+                """, (card_id,))
+                
+                card = cur.fetchone()
+                if not card:
+                    raise ValueError(f"카드를 찾을 수 없습니다: {card_id}")
+                
+                if card['member_id'] and card['member_id'] != member_id:
+                    raise ValueError("본인의 카드만 저장할 수 있습니다")
+                
+                # 카드 저장 상태 업데이트
+                cur.execute("""
+                    UPDATE TB_SCENT_CARD_RESULT_T
+                    SET 
+                        saved = TRUE,
+                        member_id = %s
+                    WHERE card_id = %s
+                """, (member_id, card_id))
+                
+                conn.commit()
+        
+        logger.info(f"✅ 카드 저장 완료: card_id={card_id}, member_id={member_id}")
+        
+        return {
+            "success": True,
+            "message": "카드가 저장되었습니다",
+            "card_id": card_id
+        }
+    
+    except ValueError as e:
+        logger.warning(f"⚠️ 카드 저장 실패: {e}")
+        return {
+            "success": False,
+            "message": str(e),
+            "card_id": card_id
+        }
+    except Exception as e:
+        logger.error(f"❌ 카드 저장 실패: {e}")
+        return {
+            "success": False,
+            "message": "카드 저장에 실패했습니다",
+            "card_id": card_id
+        }
+
+
+def get_my_cards(member_id: int, limit: int = 20, offset: int = 0) -> Dict:
+    """
+    내 카드 조회
+    
+    Args:
+        member_id: 회원 ID
+        limit: 조회 개수
+        offset: 오프셋
+    
+    Returns:
+        카드 리스트 및 총 개수
+    """
+    try:
+        with get_recom_db_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                # 총 개수 조회
+                cur.execute("""
+                    SELECT COUNT(*) as total
+                    FROM TB_SCENT_CARD_RESULT_T
+                    WHERE member_id = %s AND saved = TRUE
+                """, (member_id,))
+                
+                total_count = cur.fetchone()['total']
+                
+                # 카드 리스트 조회
+                cur.execute("""
+                    SELECT 
+                        card_id,
+                        card_data,
+                        generation_method,
+                        created_dt,
+                        last_viewed_dt
+                    FROM TB_SCENT_CARD_RESULT_T
+                    WHERE member_id = %s AND saved = TRUE
+                    ORDER BY created_dt DESC
+                    LIMIT %s OFFSET %s
+                """, (member_id, limit, offset))
+                
+                cards = []
+                for row in cur.fetchall():
+                    card_item = {
+                        "card_id": str(row['card_id']),
+                        "card_data": row['card_data'],
+                        "generation_method": row['generation_method'],
+                        "created_at": row['created_dt'].isoformat() if row['created_dt'] else None,
+                        "last_viewed_at": row['last_viewed_dt'].isoformat() if row['last_viewed_dt'] else None
+                    }
+                    cards.append(card_item)
+                
+                logger.info(f"✅ 내 카드 조회 완료: member_id={member_id}, count={len(cards)}/{total_count}")
+                
+                return {
+                    "cards": cards,
+                    "total_count": total_count
+                }
+    
+    except Exception as e:
+        logger.error(f"❌ 내 카드 조회 실패: {e}")
+        return {
+            "cards": [],
+            "total_count": 0
+        }

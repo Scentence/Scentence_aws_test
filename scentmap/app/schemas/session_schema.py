@@ -48,3 +48,21 @@ class GenerateCardResponse(BaseModel):
     session_id: str
     generation_method: str  # 'template' or 'llm_light' or 'llm_full'
     generation_time_ms: Optional[int] = None  # 생성 소요 시간 (밀리초)
+
+
+class SaveCardRequest(BaseModel):
+    """카드 저장 요청"""
+    card_id: str  # UUID
+
+
+class SaveCardResponse(BaseModel):
+    """카드 저장 응답"""
+    success: bool
+    message: str
+    card_id: str
+
+
+class MyCardsResponse(BaseModel):
+    """내 카드 조회 응답"""
+    cards: List[dict]
+    total_count: int

@@ -18,6 +18,9 @@ import {
   getAccordColor,
   hexToRgba,
 } from "./config";
+import CardTriggerBanner from "@/components/perfume-network/CardTriggerBanner";
+import LoadingOverlay from "@/components/perfume-network/LoadingOverlay";
+import ScentCardModal from "@/components/perfume-network/ScentCardModal";
 
 type NetworkNode = {
   id: string;
@@ -72,6 +75,9 @@ type LabelsData = {
 
 const API_BASE = API_CONFIG.BASE_URL;
 const DEFAULT_ACCORDS = ["Floral", "Woody", "Citrus", "Fresh", "Spicy"];
+
+// 세션 API URL
+const SESSION_API_BASE = API_BASE; // scentmap 서비스 사용
 
 export default function PerfumeNetworkPage() {
   const { data: session } = useSession();
@@ -135,6 +141,14 @@ export default function PerfumeNetworkPage() {
   const [showMyPerfumesOnly, setShowMyPerfumesOnly] = useState(false);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
 
+  // 세션 및 카드 생성 상태
+  const [scentSessionId, setScentSessionId] = useState<string | null>(null);
+  const [showCardTrigger, setShowCardTrigger] = useState(false);
+  const [triggerMessage, setTriggerMessage] = useState("");
+  const [isGeneratingCard, setIsGeneratingCard] = useState(false);
+  const [showCardModal, setShowCardModal] = useState(false);
+  const [generatedCard, setGeneratedCard] = useState<any>(null);
+
   // vis-network 참조
   const containerRef = useRef<HTMLDivElement>(null);
   const networkRef = useRef<any>(null);
@@ -177,6 +191,96 @@ export default function PerfumeNetworkPage() {
       return;
     }
   }, [sessionUserId]);
+
+  // 세션 시작 (향수맵 진입 시)
+  useEffect(() => {
+    if (!memberIdReady) return;
+    
+    const startScentSession = async () => {
+      try {
+        const response = await fetch(`${SESSION_API_BASE}/session/start`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ member_id: memberId ? Number(memberId) : null }),
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setScentSessionId(data.session_id);
+          console.log("✅ 세션 시작:", data.session_id);
+        }
+      } catch (error) {
+        console.warn("⚠️ 세션 시작 실패:", error);
+      }
+    };
+    
+    startScentSession();
+  }, [memberIdReady, memberId]);
+
+  // 활동 로깅 함수
+  const logActivity = async (data: {
+    accord_selected?: string;
+    perfume_id?: number;
+    reaction?: string;
+  }) => {
+    if (!scentSessionId) return;
+    
+    try {
+      const response = await fetch(
+        `${SESSION_API_BASE}/session/${scentSessionId}/activity`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        }
+      );
+      
+      if (response.ok) {
+        const result = await response.json();
+        
+        // 카드 생성 조건 충족 체크
+        if (result.card_trigger_ready && !showCardTrigger) {
+          setShowCardTrigger(true);
+          setTriggerMessage(result.trigger_message || "지금까지 탐색한 향으로 향기카드를 만들어볼까요?");
+        }
+      }
+    } catch (error) {
+      console.warn("⚠️ 활동 로깅 실패:", error);
+    }
+  };
+
+  // 카드 생성 함수
+  const handleGenerateCard = async () => {
+    if (!scentSessionId) return;
+    
+    setShowCardTrigger(false);
+    setIsGeneratingCard(true);
+    
+    try {
+      const response = await fetch(
+        `${SESSION_API_BASE}/session/${scentSessionId}/generate-card`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        setGeneratedCard(data.card);
+        setShowCardModal(true);
+        console.log("✅ 카드 생성 성공:", data);
+      } else {
+        const error = await response.json();
+        alert(`카드 생성 실패: ${error.detail || "알 수 없는 오류"}`);
+      }
+    } catch (error) {
+      console.error("❌ 카드 생성 에러:", error);
+      alert("카드 생성 중 오류가 발생했습니다. 다시 시도해주세요.");
+    } finally {
+      setIsGeneratingCard(false);
+    }
+  };
 
   // 라벨 데이터 로딩
   useEffect(() => {
@@ -626,7 +730,22 @@ export default function PerfumeNetworkPage() {
         console.warn("⚠️ vis-network 초기화 실패:", err);
         return;
       }
-      networkRef.current.on("click", (p: any) => setSelectedPerfumeId(p.nodes[0] && !p.nodes[0].startsWith("accord_") ? p.nodes[0] : null));
+      networkRef.current.on("click", (p: any) => {
+        const nodeId = p.nodes[0];
+        if (nodeId && !nodeId.startsWith("accord_")) {
+          setSelectedPerfumeId(nodeId);
+          // 향수 클릭 로깅 (관심 표시)
+          const perfumeIdNum = nodeId.match(/\d+/)?.[0];
+          if (perfumeIdNum) {
+            logActivity({ 
+              perfume_id: Number(perfumeIdNum), 
+              reaction: "interested" 
+            });
+          }
+        } else {
+          setSelectedPerfumeId(null);
+        }
+      });
       networkRef.current.once("stabilizationIterationsDone", () => {
         if (!freezeMotion) {
           networkRef.current?.setOptions({ physics: { enabled: false } });
@@ -725,7 +844,15 @@ export default function PerfumeNetworkPage() {
           {isAccordFilterOpen && (
             <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-10 gap-3">
               {effectiveFilterOptions.accords.map(acc => (
-                <button key={acc} onClick={() => { setSelectedAccords(prev => prev.includes(acc) ? prev.filter(a => a !== acc) : [...prev, acc]); setSelectedPerfumeId(null); }}
+                <button key={acc} onClick={() => { 
+                  const newAccords = selectedAccords.includes(acc) ? selectedAccords.filter(a => a !== acc) : [...selectedAccords, acc];
+                  setSelectedAccords(newAccords); 
+                  setSelectedPerfumeId(null); 
+                  // 어코드 선택 로깅
+                  if (!selectedAccords.includes(acc)) {
+                    logActivity({ accord_selected: acc });
+                  }
+                }}
                   className={`relative aspect-square rounded-2xl border-2 transition-all ${selectedAccords.includes(acc) ? "border-[#C8A24D] bg-[#C8A24D]/10" : "border-[#E2D7C5] bg-white"}`}>
                   <div className="absolute inset-0 flex flex-col items-center justify-center p-2">
                     <span className="text-2xl mb-1">{ACCORD_ICONS[acc] || "✨"}</span>
@@ -1040,6 +1167,40 @@ export default function PerfumeNetworkPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 카드 제안 배너 */}
+      {showCardTrigger && (
+        <CardTriggerBanner
+          message={triggerMessage}
+          onAccept={handleGenerateCard}
+          onDismiss={() => setShowCardTrigger(false)}
+        />
+      )}
+
+      {/* 로딩 오버레이 */}
+      {isGeneratingCard && (
+        <LoadingOverlay message="당신의 취향을 분석하고 있어요..." />
+      )}
+
+      {/* 카드 결과 모달 */}
+      {showCardModal && generatedCard && (
+        <ScentCardModal
+          card={generatedCard}
+          onClose={() => {
+            setShowCardModal(false);
+            setGeneratedCard(null);
+          }}
+          onSave={() => {
+            // TODO: 카드 저장 API 호출
+            alert("카드가 저장되었습니다!");
+          }}
+          onContinueExplore={() => {
+            setShowCardModal(false);
+            setGeneratedCard(null);
+            // 탐색 계속
+          }}
+        />
       )}
     </div>
   );

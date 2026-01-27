@@ -192,14 +192,14 @@ UI 결과:
 -- AWS RDS에 생성 필요
 
 CREATE TABLE TB_MEMBER_MY_PERFUME_T (
-    MY_PERFUME_ID   BIGSERIAL PRIMARY KEY,           -- PK (자동 증가)
     MEMBER_ID       BIGINT NOT NULL,                 -- FK (member_db)
     PERFUME_ID      BIGINT NOT NULL,                 -- FK (perfume_db)
     PERFUME_NAME    VARCHAR(200),                    -- 스냅샷 (선택)
-    STATUS          VARCHAR(20) DEFAULT 'WANT',      -- 'HAVE', 'WANT'
-    SOURCE          VARCHAR(20) DEFAULT 'USER',      -- 'USER', 'RECOMMENDER'
-    PREFERENCE      SMALLINT DEFAULT 0,              -- -1(싫음), 0(보통), 1(좋음)
-    REGISTER_DT     TIMESTAMP DEFAULT NOW(),         -- 등록 일시
+    register_status VARCHAR(20) DEFAULT 'HAVE',      -- 'HAVE', 'HAD', 'RECOMMENDED'
+    PREFERENCE      VARCHAR(20) DEFAULT 'NEUTRAL',   -- 'BAD', 'NEUTRAL', 'GOOD'
+    register_reason VARCHAR(200),                    -- 등록 경로 'USER', 'RECOMMENDER'
+    register_dt     TIMESTAMP DEFAULT NOW(),         -- 등록 일시
+    alter_dt        TIMESTAMP DEFAULT NOW(),         -- 수정 일시
 
     UNIQUE (MEMBER_ID, PERFUME_ID)
 );
@@ -211,8 +211,8 @@ CREATE INDEX idx_my_perfume_member ON TB_MEMBER_MY_PERFUME_T(MEMBER_ID);
 **컬럼 설명:**
 | 컬럼 | 설명 | 값 |
 |------|------|-----|
-| STATUS | 유저 관점 상태 | HAVE(보유중), HAD(과거), WANT(갖고싶음) |
-| SOURCE | 등록 출처 | USER(직접등록), RECOMMENDER(챗봇추천) |
+| STATUS | 유저 관점 상태 | HAVE(보유중), HAD(과거), RECOMMENDED(추천) |
+| register_reason | 등록 출처 | USER(직접등록), RECOMMENDER(챗봇추천) |
 | PREFERENCE | 선호도 | -1(싫음), 0(보통), 1(좋음) |
 
 ### API 엔드포인트 설계

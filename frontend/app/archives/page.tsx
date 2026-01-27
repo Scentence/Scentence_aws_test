@@ -1,12 +1,16 @@
-/* page.tsx (Restored) */
+/* page.tsx (3-State Tabs: All / HAVE / HAD / WISH) */
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import ArchiveSidebar from "@/components/archives/ArchiveSidebar";
 import CabinetShelf from "@/components/archives/CabinetShelf";
 import PerfumeSearchModal from "@/components/archives/PerfumeSearchModal";
 import PerfumeDetailModal from "@/components/archives/PerfumeDetailModal";
+import HistoryModal from '@/components/archives/HistoryModal'; // <--- [추가]
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const MEMBER_ID = 1;
 
 interface MyPerfume {
     my_perfume_id: number;
@@ -14,130 +18,238 @@ interface MyPerfume {
     name: string;
     brand: string;
     image_url: string | null;
+    register_status: string; // HAVE, HAD, RECOMMENDED
+    preference?: string;
+    // 프론트 UI용 status 매핑
     status: string;
 }
 
+type TabType = 'ALL' | 'HAVE' | 'HAD' | 'WISH';
+
 export default function ArchivesPage() {
-    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-    const [collection, setCollection] = useState<MyPerfume[]>([
-        {
-            my_perfume_id: 101,
-            perfume_id: 201,
-            name: "Bal d'Afrique Absolu",
-            brand: "Byredo",
-            image_url: "/perfumes/BaldAfrique Absolu Byredo (unisex).png",
-            status: "HAVE"
-        },
-        {
-            my_perfume_id: 102,
-            perfume_id: 202,
-            name: "Fleur de Peau",
-            brand: "Diptyque",
-            image_url: "/perfumes/Fleur de Peau Eau de Toilette Diptyque (unisex).png",
-            status: "WANT"
-        }
-    ]);
-    const [isSearchOpen, setIsSearchOpen] = useState(false);
+    const [collection, setCollection] = useState<MyPerfume[]>([]);
     const [selectedPerfume, setSelectedPerfume] = useState<MyPerfume | null>(null);
+    const [activeTab, setActiveTab] = useState<TabType>('ALL');
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [isSearchOpen, setIsSearchOpen] = useState(false);
+    const [isKorean, setIsKorean] = useState(true); // Default: Korean
+    const [isHistoryOpen, setIsHistoryOpen] = useState(false); // <--- [추가] 중요!
 
-    const handleAdd = (perfume: any, status: string) => {
-        const newItem: MyPerfume = {
-            my_perfume_id: Date.now(),
-            perfume_id: perfume.perfume_id,
-            name: perfume.name,
-            brand: perfume.brand,
-            image_url: perfume.image_url,
-            status: status
-        };
-        setCollection(prev => [...prev, newItem]);
-        setIsSearchOpen(false);
+    const fetchPerfumes = async () => {
+        try {
+            const res = await fetch(`${API_URL}/users/${MEMBER_ID}/perfumes`);
+            if (res.ok) {
+                const data = await res.json();
+                const mapped = data.map((item: any) => ({
+                    my_perfume_id: item.perfume_id, // my_perfume_id는 DB에 없으므로 PK인 perfume_id 사용
+                    perfume_id: item.perfume_id,
+                    name: item.perfume_name,
+                    name_kr: item.name_kr, // Added
+                    brand: item.brand || "Unknown",
+                    image_url: item.image_url || null,
+                    register_status: item.register_status,
+                    register_dt: item.register_dt, // Added
+                    preference: item.preference,
+                    status: item.register_status // CabinetShelf 호환
+                }));
+                setCollection(mapped);
+            }
+        } catch (e) {
+            console.error("Failed to fetch perfumes", e);
+        }
     };
 
-    const handleUpdateStatus = (id: number, status: string) => {
-        setCollection(prev => prev.map(p =>
-            p.my_perfume_id === id ? { ...p, status } : p
-        ));
-        if (selectedPerfume) setSelectedPerfume(prev => prev ? { ...prev, status } : null);
+    useEffect(() => {
+        fetchPerfumes();
+    }, []);
+
+    const handleAdd = async (perfume: any, status: string) => {
+        try {
+            const payload = {
+                perfume_id: perfume.perfume_id,
+                perfume_name: perfume.name,
+                register_status: status,
+                register_reason: "USER",
+                preference: "NEUTRAL"
+            };
+            await fetch(`${API_URL}/users/${MEMBER_ID}/perfumes`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            fetchPerfumes();
+            setIsSearchOpen(false);
+        } catch (e) { console.error("Add failed", e); }
     };
 
-    const handleDelete = (id: number, rating: number) => {
-        console.log(`Deleting ${id} with Rating: ${rating}`);
-        setCollection(prev => prev.filter(p => p.my_perfume_id !== id));
-        setSelectedPerfume(null);
+    const handleUpdateStatus = async (id: number, status: string) => {
+        try {
+            await fetch(`${API_URL}/users/${MEMBER_ID}/perfumes/${id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ register_status: status })
+            });
+            fetchPerfumes();
+            if (selectedPerfume && selectedPerfume.my_perfume_id === id) {
+                setSelectedPerfume({ ...selectedPerfume, register_status: status, status: status });
+            }
+        } catch (e) { console.error("Update failed", e); }
     };
 
+    const handleDelete = async (id: number, rating?: number) => {
+        try {
+            if (rating !== undefined) {
+                let pref = "NEUTRAL";
+                if (rating === 3) pref = "GOOD";
+                if (rating === 1) pref = "BAD";
+
+                await fetch(`${API_URL}/users/${MEMBER_ID}/perfumes/${id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ register_status: "HAD", preference: pref })
+                });
+            } else {
+                await fetch(`${API_URL}/users/${MEMBER_ID}/perfumes/${id}`, {
+                    method: "DELETE"
+                });
+            }
+            fetchPerfumes();
+            setSelectedPerfume(null);
+        } catch (e) { console.error("Delete failed", e); }
+    };
+
+    const handleUpdatePreference = async (id: number, preference: string) => {
+        try {
+            await fetch(`${API_URL}/users/${MEMBER_ID}/perfumes/${id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ register_status: "HAD", preference: preference })
+            });
+            fetchPerfumes();
+            setSelectedPerfume(prev => prev ? { ...prev, register_status: 'HAD', status: 'HAD', preference: preference } : null);
+        } catch (e) { console.error("Update preference failed", e); }
+    };
+
+    // 통계 계산
     const stats = {
-        have: collection.filter(p => p.status === 'HAVE').length,
-        want: collection.filter(p => p.status === 'WANT').length,
+        have: collection.filter(p => p.register_status === 'HAVE').length,
+        had: collection.filter(p => p.register_status === 'HAD').length,
+        wish: collection.filter(p => p.register_status === 'RECOMMENDED').length
     };
+
+    // 필터링된 목록
+    const filteredCollection = collection.filter(item => {
+        if (activeTab === 'ALL') return item.register_status !== 'HAD'; // HAD 제외
+        if (activeTab === 'HAVE') return item.register_status === 'HAVE';
+        if (activeTab === 'HAD') return item.register_status === 'HAD';
+        if (activeTab === 'WISH') return item.register_status === 'RECOMMENDED';
+        return true;
+    });
 
     return (
         <div className="min-h-screen bg-[#FDFBF8] text-gray-800 font-sans selection:bg-[#C5A55D] selection:text-white">
-
             <ArchiveSidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
-            {isSidebarOpen && (
-                <div className="fixed inset-0 bg-black/20 z-40 backdrop-blur-sm" onClick={() => setIsSidebarOpen(false)} />
-            )}
+            {isSidebarOpen && <div className="fixed inset-0 bg-black/20 z-40 backdrop-blur-sm" onClick={() => setIsSidebarOpen(false)} />}
 
-            {/* 헤더 */}
+            {/* Header */}
             <header className="fixed top-0 left-0 right-0 z-30 flex items-center justify-between px-8 py-5 bg-[#FDFBF8] border-b border-[#F0F0F0]">
                 <Link href="/" className="text-xl font-bold tracking-tight text-[#333] hover:opacity-70 transition">
                     Scentence
                 </Link>
                 <div className="flex items-center gap-4">
+                    {/* Language Toggle */}
                     <button
-                        onClick={() => setIsSearchOpen(true)}
-                        className="flex items-center gap-2 px-4 py-2 bg-[#C5A55D] text-white rounded-full hover:bg-[#B09045] transition shadow-md shadow-[#C5A55D]/20"
+                        onClick={() => setIsKorean(!isKorean)}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-full border border-gray-200 text-xs font-bold text-gray-600 hover:bg-gray-50 transition"
                     >
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                        </svg>
+                        <span>🌐</span>
+                        <span>{isKorean ? "한글" : "ENG"}</span>
+                    </button>
+
+                    <button onClick={() => setIsSearchOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-[#C5A55D] text-white rounded-full hover:bg-[#B09045] transition shadow-md shadow-[#C5A55D]/20">
                         <span className="text-xs font-bold md:inline hidden">ADD PERFUME</span>
                     </button>
-                    <button onClick={() => setIsSidebarOpen(true)} className="p-2 text-[#333] hover:bg-gray-100 rounded-lg transition">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-                        </svg>
-                    </button>
+                    <button onClick={() => setIsSidebarOpen(true)} className="p-2 text-[#333] hover:bg-gray-100 rounded-lg transition">☰</button>
                 </div>
             </header>
 
-            {/* 메인 */}
+            {/* Main */}
             <main className="pt-[120px] pb-24 px-6 max-w-7xl mx-auto min-h-[80vh]">
-
                 <section className="flex flex-col md:flex-row justify-between items-end mb-12 px-2">
                     <div>
                         <h1 className="text-4xl font-bold text-[#222] mb-3 tracking-tight">My Archive</h1>
                         <p className="text-[#888] text-sm font-medium">나만의 향기 컬렉션을 기록해보세요.</p>
                     </div>
 
-                    <div className="flex gap-8 mt-8 md:mt-0 bg-white px-6 py-3 rounded-2xl shadow-sm border border-gray-100 items-center">
-                        {/* 통계 아이템 (Large Fonts & Colors) */}
-                        <StatItem label="보유 (HAVE)" count={stats.have} color="text-indigo-600" />
-                        <div className="h-8 w-px bg-gray-200"></div>
-                        <StatItem label="위시 (WANT)" count={stats.want} color="text-rose-500" />
+                    <div className="flex gap-4 mt-8 md:mt-0 bg-white px-2 py-2 rounded-2xl shadow-sm border border-gray-100 items-center">
+                        <TabItem
+                            label="전체 (ALL)"
+                            count={stats.have + stats.wish} // HAD 제외한 개수
+                            isActive={activeTab === 'ALL'}
+                            onClick={() => setActiveTab('ALL')}
+                        />
+                        <div className="h-6 w-px bg-gray-100"></div>
+                        <TabItem
+                            label="보유 (HAVE)"
+                            count={stats.have}
+                            color="text-indigo-600"
+                            isActive={activeTab === 'HAVE'}
+                            onClick={() => setActiveTab('HAVE')}
+                        />
+                        <div className="h-6 w-px bg-gray-100"></div>
+                        <TabItem
+                            label="위시 (WISH)"
+                            count={stats.wish}
+                            color="text-rose-500"
+                            isActive={activeTab === 'WISH'}
+                            onClick={() => setActiveTab('WISH')}
+                        />
+                    </div>
+
+                    {/* History Popover Container */}
+                    <div className="relative ml-4 z-40">
+                        <button
+                            onClick={() => setIsHistoryOpen(!isHistoryOpen)}
+                            className={`
+                                flex items-center gap-2 px-5 py-3 rounded-2xl border transition-all shadow-sm
+                                ${isHistoryOpen
+                                    ? 'bg-[#2da44e] text-white border-[#2da44e] shadow-md ring-4 ring-[#2da44e]/10'
+                                    : 'bg-white text-gray-500 border-gray-100 hover:bg-green-50 hover:text-[#2da44e] hover:border-[#2da44e]/30'}
+                            `}
+                        >
+                            <span>📜</span>
+                            <span className="font-bold text-sm">History</span>
+                            <span className={`ml-1 text-xs px-1.5 py-0.5 rounded-full ${isHistoryOpen ? 'bg-white/20' : 'bg-gray-100 text-gray-500'}`}>
+                                {stats.had}
+                            </span>
+                        </button>
+                        {/* Popover Component */}
+                        {isHistoryOpen && (
+                            <HistoryModal
+                                historyItems={collection.filter(p => p.register_status === 'HAD')}
+                                onClose={() => setIsHistoryOpen(false)}
+                                onSelect={setSelectedPerfume}
+                            />
+                        )}
                     </div>
                 </section>
 
-                {collection.length === 0 ? (
+                {/* Filtered List */}
+                {filteredCollection.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20 border border-[#C5A55D]/30 rounded-3xl bg-white/50">
-                        <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-4 text-[#C5A55D]">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 opacity-70">
-                                <path fillRule="evenodd" d="M10.5 1.5a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1.323c2.348.67 4.12 2.656 4.435 5.177H18a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-.065C17.65 15.65 14.935 19 12 19c-2.935 0-5.65-3.35-5.935-7H6a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1h.065A5.5 5.5 0 0 1 10.5 2.823V1.5Zm-2.6 6.5h8.2a4.004 4.004 0 0 0-1.077-2.31 3.997 3.997 0 0 0-6.046 0C8.523 6.38 8.163 7.155 7.9 8Zm5.352 9.478A16.03 16.03 0 0 1 12 17.5c-1.636 0-3.136-.5-4.252-1.397.35-2.002 1.39-3.69 2.877-4.908.577.29 1.157.435 1.75.405.592.03 1.171-.115 1.748-.405 1.488 1.218 2.527 2.906 2.877 4.908Z" clipRule="evenodd" />
-                            </svg>
-                        </div>
-                        <p className="text-gray-400 font-medium mb-4">아직 수집된 향수가 없습니다.</p>
+                        <p className="text-gray-400 font-medium mb-4">해당하는 향수가 없습니다.</p>
                         <button onClick={() => setIsSearchOpen(true)} className="text-[#C5A55D] font-bold text-sm hover:underline">
-                            + 첫 번째 향수 추가하기
+                            + 향수 추가하기
                         </button>
                     </div>
                 ) : (
-                    <section className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
-                        {collection.map((item) => (
+                    <section className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 animate-fade-in-up">
+                        {filteredCollection.map((item) => (
                             <CabinetShelf
                                 key={item.my_perfume_id}
                                 perfume={item}
                                 onSelect={setSelectedPerfume}
+                                isKorean={isKorean}
                             />
                         ))}
                     </section>
@@ -147,35 +259,26 @@ export default function ArchivesPage() {
             <Link href="/perfume-network" className="fixed bottom-10 right-10 z-30 shadow-xl rounded-full transition-transform hover:scale-105">
                 <div className="bg-[#C5A55D] text-white px-8 py-4 rounded-full flex items-center gap-3 font-bold text-sm shadow-[#C5A55D]/30 hover:bg-[#B09045] transition-colors">
                     <span>향수 관계 맵</span>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
                 </div>
             </Link>
 
-            {isSearchOpen && (
-                <PerfumeSearchModal
-                    memberId="1"
-                    onClose={() => setIsSearchOpen(false)}
-                    onAdd={handleAdd}
-                />
-            )}
-
-            {selectedPerfume && (
-                <PerfumeDetailModal
-                    perfume={selectedPerfume}
-                    onClose={() => setSelectedPerfume(null)}
-                    onUpdateStatus={handleUpdateStatus}
-                    onDelete={handleDelete}
-                />
-            )}
+            {isSearchOpen && <PerfumeSearchModal memberId={String(MEMBER_ID)} onClose={() => setIsSearchOpen(false)} onAdd={handleAdd} />}
+            {selectedPerfume && <PerfumeDetailModal perfume={selectedPerfume} onClose={() => setSelectedPerfume(null)} onUpdateStatus={handleUpdateStatus} onDelete={handleDelete} onUpdatePreference={handleUpdatePreference} isKorean={isKorean} />}
         </div>
     );
 }
 
-function StatItem({ label, count, color = "text-[#333]" }: { label: string; count: number; color?: string }) {
+function TabItem({ label, count, color = "text-[#555]", isActive, onClick }: { label: string; count: number; color?: string; isActive: boolean; onClick: () => void }) {
     return (
-        <div className="flex flex-col items-center min-w-[80px]">
-            <span className="text-gray-400 text-xs font-bold uppercase tracking-wide mb-1">{label}</span>
-            <span className={`text-2xl font-bold ${color}`}>{count}</span>
-        </div>
+        <button
+            onClick={onClick}
+            className={`
+                flex flex-col items-center min-w-[70px] px-3 py-2 rounded-xl transition-all
+                ${isActive ? 'bg-gray-50 ring-1 ring-gray-200 shadow-sm' : 'hover:bg-gray-50/50'}
+            `}
+        >
+            <span className={`text-[10px] font-bold uppercase tracking-wide mb-1 transition-colors ${isActive ? 'text-gray-800' : 'text-gray-400'}`}>{label}</span>
+            <span className={`text-xl font-bold transition-all ${isActive ? color : 'text-gray-300'}`}>{count}</span>
+        </button>
     );
 }

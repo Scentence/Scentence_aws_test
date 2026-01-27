@@ -1,11 +1,19 @@
 import logging
 import uuid
+import os
+import json
+import time
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 import psycopg2.extras
+from openai import OpenAI
 from scentmap.db import get_recom_db_connection, get_db_connection
+from scentmap.app.schemas.card_schema import ScentCard, AccordInfo
 
 logger = logging.getLogger(__name__)
+
+# OpenAI 클라이언트 초기화
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
 def create_session(member_id: Optional[int] = None) -> Dict:
@@ -357,3 +365,165 @@ def generate_template_card(session_id: str) -> Dict:
     except Exception as e:
         logger.error(f"❌ 템플릿 카드 생성 실패: {e}")
         raise
+
+
+def generate_llm_card(session_id: str, use_simple_model: bool = False) -> Dict:
+    """
+    LLM 기반 향기카드 생성
+    
+    Args:
+        session_id: 세션 ID
+        use_simple_model: 간단한 모델 사용 여부 (gpt-4o-mini vs gpt-4o)
+    
+    Returns:
+        향기카드 데이터
+    """
+    start_time = time.time()
+    
+    try:
+        # 세션 데이터 조회
+        with get_recom_db_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                cur.execute("""
+                    SELECT 
+                        member_id,
+                        selected_accords,
+                        liked_perfume_ids,
+                        interested_perfume_ids
+                    FROM TB_SCENT_CARD_SESSION_T
+                    WHERE session_id = %s
+                """, (session_id,))
+                
+                session = cur.fetchone()
+                if not session:
+                    raise ValueError(f"세션을 찾을 수 없습니다: {session_id}")
+                
+                selected_accords = session['selected_accords'] or []
+                if not selected_accords:
+                    raise ValueError("선택된 어코드가 없습니다")
+        
+        # 어코드 설명 조회
+        descriptions = get_accord_descriptions(selected_accords)
+        
+        if not descriptions:
+            raise ValueError("어코드 설명을 찾을 수 없습니다")
+        
+        # LLM 프롬프트 구성
+        accord_info = ""
+        for desc in descriptions:
+            accord_info += f"- {desc['accord']}: {desc['desc1']}, {desc['desc2']}, {desc['desc3']}\n"
+        
+        prompt = f"""사용자가 향수맵에서 다음 분위기를 선택했습니다:
+
+{accord_info}
+
+위 설명을 바탕으로 짧고 자연스러운 향기카드를 작성하세요.
+
+[규칙]
+- 주어진 설명만 사용 (과장 금지, 새로운 정보 추가 금지)
+- 2-3문장으로 간결하게
+- 친근하고 따뜻한 톤
+- 제목은 5-7자로 짧고 감성적으로
+
+[출력 형식 - JSON]
+{{
+  "title": "카드 제목 (5-7자)",
+  "story": "짧은 스토리 (2-3문장, 주어진 설명만 활용)",
+  "accords": [
+    {{"name": "{descriptions[0]['accord']}", "description": "{descriptions[0]['desc1']}"}}
+  ]
+}}
+
+중요: accords 배열에는 반드시 위에서 제공된 모든 어코드를 포함하세요."""
+
+        # LLM 호출
+        model = "gpt-4o-mini" if use_simple_model else "gpt-4o"
+        logger.info(f"🤖 LLM 카드 생성 시작: model={model}, session={session_id}")
+        
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system", 
+                    "content": "당신은 향수 전문가입니다. 사용자의 취향을 바탕으로 자연스럽고 감성적인 향기카드를 작성합니다."
+                },
+                {
+                    "role": "user", 
+                    "content": prompt
+                }
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.7,
+            max_tokens=500
+        )
+        
+        # 응답 파싱
+        llm_output = json.loads(response.choices[0].message.content)
+        logger.info(f"✅ LLM 응답 수신: {llm_output}")
+        
+        # Pydantic 검증
+        try:
+            card = ScentCard(
+                title=llm_output['title'],
+                story=llm_output['story'],
+                accords=[AccordInfo(**acc) for acc in llm_output['accords']]
+            )
+            
+            card_data = {
+                "title": card.title,
+                "story": card.story,
+                "accords": [{"name": acc.name, "description": acc.description} for acc in card.accords],
+                "created_at": datetime.now().isoformat()
+            }
+            
+            generation_time_ms = int((time.time() - start_time) * 1000)
+            
+            # 카드 결과 저장
+            with get_recom_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO TB_SCENT_CARD_RESULT_T (
+                            session_id,
+                            member_id,
+                            card_data,
+                            generation_method,
+                            llm_model,
+                            generation_time_ms
+                        ) VALUES (%s, %s, %s, %s, %s, %s)
+                    """, (
+                        session_id,
+                        session['member_id'],
+                        psycopg2.extras.Json(card_data),
+                        'llm_full',
+                        model,
+                        generation_time_ms
+                    ))
+                    
+                    # 세션 업데이트
+                    cur.execute("""
+                        UPDATE TB_SCENT_CARD_SESSION_T
+                        SET 
+                            card_generated = TRUE,
+                            card_generated_dt = CURRENT_TIMESTAMP
+                        WHERE session_id = %s
+                    """, (session_id,))
+                    
+                    conn.commit()
+            
+            logger.info(f"✅ LLM 카드 생성 완료: {session_id}, 소요시간: {generation_time_ms}ms")
+            
+            return {
+                "card": card_data,
+                "session_id": session_id,
+                "generation_method": "llm_full",
+                "generation_time_ms": generation_time_ms
+            }
+        
+        except Exception as validation_error:
+            logger.warning(f"⚠️ Pydantic 검증 실패, 템플릿으로 폴백: {validation_error}")
+            return generate_template_card(session_id)
+    
+    except Exception as e:
+        logger.error(f"❌ LLM 카드 생성 실패, 템플릿으로 폴백: {e}")
+        # 폴백: 템플릿 카드 생성
+        return generate_template_card(session_id)

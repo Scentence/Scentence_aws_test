@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import ORJSONResponse
 
 from scentmap.app.schemas.session_schema import (
@@ -12,7 +12,8 @@ from scentmap.app.services.session_service import (
     create_session,
     update_session_activity,
     check_card_trigger,
-    generate_template_card
+    generate_template_card,
+    generate_llm_card
 )
 
 router = APIRouter(prefix="/session", tags=["session"])
@@ -65,18 +66,30 @@ def log_activity(session_id: str, request: ActivityLogRequest):
 
 
 @router.post("/{session_id}/generate-card", response_model=GenerateCardResponse)
-def generate_card(session_id: str):
+def generate_card(
+    session_id: str,
+    use_template: bool = Query(False, description="템플릿 모드 사용 (LLM 없이)"),
+    use_simple_model: bool = Query(True, description="간단한 모델 사용 (gpt-4o-mini)")
+):
     """
     향기카드 생성
     
-    Phase 1: 템플릿 기반 생성
-    - CSV 설명을 활용한 고정 문구
-    - LLM 없이 간단한 조합
+    Phase 2: LLM 기반 생성 (기본)
+    - OpenAI GPT를 활용한 자연스러운 스토리 생성
+    - 실패 시 자동으로 템플릿 폴백
     
-    Phase 2: LLM 기반 생성 (향후)
+    Query Parameters:
+    - use_template: True이면 LLM 없이 템플릿만 사용
+    - use_simple_model: True이면 gpt-4o-mini, False이면 gpt-4o (기본: True)
     """
     try:
-        card = generate_template_card(session_id)
+        if use_template:
+            # 템플릿 모드: LLM 없이 고정 문구
+            card = generate_template_card(session_id)
+        else:
+            # LLM 모드: 자연스러운 스토리 생성 (폴백 포함)
+            card = generate_llm_card(session_id, use_simple_model=use_simple_model)
+        
         return GenerateCardResponse(**card)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

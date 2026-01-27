@@ -47,3 +47,4 @@ class GenerateCardResponse(BaseModel):
     card: ScentCard
     session_id: str
     generation_method: str  # 'template' or 'llm_light' or 'llm_full'
+    generation_time_ms: Optional[int] = None  # 생성 소요 시간 (밀리초)

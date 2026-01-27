@@ -54,6 +54,8 @@ load_dotenv()
 FAST_LLM = ChatOpenAI(model="gpt-4.1-mini", temperature=0, streaming=True)
 SMART_LLM = ChatOpenAI(model="gpt-4.1", temperature=0, streaming=True)
 SUPER_SMART_LLM = ChatOpenAI(model="gpt-5.2", temperature=0, streaming=True)
+# Non-streaming version for parallel_reco to prevent token interleaving
+SUPER_SMART_LLM_NO_STREAM = ChatOpenAI(model="gpt-5.2", temperature=0, streaming=False)
 
 
 # ==========================================
@@ -218,208 +220,202 @@ def interviewer_node(state: AgentState):
         return {"next_step": "writer"}
 
 
-async def researcher_node(state: AgentState):
-    print(f"\n🧠 [Researcher] 전략 수립 및 병렬 DB 검색 시작...", flush=True)
-    current_member_id = state.get("member_id", 0)
+# ==========================================
+# [REMOVED] Old researcher_node and writer_node
+# These have been replaced by parallel_reco_node which consolidates
+# both functionalities with FCFS streaming.
+# ==========================================
+
+
+async def parallel_reco_node(state: AgentState):
+    member_id = state.get("member_id", 0)
     user_prefs = state.get("user_preferences", {})
     current_context = json.dumps(user_prefs, ensure_ascii=False)
 
-    user_note = user_prefs.get("note")
-    refined_hard_note = None
-    if user_note:
-        matched = await lookup_note_by_string_tool.ainvoke({"keyword": user_note})
-        if matched:
-            refined_hard_note = matched[0]
+    plan_llm = SMART_LLM.with_structured_output(SearchStrategyPlan)
+    seen_ids = set()
+    seen_ids_lock = asyncio.Lock()
 
-    messages = [
-        SystemMessage(content=RESEARCHER_SYSTEM_PROMPT),
-        HumanMessage(
-            content=f"사용자 요청 데이터: {current_context}\n위 데이터를 바탕으로 '이미지 강조, 보완, 반전'의 3가지 검색 전략을 세워주세요."
-        ),
-    ]
+    def _normalize_section_boundary(previous_text: str, next_text: str) -> str:
+        if not previous_text or not next_text:
+            return next_text
+        if not next_text.lstrip().startswith("##"):
+            return next_text
+        prev_trimmed = previous_text.rstrip()
+        if prev_trimmed.endswith("---") and not previous_text.endswith("\n"):
+            if not next_text.startswith("\n"):
+                return f"\n{next_text}"
+        return next_text
 
-    # 1. 전략 수립 호출
-    plan_result = await SMART_LLM.with_structured_output(ResearchActionPlan).ainvoke(
-        messages
-    )
+    async def process_strategy(strategy_name: str, priority: int):
+        print(f"   👉 [Strategy {priority}] {strategy_name} 시작", flush=True)
+        
+        plan_messages = [
+            SystemMessage(content=RESEARCHER_SYSTEM_PROMPT),
+            HumanMessage(
+                content=(
+                    f"사용자 요청 데이터: {current_context}\n"
+                    f"전략 이름: {strategy_name}\n"
+                    f"우선순위: {priority}\n"
+                    "위 데이터를 바탕으로 전략을 수립해 주세요."
+                )
+            ),
+        ]
 
-    # [★할루시네이션 방지: 전략 수립 실패 처리]
-    if not plan_result or not plan_result.plans:
-        print(f"      ❌ [Result] 전략 수립 실패 (LLM 응답 없음)", flush=True)
-        return {
-            "research_results": {"results": []},
-            "messages": [AIMessage(content="[RESEARCH_FAILED]")],
-            "next_step": "writer",
-            "status": "추천 전략을 수립하는 데 어려움이 있습니다. 잠시 후 다시 시도해 주세요.",
-        }
-
-    async def process_strategy_candidates(plan: SearchStrategyPlan):
-        print(f"   👉 [Parallel Task] {plan.strategy_name}", flush=True)
-        h_filters = plan.hard_filters.model_dump(exclude_none=True)
-        if refined_hard_note:
-            h_filters["note"] = refined_hard_note
-        s_filters = plan.strategy_filters.model_dump(exclude_none=True)
-
-        strategy_note_input = s_filters.get("note")
-        if strategy_note_input:
-            raw_keyword = (
-                strategy_note_input[0]
-                if isinstance(strategy_note_input, list)
-                else strategy_note_input
+        try:
+            plan = await plan_llm.ainvoke(
+                plan_messages, config={"tags": ["internal_helper"]}
             )
-            candidates = await lookup_note_by_vector_tool.ainvoke(
-                {"keyword": raw_keyword}
+        except Exception as e:
+            print(f"      ❌ [Strategy {priority}] 전략 수립 실패: {e}", flush=True)
+            return None
+
+        try:
+            h_filters = plan.hard_filters.model_dump(exclude_none=True)
+            s_filters = plan.strategy_filters.model_dump(exclude_none=True)
+        except Exception:
+            h_filters = {}
+            s_filters = {}
+
+        try:
+            candidates, _match_type = await smart_search_with_retry_async(
+                h_filters, s_filters, query_text=plan.reason
             )
-            if candidates:
-                selection_messages = [
-                    SystemMessage(
-                        content=NOTE_SELECTION_PROMPT.format(candidates=candidates)
-                    ),
-                    HumanMessage(
-                        content=f"전략: {plan.strategy_name}\n의도: {plan.reason}"
-                    ),
-                ]
-                selected_res = await SMART_LLM.ainvoke(selection_messages)
-                llm_selected = [
-                    c for c in candidates if c.lower() in selected_res.content.lower()
-                ]
-                s_filters["note"] = llm_selected if llm_selected else candidates[:1]
+        except Exception as e:
+            print(f"      ❌ [Strategy {priority}] 검색 실패: {e}", flush=True)
+            return None
 
-        log_filters(h_filters, s_filters)
-        db_perfumes, match_type = await smart_search_with_retry_async(
-            h_filters, s_filters, query_text=plan.reason
-        )
-        return {"plan": plan, "candidates": db_perfumes}
+        selected_perfume = None
+        async with seen_ids_lock:
+            for candidate in candidates:
+                if candidate["id"] not in seen_ids:
+                    selected_perfume = candidate
+                    seen_ids.add(candidate["id"])
+                    break
 
-    # 2. 병렬 검색 실행
-    tasks = [process_strategy_candidates(p) for p in plan_result.plans]
-    all_candidates_results = await asyncio.gather(*tasks)
-
-    final_results = []
-    seen_perfume_ids = set()
-
-    for item in all_candidates_results:
-        plan = item["plan"]
-        candidates = item["candidates"]
-
-        selected_p = None
-        for p in candidates:
-            if p["id"] not in seen_perfume_ids:
-                selected_p = p
-                seen_perfume_ids.add(p["id"])
-                break
-
-        if not selected_p:
-            print(
-                f"      ❌ [Result] {plan.strategy_name}: 검색된 향수가 없거나 중복되어 선택 실패",
-                flush=True,
-            )
-            continue
-
-        print(
-            f"      ✅ [Result] {plan.strategy_name}: {selected_p.get('brand')} - {selected_p.get('name')} (ID: {selected_p.get('id')})",
-            flush=True,
-        )
+        if not selected_perfume:
+            print(f"      ❌ [Strategy {priority}] 중복 제거 후 선택 가능한 향수 없음", flush=True)
+            return None
+        
+        print(f"      ✅ [Strategy {priority}] 선택: {selected_perfume.get('name')} (ID: {selected_perfume.get('id')})", flush=True)
 
         save_recommendation_log(
-            member_id=current_member_id, perfumes=[selected_p], reason=plan.reason
+            member_id=member_id, perfumes=[selected_perfume], reason=plan.reason
         )
 
-        final_results.append(
-            StrategyResult(
-                strategy_name=plan.strategy_name,
-                strategy_keyword=plan.strategy_keyword,
-                strategy_reason=plan.reason,
-                perfumes=[
-                    PerfumeDetail(
-                        id=selected_p.get("id"),
-                        perfume_name=selected_p.get("name"),
-                        perfume_brand=selected_p.get("brand"),
-                        accord=f"{selected_p.get('accords')}\n[Best Review]: {selected_p.get('best_review')}",
-                        notes=PerfumeNotes(
-                            top=selected_p.get("top_notes") or "N/A",
-                            middle=selected_p.get("middle_notes") or "N/A",
-                            base=selected_p.get("base_notes") or "N/A",
-                        ),
-                        image_url=selected_p.get("image_url"),
-                        gender=selected_p.get("gender", "Unisex"),
-                        season="All",
-                        occasion="Any",
-                    )
-                ],
-            )
+        # IMPORTANT: We stream a single section per strategy.
+        # Do NOT use the full 3-recommendations writer prompt here;
+        # it will emit "only 1 perfume" warnings and duplicate intros.
+        USER_MODE = "BEGINNER"  # 옵션: "BEGINNER" | "EXPERT"
+        print(f"   🐥 [Strategy {priority}] 비기너용 프롬프트 적용", flush=True)
+
+        strategy_result = StrategyResult(
+            strategy_name=plan.strategy_name,
+            strategy_keyword=plan.strategy_keyword,
+            strategy_reason=plan.reason,
+            perfumes=[
+                PerfumeDetail(
+                    id=selected_perfume.get("id"),
+                    perfume_name=selected_perfume.get("name"),
+                    perfume_brand=selected_perfume.get("brand"),
+                    accord=f"{selected_perfume.get('accords')}\n[Best Review]: {selected_perfume.get('best_review')}",
+                    notes=PerfumeNotes(
+                        top=selected_perfume.get("top_notes") or "N/A",
+                        middle=selected_perfume.get("middle_notes") or "N/A",
+                        base=selected_perfume.get("base_notes") or "N/A",
+                    ),
+                    image_url=selected_perfume.get("image_url"),
+                    gender=selected_perfume.get("gender", "Unisex"),
+                    season="All",
+                    occasion="Any",
+                )
+            ],
         )
 
-    # 3. 결과 반환 (기존 로직 유지)
-    if not final_results:
-        print(
-            f"      ❌ [Result] 모든 전략에서 추천 가능한 향수를 찾지 못했습니다.",
-            flush=True,
+        section_data = {
+            "user_preferences": user_prefs,
+            "strategy": {
+                "name": plan.strategy_name,
+                "reason": plan.reason,
+                "keywords": plan.strategy_keyword,
+                "priority": priority,
+            },
+            "perfume": strategy_result.perfumes[0].dict(),
+        }
+        data_ctx = json.dumps(section_data, ensure_ascii=False, indent=2)
+
+        section_system = (
+            "당신은 향수를 잘 모르는 초보자를 위한 친절한 향수 도슨트입니다.\n"
+            "아래 [참고 데이터]에 있는 향수 1개만 사용해서, '단 하나의 추천 섹션'만 작성하세요.\n\n"
+            f"[형식 규칙]\n"
+            f"- 출력은 반드시 '## {priority}.' 로 시작하세요.\n"
+            "- 도입부/마무리 멘트/추가 질문/경고 문구(예: '현재 참고 데이터...')를 절대 쓰지 마세요.\n"
+            "- 섹션 안에 '---' 구분선을 출력하지 마세요 (구분선은 바깥에서 붙입니다).\n"
+            "- 반드시 이미지 마크다운을 포함하세요: ![이름](이미지링크)\n"
+            "- 마지막 줄에 반드시 저장 태그를 포함하세요: [[SAVE:향수ID:향수명]]\n"
+            "- 데이터에 없는 향수/노트/정보를 지어내지 마세요.\n\n"
+            f"[작성 톤]\n"
+            "- 자연스럽고 산뜻한 한국어\n"
+            "- '탑/미들/베이스' 같은 용어는 BEGINNER에선 피하고, EXPERT에선 허용\n\n"
+            f"[모드]\n"
+            f"- USER_MODE={USER_MODE}\n\n"
+            "[참고 데이터]:\n"
+            f"{data_ctx}"
         )
+
+        messages = [SystemMessage(content=section_system)] + state["messages"]
+
+        try:
+            response = await SUPER_SMART_LLM_NO_STREAM.ainvoke(messages)
+            print(f"      ✅ [Strategy {priority}] 작성 완료 ({len(response.content)} chars)", flush=True)
+            return response.content
+        except Exception as e:
+            print(f"      ❌ [Strategy {priority}] 작성 실패: {e}", flush=True)
+            return None
+
+    # Launch 3 parallel tasks (preserves parallel execution speed)
+    tasks = [
+        asyncio.create_task(process_strategy("이미지 강조", 1)),
+        asyncio.create_task(process_strategy("이미지 보완", 2)),
+        asyncio.create_task(process_strategy("이미지 반전", 3)),
+    ]
+
+    # Wait for tasks in order (1→2→3) to maintain section sequence
+    # Tasks run in parallel, but we await them sequentially to guarantee order
+    # Total time is still max(task1, task2, task3), not sum()
+    try:
+        result1 = await tasks[0]  # Strategy 1
+        result2 = await tasks[1]  # Strategy 2
+        result3 = await tasks[2]  # Strategy 3
+        results = [result1, result2, result3]
+    except (Exception, asyncio.CancelledError) as e:
+        print(f"   ⚠️ [Parallel Reco] Task cancelled or failed: {e}", flush=True)
         return {
-            "research_results": {"results": []},
-            "messages": [AIMessage(content="[RESEARCH_FAILED]")],
-            "next_step": "writer",
-            "status": "조건에 맞는 향수를 찾지 못했습니다. 😢 대안을 안내해 드릴게요...",
+            "messages": [AIMessage(content="조건에 맞는 향수를 찾지 못했습니다. 😢")],
+            "next_step": "end",
         }
 
-    return {
-        "research_results": {"results": [r.dict() for r in final_results]},
-        "messages": [AIMessage(content="[RESEARCH_DONE]")],
-        "next_step": "writer",
-        "status": "전략에 맞는 향수들을 모두 찾았습니다! 답변을 작성합니다...",
-    }
+    # Assemble sections in order (1 → 2 → 3)
+    full_text = ""
+    for idx, result_text in enumerate(results, start=1):
+        # Handle exceptions returned by gather(return_exceptions=True)
+        if isinstance(result_text, (Exception, asyncio.CancelledError)):
+            print(f"   ⚠️ [Section {idx}] Failed: {result_text}", flush=True)
+            continue
 
+        if not result_text:
+            continue
 
-async def writer_node(state: AgentState):
-    print(f"\n✍️ [Writer] 답변 작성 중...", flush=True)
-
-    # [★설정] 사용자 모드 선택 (나중에 DB 연동 시 이 부분만 수정하면 됩니다)
-    USER_MODE = "BEGINNER"  # 옵션: "BEGINNER" | "EXPERT"
-
-    research_data = state.get("research_results")
-    results_list = research_data.get("results", []) if research_data else []
-
-    # 1. 프롬프트 선택 로직 (기존 로직 유지 + 전문가 모드 분기 추가)
-    if research_data is None:
-        prompt = WRITER_CHAT_PROMPT
-        data_ctx = ""
-    elif not results_list:
-        prompt = WRITER_FAILURE_PROMPT
-        data_ctx = ""
-    else:
-        # [NEW] 추천 모드일 때만 사용자 레벨에 따라 프롬프트 스위칭
-        if USER_MODE == "EXPERT":
-            print("   😎 [Mode] 전문가용 프롬프트 적용")
-            prompt = WRITER_RECOMMENDATION_PROMPT_EXPERT
+        if full_text:
+            # Add separator with clean boundaries
+            full_text = f"{full_text}\n\n---\n\n{result_text}"
         else:
-            print("   🐥 [Mode] 비기너용 프롬프트 적용")
-            prompt = WRITER_RECOMMENDATION_PROMPT
+            full_text = result_text
 
-        data_ctx = json.dumps(research_data, ensure_ascii=False, indent=2)
+    if not full_text:
+        full_text = "조건에 맞는 향수를 찾지 못했습니다. 😢 대안을 안내해 드릴게요..."
 
-    # [★할루시네이션 방지: 부분 성공 및 그라운딩 강화]
-    # 결과 개수가 3개 미만일 때 LLM이 부족한 개수를 채우기 위해 향수를 지어내는 것을 방지합니다.
-    hallucination_guard = ""
-    if 0 < len(results_list) < 3:
-        hallucination_guard = f"\n\n⚠️ [중요 경고] 현재 검색된 향수는 {len(results_list)}개뿐입니다. 부족한 개수를 채우기 위해 절대 다른 향수를 지어내지 마세요. 검색된 {len(results_list)}개의 향수만 정직하게 추천하세요."
-
-    # 이전 대화 맥락에 있는 과거 향수 정보를 무시하도록 지시합니다.
-    grounding_instruction = """
-[★데이터 준수 지침★]
-1. 반드시 아래 [참고 데이터] 섹션에 명시된 향수만 언급하세요.
-2. 이전 대화 맥락에 다른 향수가 있더라도, 현재 [참고 데이터]에 없다면 절대 추천하지 마세요.
-"""
-
-    # 2. 메시지 생성 및 호출
-    messages = [
-        SystemMessage(
-            content=f"{prompt}{hallucination_guard}\n{grounding_instruction}\n\n[참고 데이터]:\n{data_ctx}"
-        )
-    ] + state["messages"]
-
-    response = await SUPER_SMART_LLM.ainvoke(messages)
-    return {"messages": [response], "next_step": "end"}
+    return {"messages": [AIMessage(content=full_text)], "next_step": "end"}
 
 
 # ==========================================
@@ -429,8 +425,9 @@ workflow = StateGraph(AgentState)
 
 workflow.add_node("supervisor", supervisor_node)
 workflow.add_node("interviewer", interviewer_node)
-workflow.add_node("researcher", researcher_node)
-workflow.add_node("writer", writer_node)
+# workflow.add_node("researcher", researcher_node)  # Replaced by parallel_reco
+# workflow.add_node("writer", writer_node)  # Replaced by parallel_reco
+workflow.add_node("parallel_reco", parallel_reco_node)
 workflow.add_node("info_retrieval_subgraph", call_info_graph_wrapper)
 
 workflow.add_edge(START, "supervisor")
@@ -441,18 +438,19 @@ workflow.add_conditional_edges(
     {
         "interviewer": "interviewer",
         "info_retrieval": "info_retrieval_subgraph",
-        "writer": "writer",
+        "writer": "parallel_reco",  # Replaced writer with parallel_reco
     },
 )
 
 workflow.add_conditional_edges(
     "interviewer",
     lambda x: x["next_step"],
-    {"end": END, "researcher": "researcher", "writer": "writer"},
+    {"end": END, "researcher": "parallel_reco", "writer": "parallel_reco"},
 )
 
-workflow.add_edge("researcher", "writer")
-workflow.add_edge("writer", END)
+# workflow.add_edge("researcher", "writer")  # Old flow - replaced
+# workflow.add_edge("writer", END)  # Old flow - replaced
+workflow.add_edge("parallel_reco", END)
 workflow.add_edge("info_retrieval_subgraph", END)
 
 checkpointer = MemorySaver()

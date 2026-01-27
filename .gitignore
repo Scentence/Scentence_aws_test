@@ -55,3 +55,9 @@ ngrok.yml
 
 .backup
 .backup/
+
+.sisyphus
+.sisyphus/
+
+.pytest_cache
+.pytest_cache/

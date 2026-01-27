@@ -88,13 +88,18 @@ async def stream_generator(
                     continue
 
                 target_nodes = [
-                    "writer", 
-                    "perfume_describer", 
-                    "ingredient_specialist", 
+                    # Recommendation graph
+                    "parallel_reco",
+                    # Legacy / other graphs
+                    "writer",
+                    "perfume_describer",
+                    "ingredient_specialist",
                     "similarity_curator",  # <--- 이거 추가 필수!
-                    "fallback_handler"     # <--- 이것도 추가 권장
+                    "fallback_handler",     # <--- 이것도 추가 권장
                 ]
-                if node_name in target_nodes:
+                # NOTE: LangGraph's node name comes from workflow.add_node("<name>", ...).
+                # We include a prefix fallback in case the runtime metadata differs.
+                if node_name in target_nodes or node_name.startswith("parallel_reco"):
                     content = event["data"]["chunk"].content
                     if content:
                         full_ai_response += content
@@ -105,6 +110,21 @@ async def stream_generator(
 
             # [B] Interviewer: 결과 전송
             elif kind == "on_chain_end" and node_name == "interviewer":
+                output = event["data"].get("output")
+                if output and isinstance(output, dict):
+                    messages = output.get("messages")
+                    if messages and len(messages) > 0:
+                        last_msg = messages[-1]
+                        if hasattr(last_msg, "content") and last_msg.content:
+                            full_ai_response += last_msg.content
+                            data = json.dumps(
+                                {"type": "answer", "content": last_msg.content},
+                                ensure_ascii=False,
+                            )
+                            yield f"data: {data}\n\n"
+
+            # [B-2] parallel_reco: 완성된 결과 전송 (non-streaming)
+            elif kind == "on_chain_end" and node_name == "parallel_reco":
                 output = event["data"].get("output")
                 if output and isinstance(output, dict):
                     messages = output.get("messages")

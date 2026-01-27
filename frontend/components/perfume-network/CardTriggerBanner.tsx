@@ -1,7 +1,5 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
-
 interface CardTriggerBannerProps {
   message: string;
   onAccept: () => void;
@@ -14,14 +12,7 @@ export default function CardTriggerBanner({
   onDismiss,
 }: CardTriggerBannerProps) {
   return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ y: 100, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: 100, opacity: 0 }}
-        transition={{ type: "spring", damping: 25, stiffness: 300 }}
-        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-full max-w-lg px-6"
-      >
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-full max-w-lg px-6 animate-slide-up">
         <div className="bg-white rounded-2xl shadow-xl border-2 border-[#C8A24D] p-6">
           <div className="flex items-start gap-4">
             {/* 아이콘 */}
@@ -56,7 +47,6 @@ export default function CardTriggerBanner({
             </button>
           </div>
         </div>
-      </motion.div>
-    </AnimatePresence>
+      </div>
   );
 }

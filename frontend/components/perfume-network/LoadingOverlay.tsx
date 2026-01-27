@@ -1,19 +1,12 @@
 "use client";
 
-import { motion } from "framer-motion";
-
 interface LoadingOverlayProps {
   message: string;
 }
 
 export default function LoadingOverlay({ message }: LoadingOverlayProps) {
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center"
-    >
+    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center animate-fade-in">
       <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full mx-6">
         <div className="text-center space-y-6">
           {/* 로딩 스피너 */}
@@ -37,15 +30,10 @@ export default function LoadingOverlay({ message }: LoadingOverlayProps) {
 
           {/* 프로그레스 바 (선택적) */}
           <div className="w-full h-1 bg-[#E6DDCF] rounded-full overflow-hidden">
-            <motion.div
-              className="h-full bg-[#C8A24D]"
-              initial={{ width: "0%" }}
-              animate={{ width: "100%" }}
-              transition={{ duration: 2, ease: "easeInOut" }}
-            />
+            <div className="h-full bg-[#C8A24D] animate-progress" />
           </div>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }

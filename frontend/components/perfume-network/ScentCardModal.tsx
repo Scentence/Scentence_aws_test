@@ -1,6 +1,5 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
 import { useEffect } from "react";
 
 interface AccordInfo {
@@ -38,22 +37,14 @@ export default function ScentCardModal({
   }, [onClose]);
 
   return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6"
-        onClick={onClose} // 배경 클릭으로 닫기
+    <div
+      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6 animate-fade-in"
+      onClick={onClose} // 배경 클릭으로 닫기
+    >
+      <div
+        onClick={(e) => e.stopPropagation()} // 모달 내부 클릭은 닫히지 않음
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto animate-scale-in"
       >
-        <motion.div
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.9, opacity: 0 }}
-          transition={{ type: "spring", damping: 25, stiffness: 300 }}
-          onClick={(e) => e.stopPropagation()} // 모달 내부 클릭은 닫히지 않음
-          className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto"
-        >
           {/* 헤더 */}
           <div className="sticky top-0 bg-white border-b border-[#E6DDCF] px-8 py-6 flex items-center justify-between rounded-t-3xl z-10">
             <h2 className="text-xl font-semibold text-[#2E2B28]">당신의 향</h2>
@@ -183,8 +174,7 @@ export default function ScentCardModal({
               </button>
             )}
           </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+        </div>
+      </div>
   );
 }

@@ -247,7 +247,8 @@ async def parallel_reco_node(state: AgentState):
                 return f"\n{next_text}"
         return next_text
 
-    async def process_strategy(strategy_name: str, priority: int):
+    async def prepare_strategy(strategy_name: str, priority: int):
+        """Phase 1: Strategy planning + search + perfume selection (parallel)"""
         print(f"   👉 [Strategy {priority}] {strategy_name} 시작", flush=True)
         
         plan_messages = [
@@ -303,12 +304,6 @@ async def parallel_reco_node(state: AgentState):
             member_id=member_id, perfumes=[selected_perfume], reason=plan.reason
         )
 
-        # IMPORTANT: We stream a single section per strategy.
-        # Do NOT use the full 3-recommendations writer prompt here;
-        # it will emit "only 1 perfume" warnings and duplicate intros.
-        USER_MODE = "BEGINNER"  # 옵션: "BEGINNER" | "EXPERT"
-        print(f"   🐥 [Strategy {priority}] 비기너용 프롬프트 적용", flush=True)
-
         strategy_result = StrategyResult(
             strategy_name=plan.strategy_name,
             strategy_keyword=plan.strategy_keyword,
@@ -342,6 +337,23 @@ async def parallel_reco_node(state: AgentState):
             },
             "perfume": strategy_result.perfumes[0].dict(),
         }
+        
+        return {
+            "section_data": section_data,
+            "priority": priority,
+        }
+
+    async def generate_output(prepared_data: dict):
+        """Phase 2: LLM output generation with streaming (sequential)"""
+        if not prepared_data:
+            return None
+            
+        section_data = prepared_data["section_data"]
+        priority = prepared_data["priority"]
+        
+        USER_MODE = "BEGINNER"  # 옵션: "BEGINNER" | "EXPERT"
+        print(f"   🐥 [Strategy {priority}] 비기너용 프롬프트 적용", flush=True)
+        
         data_ctx = json.dumps(section_data, ensure_ascii=False, indent=2)
 
         section_system = (
@@ -383,18 +395,28 @@ async def parallel_reco_node(state: AgentState):
             print(f"      ❌ [Strategy {priority}] 작성 실패: {e}", flush=True)
             return None
 
-    # Execute strategies sequentially to enable streaming for each section
-    # Section 1 streams → Section 2 streams → Section 3 streams
-    # Total time is sum(task1, task2, task3), but each section streams in real-time
+    # Phase 1: Parallel preparation (strategy planning + search)
+    # All 3 strategies run simultaneously - fast!
+    prep_tasks = [
+        asyncio.create_task(prepare_strategy("이미지 강조", 1)),
+        asyncio.create_task(prepare_strategy("이미지 보완", 2)),
+        asyncio.create_task(prepare_strategy("이미지 반전", 3)),
+    ]
+    
+    # Phase 2: Sequential output generation with streaming
+    # Wait for prep in order, then generate output with streaming
     results = []
     try:
-        result1 = await process_strategy("이미지 강조", 1)
+        data1 = await prep_tasks[0]
+        result1 = await generate_output(data1) if data1 else None
         results.append(result1)
         
-        result2 = await process_strategy("이미지 보완", 2)
+        data2 = await prep_tasks[1]
+        result2 = await generate_output(data2) if data2 else None
         results.append(result2)
         
-        result3 = await process_strategy("이미지 반전", 3)
+        data3 = await prep_tasks[2]
+        result3 = await generate_output(data3) if data3 else None
         results.append(result3)
     except (Exception, asyncio.CancelledError) as e:
         print(f"   ⚠️ [Parallel Reco] Task cancelled or failed: {e}", flush=True)

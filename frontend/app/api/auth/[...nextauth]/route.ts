@@ -33,9 +33,24 @@ const handler = NextAuth({
                     }
 
                     const data = await response.json();
+
+                    // 탈퇴 대기 중인 계정인 경우
                     if (data?.withdraw_pending && data?.member_id) {
                         return `/recover?memberId=${data.member_id}`;
                     }
+
+                    // 동일 이메일로 가입된 로컬 계정이 있는 경우 → 계정 연결 페이지로 이동
+                    if (data?.link_available && data?.existing_member_id) {
+                        const params = new URLSearchParams({
+                            email: user.email || '',
+                            kakao_id: account.providerAccountId,
+                            kakao_nickname: user.name || '',
+                            kakao_profile_image: user.image || '',
+                            existing_member_id: String(data.existing_member_id)
+                        });
+                        return `/link-account?${params.toString()}`;
+                    }
+
                     user.id = data.member_id; // DB의 진짜 회원번호(PK) 가져오기
                     return true;
                 } catch (error) {

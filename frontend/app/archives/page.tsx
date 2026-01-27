@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react"; // 카카오 로그인 세션
 import Link from "next/link";
 import ArchiveSidebar from "@/components/archives/ArchiveSidebar";
 import CabinetShelf from "@/components/archives/CabinetShelf";
@@ -16,7 +17,10 @@ interface MyPerfume {
     my_perfume_id: number;
     perfume_id: number;
     name: string;
+    name_en?: string; // 추가
+    name_kr?: string; // 추가
     brand: string;
+    brand_kr?: string; // 추가
     image_url: string | null;
     register_status: string; // HAVE, HAD, RECOMMENDED
     preference?: string;
@@ -27,6 +31,7 @@ interface MyPerfume {
 type TabType = 'ALL' | 'HAVE' | 'HAD' | 'WISH';
 
 export default function ArchivesPage() {
+    const { data: session } = useSession(); // 카카오 로그인 세션
     const [collection, setCollection] = useState<MyPerfume[]>([]);
     const [selectedPerfume, setSelectedPerfume] = useState<MyPerfume | null>(null);
     const [activeTab, setActiveTab] = useState<TabType>('ALL');
@@ -45,9 +50,11 @@ export default function ArchivesPage() {
                 const mapped = data.map((item: any) => ({
                     my_perfume_id: item.perfume_id,
                     perfume_id: item.perfume_id,
-                    name: item.perfume_name,
-                    name_kr: item.name_kr,
+                    name: item.perfume_name, // Fallback for legacy components
+                    name_en: item.name_en || item.perfume_name,
+                    name_kr: item.name_kr || item.perfume_name,
                     brand: item.brand || "Unknown",
+                    brand_kr: item.brand_kr || item.brand, // 추가
                     image_url: item.image_url || null,
                     register_status: item.register_status,
                     register_dt: item.register_dt,
@@ -61,8 +68,14 @@ export default function ArchivesPage() {
         }
     };
 
-    // 1. 초기 로드 시 로그인 정보 파싱
+    // 1. 초기 로드 시 로그인 정보 파싱 (카카오 세션 또는 로컬 로그인)
     useEffect(() => {
+        // 카카오 로그인 세션 확인
+        if (session?.user?.id) {
+            setMemberId(Number(session.user.id));
+            return;
+        }
+        // 로컬 로그인 확인
         const localAuth = localStorage.getItem("localAuth");
         if (localAuth) {
             try {
@@ -74,7 +87,7 @@ export default function ArchivesPage() {
                 console.error("Auth parsing failed", e);
             }
         }
-    }, []);
+    }, [session]);
 
     // 2. memberId가 설정되면 데이터 로드
     useEffect(() => {

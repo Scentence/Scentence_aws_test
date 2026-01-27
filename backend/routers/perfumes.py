@@ -9,6 +9,9 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
+# [수정: 2026-01-28] DB 커넥션 풀 사용을 위한 임포트 추가
+# database.py에서 정의한 풀(Pool) 관리 함수를 가져옵니다.
+from agent.database import get_db_connection, release_db_connection
 
 router = APIRouter(prefix="/perfumes", tags=["Perfumes"])
 
@@ -129,9 +132,15 @@ def search_perfumes(q: str = Query(..., min_length=1, description="검색어")):
     query_where = " OR ".join(conditions)
 
     try:
-        conn = get_perfume_db()
+        # [수정: 2026-01-28] Connection Pool 적용
+        # AS-IS: conn = get_perfume_db() (매번 생성)
+        # TO-BE: conn = get_db_connection() (풀에서 대여)
+        conn = get_db_connection()
+        
+        # [주의] with conn: 블록은 트랜잭션(commit/rollback)만 관리하고
+        # close()는 해주지 않습니다. 그래서 try...finally가 필수입니다.
         with conn:
-            with conn.cursor() as cur:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("""
                     SELECT DISTINCT
                         b.perfume_id,
@@ -151,7 +160,7 @@ def search_perfumes(q: str = Query(..., min_length=1, description="검색어")):
                 """, (search_term, search_term, search_term, search_term))
                 results = cur.fetchall()
         
-        conn.close()
+        # 여기 있던 conn.close()는 위험해서 제거했습니다. (에러나면 실행 안 됨)
         return [
             PerfumeSearchResult(
                 perfume_id=r["perfume_id"],
@@ -163,9 +172,15 @@ def search_perfumes(q: str = Query(..., min_length=1, description="검색어")):
             )
             for r in results
         ]
+        
     except Exception as e:
         print(f"Error searching perfumes: {e}")
         return []
+    finally:
+        # [중요] 어떤 에러가 나도 DB 연결은 반드시 반납해야 합니다.
+        # 반납하지 않으면 AWS RDS의 연결 제한(Max Connections)이 꽉 차서 서버가 멈춥니다.
+        if 'conn' in locals() and conn:
+            release_db_connection(conn)
 
 # 자동완성 기능 추가
 # ============================================================
@@ -191,9 +206,11 @@ def autocomplete_perfumes(q: str = Query(..., min_length=1, description="검색�
 
 
     try:
-        conn = get_perfume_db()
+        # [수정] 자동완성 기능에도 Connection Pool 및 Safe Release 적용
+        conn = get_db_connection()
+        
         with conn:
-            with conn.cursor() as cur:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
                  # 1. 브랜드 검색 (Space-Insensitive)
                 cur.execute("""
                     SELECT DISTINCT COALESCE(k.brand_kr, b.perfume_brand) as brand
@@ -218,9 +235,13 @@ def autocomplete_perfumes(q: str = Query(..., min_length=1, description="검색�
                 response["keywords"] = [r['name'] for r in cur.fetchall()]
 
 
-        conn.close()
+        # conn.close() -> 제거 (finally에서 반납)
         return response
 
     except Exception as e:
         print(f"Error autocompleting: {e}")
         return {"brands": [], "keywords": []}
+    finally:
+        # [중요] 반드시 연결 반납 (자원 누수 방지)
+        if 'conn' in locals() and conn:
+            release_db_connection(conn)

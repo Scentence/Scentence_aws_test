@@ -5,7 +5,10 @@ interface MyPerfume {
     my_perfume_id: number;
     perfume_id: number;
     name: string;
+    name_en?: string;
+    name_kr?: string;
     brand: string;
+    brand_kr?: string; // 추가
     image_url: string | null;
     status: string;
 }
@@ -13,9 +16,10 @@ interface MyPerfume {
 interface Props {
     perfume: MyPerfume;
     onSelect: (perfume: MyPerfume) => void;
+    isKorean: boolean; // prop 추가
 }
 
-export default function CabinetShelf({ perfume, onSelect }: Props) {
+export default function CabinetShelf({ perfume, onSelect, isKorean }: Props) {
     // 상태별 색상 (삼각형)
     const cornerColor = perfume.status === 'HAVE' ? 'border-t-indigo-600' :
         perfume.status === 'HAD' ? 'border-t-amber-500' :
@@ -64,8 +68,12 @@ export default function CabinetShelf({ perfume, onSelect }: Props) {
 
             {/* Text Info */}
             <div className="mt-4 text-center">
-                <p className="text-[10px] tracking-widest text-gray-400 uppercase font-medium">{perfume.brand}</p>
-                <h3 className="text-sm font-bold text-gray-900 mt-1 leading-tight line-clamp-2">{perfume.name}</h3>
+                <p className="text-[10px] tracking-widest text-gray-400 uppercase font-medium">
+                    {isKorean && perfume.brand_kr ? perfume.brand_kr : perfume.brand}
+                </p>
+                <h3 className="text-sm font-bold text-gray-900 mt-1 leading-tight line-clamp-2">
+                    {isKorean && perfume.name_kr ? perfume.name_kr : (perfume.name_en || perfume.name)}
+                </h3>
             </div>
         </div>
     );

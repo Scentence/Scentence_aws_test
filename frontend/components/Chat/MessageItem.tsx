@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSession } from "next-auth/react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -12,23 +13,31 @@ export type Message = {
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-// ✅ 1. 저장 버튼 컴포넌트 (기존 유지)
+// ✅ 1. 저장 버튼 컴포넌트 (카카오 세션 지원)
 const SaveButton = ({ id, name }: { id: string; name: string }) => {
+    const { data: session } = useSession(); // 카카오 로그인 세션
     const [isSaved, setIsSaved] = useState(false);
     const [loading, setLoading] = useState(false);
 
     const handleSave = async () => {
         let memberId = 0;
-        try {
-            const localAuth = localStorage.getItem("localAuth");
-            if (localAuth) {
-                const parsed = JSON.parse(localAuth);
-                if (parsed && parsed.memberId) {
-                    memberId = parseInt(parsed.memberId, 10);
+
+        // 카카오 로그인 세션 확인
+        if (session?.user?.id) {
+            memberId = parseInt(session.user.id, 10);
+        } else {
+            // 로컬 로그인 확인
+            try {
+                const localAuth = localStorage.getItem("localAuth");
+                if (localAuth) {
+                    const parsed = JSON.parse(localAuth);
+                    if (parsed && parsed.memberId) {
+                        memberId = parseInt(parsed.memberId, 10);
+                    }
                 }
+            } catch (e) {
+                console.error("로그인 정보 파싱 실패:", e);
             }
-        } catch (e) {
-            console.error("로그인 정보 파싱 실패:", e);
         }
 
         if (memberId === 0) {

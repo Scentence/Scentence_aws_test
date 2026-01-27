@@ -126,6 +126,7 @@ async def call_info_graph_wrapper(state: AgentState):
     subgraph_input = {
         "user_query": current_query,
         "messages": state.get("messages", []),
+        "user_mode": state.get("user_mode", "BEGINNER"),
     }
 
     try:
@@ -353,15 +354,15 @@ async def parallel_reco_node(state: AgentState):
         section_data = prepared_data["section_data"]
         priority = prepared_data["priority"]
         
-        USER_MODE = "BEGINNER"  # 옵션: "BEGINNER" | "EXPERT"
-        print(f"   🐥 [Strategy {priority}] 비기너용 프롬프트 적용", flush=True)
+        user_mode = state.get("user_mode", "BEGINNER")
+        print(f"   🐥 [Strategy {priority}] {user_mode} 모드 프롬프트 적용", flush=True)
         
         data_ctx = json.dumps(section_data, ensure_ascii=False, indent=2)
 
-        if USER_MODE == "BEGINNER":
-            section_system = WRITER_RECOMMENDATION_PROMPT_SINGLE
-        else:
+        if user_mode == "EXPERT":
             section_system = WRITER_RECOMMENDATION_PROMPT_EXPERT_SINGLE
+        else:
+            section_system = WRITER_RECOMMENDATION_PROMPT_SINGLE
 
         messages = [SystemMessage(content=section_system)] + state["messages"] + [
             HumanMessage(

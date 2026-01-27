@@ -250,8 +250,7 @@ async def perfume_describer_node(state: InfoState):
     target = state["target_name"]
     target_id = state.get("target_id")
 
-    # [★설정] 사용자 모드 (DB 연동 전 하드코딩: "BEGINNER" or "EXPERT")
-    USER_MODE = "BEGINNER"
+    user_mode = state.get("user_mode", "BEGINNER")
     try:
         if target_id:
             print(f"\n   ▶️ [Info Subgraph] Perfume Describer (ID-first): id={target_id}, name='{target}'", flush=True)
@@ -300,7 +299,7 @@ async def perfume_describer_node(state: InfoState):
                 response = await stream_fixed_message(fail_msg)
                 return {"messages": [response], "final_answer": response.content}
 
-        if USER_MODE == "EXPERT":
+        if user_mode == "EXPERT":
             print("      😎 [Mode] 전문가용 분석 프롬프트 적용")
             selected_prompt = PERFUME_DESCRIBER_PROMPT_EXPERT
         else:
@@ -442,8 +441,7 @@ async def ingredient_specialist_node(state: InfoState):
 async def similarity_curator_node(state: InfoState):
     """[Similarity Expert] 유사 추천"""
 
-    # [★설정] 사용자 모드
-    USER_MODE = "BEGINNER"
+    user_mode = state.get("user_mode", "BEGINNER")
     try:
         target = state["target_name"]
         print(f"\n   ▶️ [Info Subgraph] Similarity Curator: '{target}'", flush=True)
@@ -475,7 +473,7 @@ async def similarity_curator_node(state: InfoState):
             response = await stream_fixed_message(fail_msg)
             return {"messages": [response], "final_answer": response.content}
         # =============================================================
-        if USER_MODE == "EXPERT":
+        if user_mode == "EXPERT":
             print("      😎 [Mode] 전문가용 큐레이터 프롬프트 적용")
             selected_prompt = SIMILARITY_CURATOR_PROMPT_EXPERT
         else:

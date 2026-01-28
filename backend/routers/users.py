@@ -32,6 +32,10 @@ class LocalRegisterRequest(BaseModel):
     password: str
     name: Optional[str] = None
     sex: Optional[str] = None  # 'M' or 'F'
+    phone_no: Optional[str] = None
+    address: Optional[str] = None
+    nickname: Optional[str] = None
+    user_mode: Optional[str] = None  # 'BEGINNER' or 'EXPERT'
     req_agr_yn: Optional[str] = "N"
     email_alarm_yn: Optional[str] = "N"
     sns_alarm_yn: Optional[str] = "N"
@@ -572,6 +576,27 @@ def login_local_user(req: LocalLoginRequest):
             release_member_db_connection(conn)
 
 
+@router.get("/check-email")
+def check_email(email: str):
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+
+    conn = get_user_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    try:
+        cur.execute(
+            "SELECT member_id FROM tb_member_basic_m WHERE login_id=%s", (email,)
+        )
+        exists = cur.fetchone() is not None
+        return {"available": not exists}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        conn.close()
+
+
 @router.post("/register")
 def register_local_user(req: LocalRegisterRequest):
     if req.req_agr_yn not in ("Y", "N"):
@@ -586,8 +611,8 @@ def register_local_user(req: LocalRegisterRequest):
     if req.email_alarm_yn not in ("Y", "N"):
         raise HTTPException(status_code=400, detail="Invalid email alarm value")
 
-    if req.sns_alarm_yn not in ("Y", "N"):
-        raise HTTPException(status_code=400, detail="Invalid sns alarm value")
+    if req.user_mode and req.user_mode not in ("BEGINNER", "EXPERT"):
+        raise HTTPException(status_code=400, detail="Invalid user mode")
 
     password = req.password
     _validate_password(password)
@@ -610,19 +635,19 @@ def register_local_user(req: LocalRegisterRequest):
 
         sql_basic = """
             INSERT INTO tb_member_basic_m
-            (login_id, pwd_hash, join_channel, sns_join_yn, email_alarm_yn, sns_alarm_yn)
-            VALUES (%s, %s, 'LOCAL', 'N', %s, %s)
+            (login_id, pwd_hash, join_channel, sns_join_yn, email_alarm_yn, sns_alarm_yn, role_type)
+            VALUES (%s, %s, 'LOCAL', 'N', %s, %s, %s)
             RETURNING member_id
         """
-        cur.execute(sql_basic, (req.email, pwd_hash, req.email_alarm_yn, req.sns_alarm_yn))
+        cur.execute(sql_basic, (req.email, pwd_hash, req.email_alarm_yn, req.sns_alarm_yn, req.user_mode))
         member_id = cur.fetchone()["member_id"]
 
         sql_profile = """
             INSERT INTO tb_member_profile_t
-            (member_id, name, nickname, sex, email)
-            VALUES (%s, %s, %s, %s, %s)
+            (member_id, name, nickname, sex, email, phone_no, address)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
         """
-        cur.execute(sql_profile, (member_id, req.name, req.name, req.sex, req.email))
+        cur.execute(sql_profile, (member_id, req.name, req.nickname or req.name, req.sex, req.email, req.phone_no, req.address))
 
         sql_status = """
             INSERT INTO tb_member_status_t

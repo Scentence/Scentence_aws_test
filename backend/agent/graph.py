@@ -25,6 +25,9 @@ from .schemas import (
     PerfumeNotes,
 )
 
+# [Import] Expression Loader for dynamic dictionary injection
+from .expression_loader import ExpressionLoader
+
 from .tools import (
     advanced_perfume_search_tool,
     lookup_note_by_string_tool,
@@ -64,18 +67,7 @@ SUPER_SMART_LLM_NO_STREAM = ChatOpenAI(model="gpt-5.2", temperature=0, streaming
 # 2. 유틸리티
 # ==========================================
 def log_filters(h_filters: dict, s_filters: dict):
-    h_items = [f"{k.capitalize()}: {v}" for k, v in h_filters.items() if v]
-    h_str = " | ".join(h_items) if h_items else "None"
-
-    s_items = []
-    for k, v in s_filters.items():
-        if v:
-            val_str = str(v) if not isinstance(v, list) else f"{v}"
-            s_items.append(f"{k.capitalize()}: {val_str}")
-    s_str = " | ".join(s_items) if s_items else "None"
-
-    print(f"       🔒 [Hard] {h_str}", flush=True)
-    print(f"       ✨ [Soft] {s_str}", flush=True)
+    pass
 
 
 async def smart_search_with_retry_async(
@@ -113,15 +105,12 @@ async def smart_search_with_retry_async(
 
 async def call_info_graph_wrapper(state: AgentState):
     """Sub-Graph Wrapper"""
-    print(f"\n🚀 [Main Graph] 'info_graph' 서브 그래프 호출...", flush=True)
     current_query = state.get("user_query", "")
 
     if not current_query and state.get("messages"):
         last_msg = state["messages"][-1]
         if isinstance(last_msg, HumanMessage):
             current_query = last_msg.content
-
-    print(f"   👉 전달할 Query: {current_query}", flush=True)
 
     subgraph_input = {
         "user_query": current_query,
@@ -131,13 +120,10 @@ async def call_info_graph_wrapper(state: AgentState):
 
     try:
         result = await info_graph.ainvoke(subgraph_input)
-        print(f"✅ [Main Graph] 서브 그래프 완료. 결과 복귀.", flush=True)
         return {"messages": result.get("messages", [])}
 
     except Exception as e:
-        print(f"🚨 [Main Graph] 서브 그래프 에러: {e}", flush=True)
         import traceback
-
         traceback.print_exc()
         return {"messages": [AIMessage(content="정보 검색 중 오류가 발생했습니다.")]}
 
@@ -171,8 +157,6 @@ def supervisor_node(state: AgentState):
 
 def interviewer_node(state: AgentState):
     """[Interviewer]"""
-    print(f"\n🎤 [Interviewer] 추천 정보 분석 및 검증...", flush=True)
-
     current_prefs = state.get("user_preferences", {})
 
     # 현재 정보를 문자열로 변환
@@ -252,8 +236,6 @@ async def parallel_reco_node(state: AgentState):
 
     async def prepare_strategy(strategy_name: str, priority: int):
         """Phase 1: Strategy planning + search + perfume selection (parallel)"""
-        print(f"   👉 [Strategy {priority}] {strategy_name} 시작", flush=True)
-        
         plan_messages = [
             SystemMessage(content=RESEARCHER_SYSTEM_PROMPT),
             HumanMessage(
@@ -271,7 +253,6 @@ async def parallel_reco_node(state: AgentState):
                 plan_messages, config={"tags": ["internal_helper"]}
             )
         except Exception as e:
-            print(f"      ❌ [Strategy {priority}] 전략 수립 실패: {e}", flush=True)
             return None
 
         try:
@@ -286,7 +267,6 @@ async def parallel_reco_node(state: AgentState):
                 h_filters, s_filters, query_text=plan.reason
             )
         except Exception as e:
-            print(f"      ❌ [Strategy {priority}] 검색 실패: {e}", flush=True)
             return None
 
         selected_perfume = None
@@ -298,10 +278,7 @@ async def parallel_reco_node(state: AgentState):
                     break
 
         if not selected_perfume:
-            print(f"      ❌ [Strategy {priority}] 중복 제거 후 선택 가능한 향수 없음", flush=True)
             return None
-        
-        print(f"      ✅ [Strategy {priority}] 선택: {selected_perfume.get('name')} (ID: {selected_perfume.get('id')})", flush=True)
 
         save_recommendation_log(
             member_id=member_id, perfumes=[selected_perfume], reason=plan.reason
@@ -355,7 +332,52 @@ async def parallel_reco_node(state: AgentState):
         priority = prepared_data["priority"]
         
         user_mode = state.get("user_mode", "BEGINNER")
-        print(f"   🐥 [Strategy {priority}] {user_mode} 모드 프롬프트 적용", flush=True)
+        
+        # [★ Dynamic Expression Injection]
+        # Extract notes and accords from perfume data
+        perfume_data = section_data.get("perfume", {})
+        perfume_name = perfume_data.get("name", "Unknown")
+        brand = perfume_data.get("brand", "Unknown")
+        notes_data = perfume_data.get("notes", {})
+        accord_str = perfume_data.get("accord", "")
+        
+        # Collect all notes
+        all_notes = []
+        for note_type in ["top", "middle", "base"]:
+            note_str = notes_data.get(note_type, "")
+            if note_str and note_str != "N/A":
+                all_notes.extend([n.strip() for n in note_str.split(",")])
+        
+        # Extract accords (before [Best Review])
+        accords = []
+        if accord_str:
+            accord_part = accord_str.split("[Best Review]")[0].strip()
+            accords = [a.strip() for a in accord_part.split(",") if a.strip()]
+        
+        # Load expression loader
+        loader = ExpressionLoader()
+        
+        # Build expression guide
+        expression_guide = []
+        injected_count = 0
+        
+        if all_notes:
+            expression_guide.append("### 노트 표현 가이드")
+            for note in all_notes[:10]:  # Limit to 10 to avoid prompt bloat
+                desc = loader.get_note_desc(note)
+                if desc:
+                    expression_guide.append(f"- {note}: {desc}")
+                    injected_count += 1
+        
+        if accords:
+            expression_guide.append("\n### 어코드 표현 가이드")
+            for accord in accords[:10]:
+                desc = loader.get_accord_desc(accord)
+                if desc:
+                    expression_guide.append(f"- {accord}: {desc}")
+                    injected_count += 1
+        
+        expression_text = "\n".join(expression_guide) if expression_guide else ""
         
         data_ctx = json.dumps(section_data, ensure_ascii=False, indent=2)
 
@@ -364,20 +386,24 @@ async def parallel_reco_node(state: AgentState):
         else:
             section_system = WRITER_RECOMMENDATION_PROMPT_SINGLE
 
+        # Inject expression guide into prompt
+        content_parts = [
+            f"[섹션 번호]: {priority}",
+            f"[도입부 포함]: {'예' if priority == 1 else '아니오'}",
+            f"[출력 규칙]: 도입부 포함이 '아니오'이면 첫 줄을 반드시 '## {priority}.'로 시작하고 도입부 문장을 쓰지 마세요.",
+        ]
+        
+        if expression_text:
+            content_parts.append(f"\n[감각 표현 참고]:\n{expression_text}")
+        
+        content_parts.append(f"\n[참고 데이터]:\n{data_ctx}")
+        
         messages = [SystemMessage(content=section_system)] + state["messages"] + [
-            HumanMessage(
-                content=(
-                    f"[섹션 번호]: {priority}\n"
-                    f"[도입부 포함]: {'예' if priority == 1 else '아니오'}\n"
-                    f"[출력 규칙]: 도입부 포함이 '아니오'이면 첫 줄을 반드시 '## {priority}.'로 시작하고 도입부 문장을 쓰지 마세요.\n\n"
-                    f"[참고 데이터]:\n{data_ctx}"
-                )
-            )
+            HumanMessage(content="\n".join(content_parts))
         ]
 
         try:
             response = await SUPER_SMART_LLM.ainvoke(messages)
-            print(f"      ✅ [Strategy {priority}] 작성 완료 ({len(response.content)} chars)", flush=True)
             result_text = response.content
             if result_text:
                 header_index = result_text.find("##")
@@ -403,7 +429,6 @@ async def parallel_reco_node(state: AgentState):
                 result_text = f"{result_text.rstrip()}\n---"
             return result_text
         except Exception as e:
-            print(f"      ❌ [Strategy {priority}] 작성 실패: {e}", flush=True)
             return None
 
     # Phase 1: Parallel preparation (strategy planning + search)
@@ -430,7 +455,6 @@ async def parallel_reco_node(state: AgentState):
         result3 = await generate_output(data3) if data3 else None
         results.append(result3)
     except (Exception, asyncio.CancelledError) as e:
-        print(f"   ⚠️ [Parallel Reco] Task cancelled or failed: {e}", flush=True)
         return {
             "messages": [AIMessage(content="조건에 맞는 향수를 찾지 못했습니다. 😢")],
             "next_step": "end",
@@ -441,7 +465,6 @@ async def parallel_reco_node(state: AgentState):
     for idx, result_text in enumerate(results, start=1):
         # Handle exceptions returned by gather(return_exceptions=True)
         if isinstance(result_text, (Exception, asyncio.CancelledError)):
-            print(f"   ⚠️ [Section {idx}] Failed: {result_text}", flush=True)
             continue
 
         if not result_text:

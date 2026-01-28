@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useSavedPerfumes } from "../../contexts/SavedPerfumesContext";
 
 export type Message = {
     role: "user" | "assistant";
@@ -16,8 +17,15 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 // ✅ 1. 저장 버튼 컴포넌트 (카카오 세션 지원)
 const SaveButton = ({ id, name }: { id: string; name: string }) => {
     const { data: session } = useSession(); // 카카오 로그인 세션
+    const { isSaved: checkSaved, addSavedPerfume } = useSavedPerfumes();
+    const perfumeId = parseInt(id);
     const [isSaved, setIsSaved] = useState(false);
     const [loading, setLoading] = useState(false);
+
+    // Check if perfume is already saved on mount
+    useEffect(() => {
+        setIsSaved(checkSaved(perfumeId));
+    }, [perfumeId, checkSaved]);
 
     const handleSave = async () => {
         let memberId = 0;
@@ -63,9 +71,11 @@ const SaveButton = ({ id, name }: { id: string; name: string }) => {
             if (data.status === "already_exists") {
                 alert("이미 내 향수에 저장되어 있어요! 😉");
                 setIsSaved(true);
+                addSavedPerfume(perfumeId);
             } else {
                 alert(`'${name}'이(가) 내 향수로 저장되었습니다! 💖`);
                 setIsSaved(true);
+                addSavedPerfume(perfumeId);
             }
         } catch (e: any) {
             console.error(e);

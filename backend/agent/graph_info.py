@@ -29,6 +29,9 @@ from .prompts_info import (
     INGREDIENT_SPECIALIST_PROMPT,
 )
 
+# [4] Expression Loader for dynamic dictionary injection
+from .expression_loader import ExpressionLoader
+
 load_dotenv()
 
 # [LLM 이원화]
@@ -188,7 +191,7 @@ def info_supervisor_node(state: InfoState):
             messages
         )
         final_target = decision.target_name
-
+        
         save_refs = extract_save_refs(chat_history)
         
         resolved = resolve_target_from_ordinal_or_pronoun(
@@ -197,10 +200,6 @@ def info_supervisor_node(state: InfoState):
         
         if resolved:
             ordinal = parse_ordinal(user_query)
-            if ordinal:
-                print(f"      🧷 [Ordinal Resolve] n={ordinal} -> id={resolved['id']}, name={resolved['name']}", flush=True)
-            else:
-                print(f"      🧷 [Pronoun Resolve] -> id={resolved['id']}, name={resolved['name']}", flush=True)
             
             info_type = decision.info_type
             if any(kw in user_query for kw in ['비슷', '추천', '대체', '같은']):
@@ -230,13 +229,7 @@ def info_supervisor_node(state: InfoState):
             "추천해줘",
             "비슷한거",
         ]:
-            print(f"      ⚠️ 타겟 해상 실패: '{final_target}' -> Fallback", flush=True)
             return {"info_type": "unknown", "target_name": "unknown"}
-
-        print(
-            f"      👉 [Decided] Type: '{decision.info_type}' | Target: '{final_target}'",
-            flush=True,
-        )
 
         return {"info_type": decision.info_type, "target_name": final_target}
 
@@ -253,16 +246,9 @@ async def perfume_describer_node(state: InfoState):
     user_mode = state.get("user_mode", "BEGINNER")
     try:
         if target_id:
-            print(f"\n   ▶️ [Info Subgraph] Perfume Describer (ID-first): id={target_id}, name='{target}'", flush=True)
-            print(f"      🆔 [Lookup] by_id perfume_id={target_id}", flush=True)
             search_result_json = await lookup_perfume_by_id_tool.ainvoke({"perfume_id": target_id})
         else:
-            print(f"\n   ▶️ [Info Subgraph] Perfume Describer (name-based): '{target}'", flush=True)
-            print(f"      🏷️ [Lookup] by_name", flush=True)
             search_result_json = await lookup_perfume_info_tool.ainvoke(target)
-
-        # [★추가] DB에서 실제로 어떤 값이 왔는지 로그를 찍어야 원인 분석이 가능합니다.
-        print(f"      🔍 [DB Result]: {str(search_result_json)[:200]}...", flush=True)
 
         # [★수정] 가드레일 강화: "검색 실패" 뿐만 아니라 "DB 에러"나 "Error"가 포함된 경우도 차단
         is_error = any(
@@ -277,7 +263,6 @@ async def perfume_describer_node(state: InfoState):
 
         if is_error or is_empty:
             if target_id and target:
-                print(f"      🔄 [Fallback] ID lookup failed, trying name-based lookup", flush=True)
                 search_result_json = await lookup_perfume_info_tool.ainvoke(target)
                 
                 is_error_retry = any(
@@ -306,11 +291,56 @@ async def perfume_describer_node(state: InfoState):
             print("      🐥 [Mode] 비기너용 도슨트 프롬프트 적용")
             selected_prompt = PERFUME_DESCRIBER_PROMPT_BEGINNER
 
+        # [★ Dynamic Expression Injection]
+        # Parse perfume data to extract notes and accords
+        try:
+            perfume_data = json.loads(search_result_json)
+            perfume_name = perfume_data.get("name", "Unknown")
+            brand = perfume_data.get("brand", "Unknown")
+            
+            loader = ExpressionLoader()
+            expression_guide = []
+            injected_count = 0
+            
+            all_notes = []
+            all_accords = []
+            
+            # Extract notes
+            for note_type in ["top_notes", "middle_notes", "base_notes"]:
+                note_str = perfume_data.get(note_type, "")
+                if note_str and note_str != "N/A":
+                    notes = [n.strip() for n in note_str.split(",")]
+                    all_notes.extend(notes)
+                    for note in notes[:5]:  # Limit per type
+                        desc = loader.get_note_desc(note)
+                        if desc:
+                            expression_guide.append(f"- {note}: {desc}")
+                            injected_count += 1
+            
+            # Extract accords
+            accord_str = perfume_data.get("accords", "")
+            if accord_str:
+                accords = [a.strip() for a in accord_str.split(",")]
+                all_accords = accords
+                for accord in accords[:5]:
+                    desc = loader.get_accord_desc(accord)
+                    if desc:
+                        expression_guide.append(f"- {accord}: {desc}")
+                        injected_count += 1
+            
+            expression_text = "\n".join(expression_guide) if expression_guide else ""
+            
+        except Exception as e:
+            expression_text = ""
+
+        content_parts = [f"대상 향수: {target}"]
+        if expression_text:
+            content_parts.append(f"\n[감각 표현 참고]:\n{expression_text}")
+        content_parts.append(f"\n[검색된 상세 정보]:\n{search_result_json}")
+
         messages = [
             SystemMessage(content=selected_prompt),
-            HumanMessage(
-                content=f"대상 향수: {target}\n\n[검색된 상세 정보]:\n{search_result_json}"
-            ),
+            HumanMessage(content="\n".join(content_parts)),
         ]
         response = await INFO_LLM.ainvoke(messages)
 
@@ -414,14 +444,43 @@ async def ingredient_specialist_node(state: InfoState):
         # =============================================================
 
         # 4. LLM 기반 답변 생성 (데이터가 있을 때만 실행)
-        combined_context = f"""
-        [User Interest]: Notes: {analysis.notes}, Accords: {analysis.accords}
+        # [★ Dynamic Expression Injection]
+        loader = ExpressionLoader()
+        expression_guide = []
+        injected_count = 0
+        
+        # Add note descriptions
+        for note in analysis.notes[:10]:
+            desc = loader.get_note_desc(note)
+            if desc:
+                expression_guide.append(f"- {note}: {desc}")
+                injected_count += 1
+        
+        # Add accord descriptions
+        for accord in analysis.accords[:10]:
+            desc = loader.get_accord_desc(accord)
+            if desc:
+                expression_guide.append(f"- {accord}: {desc}")
+                injected_count += 1
+        
+        expression_text = "\n".join(expression_guide) if expression_guide else ""
+        
+        context_parts = [
+            f"[User Interest]: Notes: {analysis.notes}, Accords: {analysis.accords}",
+        ]
+        
+        if expression_text:
+            context_parts.append(f"\n[감각 표현 참고]:\n{expression_text}")
+        
+        context_parts.append(f"""
         [Search Results]:
         --- Note Data ---
         {note_result}
         --- Accord Data ---
         {accord_result}
-        """
+        """)
+        
+        combined_context = "\n".join(context_parts)
 
         messages = [
             SystemMessage(content=INGREDIENT_SPECIALIST_PROMPT),
@@ -444,11 +503,9 @@ async def similarity_curator_node(state: InfoState):
     user_mode = state.get("user_mode", "BEGINNER")
     try:
         target = state["target_name"]
-        print(f"\n   ▶️ [Info Subgraph] Similarity Curator: '{target}'", flush=True)
 
         # 1. 도구 호출 (기존 로직 유지)
         search_result_json = await lookup_similar_perfumes_tool.ainvoke(target)
-        print(f"      🔍 [DB Result]: {str(search_result_json)[:200]}...", flush=True)
 
         # =============================================================
         # [★ 할루시네이션 방지: 조기 차단(Early Exit) 가드레일]

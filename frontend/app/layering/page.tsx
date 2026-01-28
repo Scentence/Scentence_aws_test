@@ -15,6 +15,7 @@ type LayeringCandidate = {
   perfume_id: string;        // 향수 고유 ID
   perfume_name: string;       // 향수 이름
   perfume_brand: string;      // 브랜드명
+  image_url?: string | null;  // 이미지 URL
   total_score: number;        // 추천 점수
   spray_order: string[];      // 분사 순서 (향수 이름 배열)
   analysis: string;           // 추천 이유 분석
@@ -25,11 +26,33 @@ type LayeringCandidate = {
  * 레이어링 추천 응답 (다중 추천)
  */
 type LayeringResponse = {
+  base_perfume?: PerfumeSummary | null;
   base_perfume_id: string;              // 베이스 향수 ID
   keywords: string[];                    // 추출된 키워드
   total_available: number;               // 사용 가능한 추천 개수
   recommendations: LayeringCandidate[];  // 추천 향수 목록
   note?: string | null;                  // 추가 노트
+};
+
+type PerfumeSummary = {
+  perfume_id: string;
+  perfume_name: string;
+  perfume_brand: string;
+  image_url?: string | null;
+};
+
+type PerfumeInfo = {
+  perfume_id: string;
+  perfume_name: string;
+  perfume_brand: string;
+  image_url?: string | null;
+  gender?: string | null;
+  accords: string[];
+  seasons: string[];
+  occasions: string[];
+  top_notes: string[];
+  middle_notes: string[];
+  base_notes: string[];
 };
 
 /**
@@ -39,11 +62,13 @@ type UserQueryResponse = {
   raw_text: string;                      // 원본 질문 텍스트
   keywords: string[];                    // 추출된 키워드
   base_perfume_id?: string | null;       // 베이스 향수 ID
+  base_perfume?: PerfumeSummary | null;
   detected_pair?: {                      // 감지된 향수 쌍
     base_perfume_id?: string | null;
     candidate_perfume_id?: string | null;
   } | null;
   recommendation?: LayeringCandidate | null;  // 추천 결과 (단일)
+  recommended_perfume_info?: PerfumeInfo | null;
   clarification_prompt?: string | null;       // 명확화 요청 메시지
   clarification_options?: string[];           // 명확화 옵션 목록
   note?: string | null;                       // 추가 노트
@@ -355,6 +380,8 @@ export default function LayeringPage() {
       return;
     }
 
+    const contextRecommendedId = result?.recommendation?.perfume_id ?? null;
+
     // 사용자 메시지 추가
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
@@ -384,6 +411,7 @@ export default function LayeringPage() {
         body: JSON.stringify({
           user_text: trimmedQuery,
           member_id: currentMemberId,
+          context_recommended_perfume_id: contextRecommendedId,
           save_recommendations: true,  // 추천 결과 저장 여부
           save_my_perfume: false,      // 내 향수로 저장 여부
         }),
@@ -589,6 +617,8 @@ export default function LayeringPage() {
 
   /** 추천된 향수 후보 */
   const candidate = result?.recommendation ?? null;
+  const basePerfume = result?.base_perfume ?? null;
+  const perfumeInfo = result?.recommended_perfume_info ?? null;
 
   /** 
    * 레이어링 결과의 어코드 벡터 및 유효성 검증
@@ -633,6 +663,18 @@ export default function LayeringPage() {
     return getScoreEvaluation(candidate.total_score);
   }, [candidate]);
 
+  const infoSections = useMemo(() => {
+    if (!perfumeInfo) return [];
+    return [
+      { label: "어코드", items: perfumeInfo.accords },
+      { label: "탑 노트", items: perfumeInfo.top_notes },
+      { label: "미들 노트", items: perfumeInfo.middle_notes },
+      { label: "베이스 노트", items: perfumeInfo.base_notes },
+      { label: "계절", items: perfumeInfo.seasons },
+      { label: "상황", items: perfumeInfo.occasions },
+    ].filter((section) => section.items && section.items.length > 0);
+  }, [perfumeInfo]);
+
   return (
     <div className="min-h-screen bg-[#F5F2EA] text-[#1F1F1F]">
       <div className="max-w-5xl mx-auto px-6 py-12">
@@ -675,6 +717,33 @@ export default function LayeringPage() {
             <h2 className="text-sm font-semibold text-[#7A6B57]">레이어링 시각화</h2>
 
             <div className="mt-4 flex flex-col items-center gap-6">
+              {basePerfume && (
+                <div className="w-full rounded-2xl border border-[#E6DDCF] bg-white/80 p-4 shadow-sm">
+                  <div className="flex items-center gap-4">
+                    {basePerfume.image_url ? (
+                      <img
+                        src={basePerfume.image_url}
+                        alt={`${basePerfume.perfume_name} 이미지`}
+                        className="h-16 w-16 rounded-xl object-cover border border-[#E6DDCF]"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="h-16 w-16 rounded-xl bg-gradient-to-br from-[#F4EBDD] to-[#E8D9C4] flex items-center justify-center text-[10px] text-[#7A6B57] border border-[#E6DDCF]">
+                        No Image
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-[11px] font-semibold text-[#7A6B57]">기존 향수</p>
+                      <p className="text-sm font-bold text-[#2E2B28]">
+                        {basePerfume.perfume_name}
+                      </p>
+                      <p className="text-xs text-[#7A6B57]">
+                        {basePerfume.perfume_brand}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
               {/* 어코드 원판 표시 영역 */}
               {vectorReady ? (
                 <AccordWheel vector={vector} />
@@ -702,38 +771,36 @@ export default function LayeringPage() {
                         추천 향수
                       </span>
                     </div>
-                    <div className="relative group">
-                      <div className="flex items-center gap-1.5 bg-[#C8A24D]/10 px-3 py-1.5 rounded-full border border-[#C8A24D]/30 cursor-help">
-                        <span className="text-[10px] font-medium text-[#7A6B57]">매칭도</span>
-                        <span className="text-sm font-bold text-[#C8A24D]">{totalScore}</span>
-                      </div>
-                      {/* 툴팁 */}
-                      <div className="absolute right-0 top-full mt-2 w-72 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
-                        <div className="bg-[#2E2B28] text-white text-xs rounded-lg p-3 shadow-xl">
-                          <p className="font-semibold mb-2 text-[#C8A24D]">💡 매칭도 점수 계산 방식</p>
-                          <p className="leading-relaxed">
-                            이 점수는 <span className="font-semibold text-[#E8D7A8]">베이스 향수의 기본 점수</span>,
-                            <span className="font-semibold text-[#D4C5A0]"> 두 향수의 조화도</span>,
-                            <span className="font-semibold text-[#C4B58E]"> 원하는 어코드와의 연결성</span> 등을
-                            종합적으로 고려하여 계산됩니다. 숫자가 높을수록 레이어링 조합으로 더 적합합니다.
-                          </p>
-                          {/* 화살표 */}
-                          <div className="absolute -top-2 right-4 w-3 h-3 bg-[#2E2B28] transform rotate-45"></div>
-                        </div>
-                      </div>
+                    <div className="flex items-center gap-1.5 bg-[#C8A24D]/10 px-3 py-1.5 rounded-full border border-[#C8A24D]/30">
+                      <span className="text-[10px] font-medium text-[#7A6B57]">매칭도</span>
+                      <span className="text-sm font-bold text-[#C8A24D]">{totalScore}</span>
                     </div>
                   </div>
 
                   {/* 메인 콘텐츠 */}
-                  <div className="p-5 space-y-4">
+                  <div className="p-5 space-y-4 max-h-[360px] overflow-y-auto">
                     {/* 향수 이름과 브랜드 */}
-                    <div>
-                      <h3 className="text-lg font-bold text-[#2E2B28] leading-tight mb-1">
-                        {candidate.perfume_name}
-                      </h3>
-                      <p className="text-sm font-medium text-[#7A6B57]">
-                        {candidate.perfume_brand}
-                      </p>
+                    <div className="flex items-center gap-4">
+                      {candidate.image_url ? (
+                        <img
+                          src={candidate.image_url}
+                          alt={`${candidate.perfume_name} 이미지`}
+                          className="h-16 w-16 rounded-xl object-cover border border-[#E6DDCF]"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="h-16 w-16 rounded-xl bg-gradient-to-br from-[#F4EBDD] to-[#E8D9C4] flex items-center justify-center text-[10px] text-[#7A6B57] border border-[#E6DDCF]">
+                          No Image
+                        </div>
+                      )}
+                      <div>
+                        <h3 className="text-lg font-bold text-[#2E2B28] leading-tight mb-1">
+                          {candidate.perfume_name}
+                        </h3>
+                        <p className="text-sm font-medium text-[#7A6B57]">
+                          {candidate.perfume_brand}
+                        </p>
+                      </div>
                     </div>
 
                     {/* 추천 이유 */}
@@ -749,8 +816,8 @@ export default function LayeringPage() {
                           {scoreEvaluation && (
                             <>
                               {scoreEvaluation.scoreEmoji} <span className="font-bold text-[#C8A24D]">{candidate.perfume_name}</span>
-                              은(는) 매칭도 점수 <span className="font-bold text-[#C8A24D]">{totalScore}</span>로{" "}
-                              <span className="font-semibold text-[#5C5448]">{scoreEvaluation.scoreEval}</span>를 보여줍니다. {candidate.analysis}
+                              은(는) 매칭도 {totalScore}로{" "}
+                              <span className="font-semibold text-[#5C5448]">{scoreEvaluation.scoreEval}</span>입니다. {candidate.analysis}
                             </>
                           )}
                         </p>
@@ -784,6 +851,101 @@ export default function LayeringPage() {
                           )}
                         </p>
                       </div>
+                    </div>
+
+                    {perfumeInfo && (
+                      <div className="pt-3 border-t border-[#E6DDCF]">
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-1.5">
+                            <svg className="w-3.5 h-3.5 text-[#C8A24D]" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm-1-11a1 1 0 112 0v3a1 1 0 01-2 0V7zm1 6a1.25 1.25 0 100 2.5A1.25 1.25 0 0010 13z" clipRule="evenodd" />
+                            </svg>
+                            <p className="text-xs font-semibold text-[#5C5448]">향수 정보</p>
+                          </div>
+                          {perfumeInfo.gender && (
+                            <p className="text-xs text-[#7A6B57] pl-5">성별: {perfumeInfo.gender}</p>
+                          )}
+                          <div className="pl-5 space-y-2">
+                            {infoSections.map((section) => (
+                              <div key={section.label}>
+                                <p className="text-[11px] font-semibold text-[#7A6B57]">
+                                  {section.label}
+                                </p>
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {section.items.map((item) => (
+                                    <span
+                                      key={`${section.label}-${item}`}
+                                      className="text-[11px] px-2 py-0.5 rounded-full bg-[#F8F4EC] text-[#5C5448] border border-[#E6DDCF]"
+                                    >
+                                      {item}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              {!candidate && perfumeInfo && (
+                <div className="w-full rounded-2xl bg-white border-2 border-[#E6DDCF] overflow-hidden shadow-md">
+                  <div className="bg-gradient-to-r from-[#F8F4EC] to-[#F0EAE0] px-5 py-3 flex items-center justify-between border-b border-[#E6DDCF]">
+                    <div className="flex items-center gap-2">
+                      <svg className="w-4 h-4 text-[#C8A24D]" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                      </svg>
+                      <span className="text-xs font-bold text-[#C8A24D] uppercase tracking-wide">
+                        추천 향수 정보
+                      </span>
+                    </div>
+                  </div>
+                  <div className="p-5 space-y-4 max-h-[360px] overflow-y-auto">
+                    <div className="flex items-center gap-4">
+                      {perfumeInfo.image_url ? (
+                        <img
+                          src={perfumeInfo.image_url}
+                          alt={`${perfumeInfo.perfume_name} 이미지`}
+                          className="h-16 w-16 rounded-xl object-cover border border-[#E6DDCF]"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="h-16 w-16 rounded-xl bg-gradient-to-br from-[#F4EBDD] to-[#E8D9C4] flex items-center justify-center text-[10px] text-[#7A6B57] border border-[#E6DDCF]">
+                          No Image
+                        </div>
+                      )}
+                      <div>
+                        <h3 className="text-lg font-bold text-[#2E2B28] leading-tight mb-1">
+                          {perfumeInfo.perfume_name}
+                        </h3>
+                        <p className="text-sm font-medium text-[#7A6B57]">
+                          {perfumeInfo.perfume_brand}
+                        </p>
+                      </div>
+                    </div>
+                    {perfumeInfo.gender && (
+                      <p className="text-xs text-[#7A6B57]">성별: {perfumeInfo.gender}</p>
+                    )}
+                    <div className="space-y-2">
+                      {infoSections.map((section) => (
+                        <div key={`solo-${section.label}`}>
+                          <p className="text-[11px] font-semibold text-[#7A6B57]">
+                            {section.label}
+                          </p>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {section.items.map((item) => (
+                              <span
+                                key={`solo-${section.label}-${item}`}
+                                className="text-[11px] px-2 py-0.5 rounded-full bg-[#F8F4EC] text-[#5C5448] border border-[#E6DDCF]"
+                              >
+                                {item}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>

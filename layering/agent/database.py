@@ -129,7 +129,7 @@ def _load_perfume_basics(conn) -> Dict[str, schemas.PerfumeBasic]:
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
             """
-            SELECT perfume_id, perfume_name, perfume_brand
+            SELECT perfume_id, perfume_name, perfume_brand, img_link
             FROM TB_PERFUME_BASIC_M
             """
         )
@@ -139,10 +139,12 @@ def _load_perfume_basics(conn) -> Dict[str, schemas.PerfumeBasic]:
                 continue
             perfume_name = str(row.get("perfume_name") or perfume_id).strip() or perfume_id
             perfume_brand = str(row.get("perfume_brand") or "Unknown").strip() or "Unknown"
+            image_url = str(row.get("img_link") or "").strip() or None
             basics[perfume_id] = schemas.PerfumeBasic(
                 perfume_id=perfume_id,
                 perfume_name=perfume_name,
                 perfume_brand=perfume_brand,
+                image_url=image_url,
             )
     return basics
 
@@ -239,6 +241,7 @@ def _vectorize(record: schemas.PerfumeRecord) -> schemas.PerfumeVector:
         perfume_id=record.perfume.perfume_id,
         perfume_name=record.perfume.perfume_name,
         perfume_brand=record.perfume.perfume_brand,
+        image_url=record.perfume.image_url,
         vector=vector,
         total_intensity=total_intensity,
         persistence_score=persistence_score,
@@ -387,12 +390,71 @@ class PerfumeRepository:
         return len(self._vectors)
 
 
+def get_perfume_info(perfume_id: str) -> schemas.PerfumeInfo:
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT
+                    p.perfume_id,
+                    p.perfume_brand,
+                    p.perfume_name,
+                    p.img_link,
+                    (SELECT gender FROM TB_PERFUME_GENDER_R WHERE perfume_id = p.perfume_id LIMIT 1) as gender,
+                    (SELECT STRING_AGG(DISTINCT note, ', ') FROM TB_PERFUME_NOTES_M WHERE perfume_id = p.perfume_id AND type='TOP') as top_notes,
+                    (SELECT STRING_AGG(DISTINCT note, ', ') FROM TB_PERFUME_NOTES_M WHERE perfume_id = p.perfume_id AND type='MIDDLE') as middle_notes,
+                    (SELECT STRING_AGG(DISTINCT note, ', ') FROM TB_PERFUME_NOTES_M WHERE perfume_id = p.perfume_id AND type='BASE') as base_notes,
+                    (SELECT STRING_AGG(accord, ', ' ORDER BY ratio DESC) FROM TB_PERFUME_ACCORD_R WHERE perfume_id = p.perfume_id) as accords,
+                    (SELECT STRING_AGG(season, ', ' ORDER BY ratio DESC) FROM TB_PERFUME_SEASON_R WHERE perfume_id = p.perfume_id) as seasons,
+                    (SELECT STRING_AGG(occasion, ', ' ORDER BY ratio DESC) FROM TB_PERFUME_OCA_R WHERE perfume_id = p.perfume_id) as occasions
+                FROM TB_PERFUME_BASIC_M p
+                WHERE p.perfume_id = %s
+                LIMIT 1
+                """,
+                (perfume_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise KeyError(f"Perfume '{perfume_id}' not found")
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    def _split_list(value: object) -> list[str]:
+        if not value:
+            return []
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        text = str(value)
+        return [item.strip() for item in text.split(",") if item.strip()]
+
+    return schemas.PerfumeInfo(
+        perfume_id=str(row.get("perfume_id") or perfume_id),
+        perfume_name=str(row.get("perfume_name") or perfume_id),
+        perfume_brand=str(row.get("perfume_brand") or "Unknown"),
+        image_url=str(row.get("img_link") or "").strip() or None,
+        gender=str(row.get("gender") or "").strip() or None,
+        accords=_split_list(row.get("accords")),
+        seasons=_split_list(row.get("seasons")),
+        occasions=_split_list(row.get("occasions")),
+        top_notes=_split_list(row.get("top_notes")),
+        middle_notes=_split_list(row.get("middle_notes")),
+        base_notes=_split_list(row.get("base_notes")),
+    )
+
+
 # 추천 결과를 recom_db에 기록하기 위함
 def save_recommendation_results(
     member_id: int,
     recommendations: List[schemas.LayeringCandidate],
     recom_type: str = "LAYERING",
 ) -> schemas.SaveResult:
+    conn = None
     if not member_id:
         logger.info("Skip recommendation save (member_id missing)")
         return schemas.SaveResult(
@@ -452,10 +514,11 @@ def save_recommendation_results(
             message=str(exc),
         )
     finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 # 보유 향수 저장 요청을 처리하기 위함
@@ -463,6 +526,7 @@ def save_my_perfume(
     member_id: int,
     perfume: schemas.PerfumeVector,
 ) -> schemas.SaveResult:
+    conn = None
     if not member_id:
         logger.info("Skip my perfume save (member_id missing)")
         return schemas.SaveResult(
@@ -518,10 +582,11 @@ def save_my_perfume(
             message=str(exc),
         )
     finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 # 추천 만족도 저장 요청을 처리하기 위함
@@ -531,6 +596,7 @@ def save_recommendation_feedback(
     perfume_name: str,
     preference: str,
 ) -> schemas.SaveResult:
+    conn = None
     if not member_id:
         logger.info("Skip recommendation feedback save (member_id missing)")
         return schemas.SaveResult(
@@ -578,7 +644,8 @@ def save_recommendation_feedback(
             message=str(exc),
         )
     finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass

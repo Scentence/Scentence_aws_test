@@ -17,10 +17,18 @@ def _sample_pair(repo: PerfumeRepository):
 
 
 def test_get_target_vector_applies_keyword_boost():
-    vector = get_target_vector(["citrus", "amber"])
+    vector = get_target_vector(["citrus", "amber", "floral"])
     assert vector[ACCORD_INDEX["Citrus"]] == 30.0
     assert vector[ACCORD_INDEX["Fresh"]] == 30.0
     assert vector[ACCORD_INDEX["Resinous"]] == 30.0
+    assert vector[ACCORD_INDEX["Floral"]] == 30.0
+
+
+def test_get_target_vector_korean_cool_keywords():
+    vector = get_target_vector(["차가운"])
+    assert vector[ACCORD_INDEX["Aquatic"]] == 30.0
+    assert vector[ACCORD_INDEX["Fresh"]] == 30.0
+    assert vector[ACCORD_INDEX["Green"]] == 30.0
 
 
 def test_calculate_advanced_layering_returns_scores():

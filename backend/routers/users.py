@@ -250,8 +250,9 @@ def login_with_kakao(req: KakaoLoginRequest):
                     cur.execute(sql_profile_mig, (nickname, profile_image_url, req.email, member_id))
                     print(f"   └─ 프로필 정보 업데이트 완료 (닉네임: {nickname}, 프사: {'있음' if profile_image_url else '없음'})")
 
-                # 마이그레이션 완료 후, 아래 신규 가입 로직은 건너뜁니다.
-                
+                # 마이그레이션 완료!
+                print(f"✅ 레거시 회원 마이그레이션 완료: 회원번호 {member_id}")
+
             else:
                 # [CASE B] 진짜 신규 가입자
                 # [2-1] 기본 계정 생성 (TB_MEMBER_BASIC_M)

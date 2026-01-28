@@ -30,9 +30,12 @@ const Sidebar = ({ isOpen, activeThreadId, onToggle, onNewChat, onSelectThread, 
     // [1] 사이드바가 열릴 때 목록 불러오기 (카카오 세션 또는 로컬 로그인)
     useEffect(() => {
         // 카카오 로그인 세션 확인
+        console.log("[Sidebar] session:", session); // 디버깅
+        console.log("[Sidebar] session.user.id:", session?.user?.id); // 디버깅
         if (session?.user) {
             setUserNickname(session.user.name || "User");
             if (isOpen && session.user.id) {
+                console.log("[Sidebar] Fetching rooms for member_id:", session.user.id); // 디버깅
                 fetch(`${BACKEND_URL}/chat/rooms/${session.user.id}`)
                     .then(res => res.json())
                     .then(data => setChatRooms(data.rooms || []))

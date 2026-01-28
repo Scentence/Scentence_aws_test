@@ -52,6 +52,8 @@ const handler = NextAuth({
                     }
 
                     user.id = data.member_id; // DB의 진짜 회원번호(PK) 가져오기
+                    console.log('[NextAuth signIn] member_id from backend:', data.member_id);
+                    console.log('[NextAuth signIn] user.id set to:', user.id);
                     return true;
                 } catch (error) {
                     console.error('Sync Error:', error);
@@ -61,8 +63,11 @@ const handler = NextAuth({
             return true;
         },
         async jwt({ token, user }) {
+            console.log('[NextAuth jwt] user:', user);
+            console.log('[NextAuth jwt] user?.id:', user?.id);
             if (user) {
                 token.id = user.id; // 토큰에 회원번호 심기
+                console.log('[NextAuth jwt] token.id set to:', token.id);
             }
             return token;
         },

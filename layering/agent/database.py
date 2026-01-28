@@ -13,7 +13,14 @@ from psycopg2.extras import RealDictCursor
 from psycopg2.extensions import connection as PGConnection
 
 from . import schemas
-from .constants import ACCORDS, ACCORD_INDEX, MATCH_SCORE_THRESHOLD, PERSISTENCE_MAP
+from .constants import (
+    ACCORDS,
+    ACCORD_INDEX,
+    BRAND_ALIAS_MAP,
+    MATCH_SCORE_THRESHOLD,
+    PERFUME_ALIAS_MAP,
+    PERSISTENCE_MAP,
+)
 
 try:  # pragma: no cover - optional dependency
     import Levenshtein  # type: ignore[import-not-found]
@@ -272,6 +279,7 @@ class PerfumeRepository:
         self._db_config = db_config
         self._vectors = self._load_vectors()
         self._name_index = self._build_name_index()
+        self._brand_index = self._build_brand_index()
 
     def _build_name_index(self) -> Dict[str, List[schemas.PerfumeVector]]:
         index: Dict[str, List[schemas.PerfumeVector]] = {}
@@ -286,7 +294,58 @@ class PerfumeRepository:
                 if not normalized:
                     continue
                 index.setdefault(normalized, []).append(perfume)
+        for alias, payload in PERFUME_ALIAS_MAP.items():
+            normalized_alias = _normalize_text(alias)
+            if not normalized_alias:
+                continue
+            resolved = self._resolve_alias_perfume(payload)
+            if resolved is None:
+                continue
+            index.setdefault(normalized_alias, []).append(resolved)
         return index
+
+    def _build_brand_index(self) -> Dict[str, List[schemas.PerfumeVector]]:
+        index: Dict[str, List[schemas.PerfumeVector]] = {}
+        for perfume in self._vectors.values():
+            normalized = _normalize_text(perfume.perfume_brand)
+            if not normalized:
+                continue
+            index.setdefault(normalized, []).append(perfume)
+        return index
+
+    def _resolve_alias_perfume(
+        self, payload: Dict[str, str]
+    ) -> Optional[schemas.PerfumeVector]:
+        name = payload.get("name", "").strip()
+        brand = payload.get("brand", "").strip()
+        if not name:
+            return None
+        normalized_name = _normalize_text(name)
+        normalized_brand = _normalize_text(brand) if brand else ""
+        def _matches(perfume: schemas.PerfumeVector, require_brand: bool) -> bool:
+            perfume_name = _normalize_text(perfume.perfume_name)
+            if not perfume_name:
+                return False
+            if require_brand and normalized_brand:
+                perfume_brand = _normalize_text(perfume.perfume_brand)
+                if perfume_brand != normalized_brand:
+                    return False
+            if perfume_name == normalized_name:
+                return True
+            return normalized_name in perfume_name if normalized_name else False
+
+        matches = [
+            perfume
+            for perfume in self._vectors.values()
+            if _matches(perfume, require_brand=True)
+        ]
+        if not matches and brand:
+            matches = [
+                perfume
+                for perfume in self._vectors.values()
+                if _matches(perfume, require_brand=False)
+            ]
+        return matches[0] if matches else None
 
     def _load_vectors(self) -> Dict[str, schemas.PerfumeVector]:
         try:
@@ -325,6 +384,7 @@ class PerfumeRepository:
     def reload(self) -> None:
         self._vectors = self._load_vectors()
         self._name_index = self._build_name_index()
+        self._brand_index = self._build_brand_index()
 
     def find_perfume_candidates(
         self,
@@ -370,6 +430,37 @@ class PerfumeRepository:
             reverse=True,
         )
         return [(perfume, score, key) for score, key, perfume in ranked[:limit]]
+
+    def find_brand_candidates(self, query: str) -> List[str]:
+        normalized_query = _normalize_text(query)
+        if not normalized_query:
+            return []
+
+        matches: Dict[str, int] = {}
+        for alias, brand in BRAND_ALIAS_MAP.items():
+            normalized_alias = _normalize_text(alias)
+            if normalized_alias and normalized_alias in normalized_query:
+                normalized_brand = _normalize_text(brand)
+                if normalized_brand in self._brand_index:
+                    matches[brand] = max(matches.get(brand, 0), len(normalized_alias))
+
+        for normalized_brand, perfumes in self._brand_index.items():
+            if len(normalized_brand) < 2:
+                continue
+            if normalized_brand in normalized_query:
+                brand_name = perfumes[0].perfume_brand
+                matches[brand_name] = max(matches.get(brand_name, 0), len(normalized_brand))
+
+        return [
+            brand
+            for brand, _ in sorted(matches.items(), key=lambda item: item[1], reverse=True)
+        ]
+
+    def get_brand_perfumes(self, brand_name: str) -> List[schemas.PerfumeVector]:
+        normalized = _normalize_text(brand_name)
+        if not normalized:
+            return []
+        return list(self._brand_index.get(normalized, []))
 
     def get_perfume(self, perfume_id: str) -> schemas.PerfumeVector:
         try:

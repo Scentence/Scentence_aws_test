@@ -11,8 +11,14 @@ from pydantic import BaseModel, Field
 from .constants import KEYWORD_MAP
 from .database import PerfumeRepository, get_perfume_info
 from .prompts import USER_PREFERENCE_PROMPT
-from .schemas import DetectedPair, DetectedPerfume, PairingAnalysis, UserQueryAnalysis
-from .tools import evaluate_pair, rank_recommendations
+from .schemas import (
+    DetectedPair,
+    DetectedPerfume,
+    PairingAnalysis,
+    PerfumeBasic,
+    UserQueryAnalysis,
+)
+from .tools import evaluate_pair, rank_brand_universal_perfume, rank_recommendations
 
 
 class PreferenceSummary(BaseModel):
@@ -159,6 +165,17 @@ def is_info_request(user_text: str) -> bool:
     return any(token in normalized for token in keywords)
 
 
+def is_brand_layering_request(user_text: str) -> bool:
+    normalized = user_text.lower()
+    if "향수" not in normalized and "브랜드" not in normalized:
+        return False
+    if "어디에나" in normalized:
+        return True
+    if "레이어링" in normalized and "좋" in normalized:
+        return True
+    return False
+
+
 def analyze_user_query(
     user_text: str,
     repository: PerfumeRepository,
@@ -204,6 +221,29 @@ def analyze_user_query(
             candidate_perfume_id=candidate.perfume_id,
             result=pairing_result,
         )
+
+    if not detected_perfumes and is_brand_layering_request(user_text):
+        brand_candidates = repository.find_brand_candidates(user_text)
+        if brand_candidates:
+            brand_name = brand_candidates[0]
+            brand_perfumes = repository.get_brand_perfumes(brand_name)
+            best_perfume, avg_score, _ = rank_brand_universal_perfume(
+                brand_perfumes,
+                repository,
+            )
+            if best_perfume is not None:
+                return UserQueryAnalysis(
+                    raw_text=user_text,
+                    detected_perfumes=[],
+                    brand_name=brand_name,
+                    brand_best_perfume=PerfumeBasic(
+                        perfume_id=best_perfume.perfume_id,
+                        perfume_name=best_perfume.perfume_name,
+                        perfume_brand=best_perfume.perfume_brand,
+                        image_url=best_perfume.image_url,
+                    ),
+                    brand_best_score=round(avg_score, 3),
+                )
 
     return UserQueryAnalysis(
         raw_text=user_text,

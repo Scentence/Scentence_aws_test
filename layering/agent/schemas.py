@@ -169,6 +169,9 @@ class UserQueryAnalysis(BaseModel):
     detected_pair: Optional[DetectedPair] = None
     pairing_analysis: Optional[PairingAnalysis] = None
     recommended_perfume_info: Optional["PerfumeInfo"] = None
+    brand_name: Optional[str] = None
+    brand_best_perfume: Optional[PerfumeBasic] = None
+    brand_best_score: Optional[float] = None
 
 
 class UserQueryResponse(BaseModel):
@@ -180,6 +183,9 @@ class UserQueryResponse(BaseModel):
     detected_pair: Optional[DetectedPair] = None
     recommendation: Optional[LayeringCandidate] = None
     recommended_perfume_info: Optional["PerfumeInfo"] = None
+    brand_name: Optional[str] = None
+    brand_best_perfume: Optional[PerfumeBasic] = None
+    brand_best_score: Optional[float] = None
     clarification_prompt: Optional[str] = None
     clarification_options: List[str] = Field(default_factory=list)
     note: Optional[str] = None

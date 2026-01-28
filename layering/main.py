@@ -259,11 +259,17 @@ def layering_analyze(payload: UserQueryRequest) -> UserQueryResponse:
         base_perfume_id = None
         clarification_prompt = None
         clarification_options: list[str] = []
+        brand_name = analysis.brand_name
+        brand_best_perfume = analysis.brand_best_perfume
+        brand_best_score = analysis.brand_best_score
         save_results = []
         skip_recommendation = False
 
         if analysis.recommended_perfume_info:
             note = "요청하신 향수 정보를 안내합니다."
+            skip_recommendation = True
+        elif brand_best_perfume:
+            note = "브랜드 내 레이어링 범용성이 가장 높은 향수입니다."
             skip_recommendation = True
         elif info_request and not payload.context_recommended_perfume_id:
             clarification_prompt = "추천된 향수 정보는 최근 추천 결과가 필요해요. 먼저 레이어링 추천을 받아주세요."
@@ -372,6 +378,9 @@ def layering_analyze(payload: UserQueryRequest) -> UserQueryResponse:
         detected_pair=analysis.detected_pair,
         recommendation=recommendation,
         recommended_perfume_info=analysis.recommended_perfume_info,
+        brand_name=brand_name,
+        brand_best_perfume=brand_best_perfume,
+        brand_best_score=brand_best_score,
         clarification_prompt=clarification_prompt,
         clarification_options=clarification_options,
         note=note,

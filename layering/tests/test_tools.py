@@ -3,9 +3,11 @@ from agent.database import PerfumeRepository
 from agent.tools import (
     _clash_penalty,
     _harmony_score,
+    calculate_compatibility_score,
     calculate_advanced_layering,
     evaluate_pair,
     get_target_vector,
+    rank_brand_universal_perfume,
     rank_recommendations,
 )
 
@@ -81,3 +83,33 @@ def test_evaluate_pair_returns_candidate():
 
     assert result.perfume_id == "9300"
     assert result.total_score > 0
+
+
+def test_calculate_compatibility_score_returns_value():
+    repo = PerfumeRepository()
+    base, candidate = _sample_pair(repo)
+    score, feasible = calculate_compatibility_score(base, candidate)
+
+    assert isinstance(score, float)
+    assert isinstance(feasible, bool)
+
+
+def test_rank_brand_universal_perfume_returns_top_pick():
+    repo = PerfumeRepository()
+    sample = next(iter(repo.all_candidates()))
+    brand_perfumes = repo.get_brand_perfumes(sample.perfume_brand)
+
+    best_perfume, avg_score, count = rank_brand_universal_perfume(brand_perfumes, repo)
+
+    assert best_perfume is not None
+    assert isinstance(avg_score, float)
+    assert isinstance(count, int)
+
+
+def test_rank_brand_universal_perfume_handles_empty_list():
+    repo = PerfumeRepository()
+    best_perfume, avg_score, count = rank_brand_universal_perfume([], repo)
+
+    assert best_perfume is None
+    assert avg_score == 0.0
+    assert count == 0

@@ -69,6 +69,9 @@ type UserQueryResponse = {
   } | null;
   recommendation?: LayeringCandidate | null;  // 추천 결과 (단일)
   recommended_perfume_info?: PerfumeInfo | null;
+  brand_name?: string | null;
+  brand_best_perfume?: PerfumeSummary | null;
+  brand_best_score?: number | null;
   clarification_prompt?: string | null;       // 명확화 요청 메시지
   clarification_options?: string[];           // 명확화 옵션 목록
   note?: string | null;                       // 추가 노트
@@ -456,6 +459,17 @@ export default function LayeringPage() {
             timestamp: new Date(),
           },
         ]);
+      } else if (payload.brand_best_perfume) {
+        const brandName = payload.brand_name ?? payload.brand_best_perfume.perfume_brand;
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            id: `brand-${Date.now()}`,
+            type: "assistant",
+            content: `${brandName} 브랜드에서 어디에나 레이어링하기 좋은 향수를 골라드렸어요. 👈 왼쪽 카드에서 "${payload.brand_best_perfume.perfume_name}"을 확인해보세요.`,
+            timestamp: new Date(),
+          },
+        ]);
       } else if (payload.clarification_prompt) {
         // 명확화 요청 메시지 (옵션 포함)
         let clarificationText = payload.clarification_prompt;
@@ -619,6 +633,8 @@ export default function LayeringPage() {
   const candidate = result?.recommendation ?? null;
   const basePerfume = result?.base_perfume ?? null;
   const perfumeInfo = result?.recommended_perfume_info ?? null;
+  const brandBestPerfume = result?.brand_best_perfume ?? null;
+  const brandBestScore = result?.brand_best_score ?? null;
 
   /** 
    * 레이어링 결과의 어코드 벡터 및 유효성 검증
@@ -741,6 +757,41 @@ export default function LayeringPage() {
                         {basePerfume.perfume_brand}
                       </p>
                     </div>
+                  </div>
+                </div>
+              )}
+              {brandBestPerfume && (
+                <div className="w-full rounded-2xl border border-[#E6DDCF] bg-white/80 p-4 shadow-sm">
+                  <div className="flex items-center gap-4">
+                    {brandBestPerfume.image_url ? (
+                      <img
+                        src={brandBestPerfume.image_url}
+                        alt={`${brandBestPerfume.perfume_name} 이미지`}
+                        className="h-16 w-16 rounded-xl object-cover border border-[#E6DDCF]"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="h-16 w-16 rounded-xl bg-gradient-to-br from-[#F4EBDD] to-[#E8D9C4] flex items-center justify-center text-[10px] text-[#7A6B57] border border-[#E6DDCF]">
+                        No Image
+                      </div>
+                    )}
+                    <div className="flex-1">
+                      <p className="text-[11px] font-semibold text-[#7A6B57]">브랜드 추천</p>
+                      <p className="text-sm font-bold text-[#2E2B28]">
+                        {brandBestPerfume.perfume_name}
+                      </p>
+                      <p className="text-xs text-[#7A6B57]">
+                        {brandBestPerfume.perfume_brand}
+                      </p>
+                    </div>
+                    {Number.isFinite(brandBestScore) && (
+                      <div className="rounded-full border border-[#C8A24D]/30 bg-[#C8A24D]/10 px-3 py-1.5">
+                        <p className="text-[10px] font-semibold text-[#7A6B57]">평균 점수</p>
+                        <p className="text-sm font-bold text-[#C8A24D]">
+                          {brandBestScore?.toFixed(3)}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -954,7 +1005,7 @@ export default function LayeringPage() {
           </div>
 
           {/* ==================== 채팅 영역 ==================== */}
-          <div className="rounded-3xl bg-white/80 border border-[#E2D7C5] shadow-sm flex flex-col overflow-hidden" style={{ height: "700px" }}>
+          <div className="min-h-[700px] h-full rounded-3xl bg-white/80 border border-[#E2D7C5] shadow-sm flex flex-col overflow-hidden">
             {/* 채팅 헤더 */}
             <div className="bg-gradient-to-r from-[#F8F4EC] to-[#F0EAE0] px-6 py-4 border-b border-[#E2D7C5]">
               <h2 className="text-sm font-semibold text-[#7A6B57]">레이어링 어시스턴트</h2>

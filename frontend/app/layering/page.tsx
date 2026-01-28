@@ -6,10 +6,7 @@ import Link from "next/link";
 import AccordWheel from "@/components/layering/AccordWheel";
 import { BACKEND_ACCORDS, ACCORD_LABELS } from "@/lib/accords";
 import LayeringPerfumePicker from "@/components/layering/LayeringPerfumePicker"; // 내 향수 불러오기
-<<<<<<< Updated upstream
-=======
 import PerfumeInfoModal from "@/components/layering/PerfumeInfoModal";
->>>>>>> Stashed changes
 
 // ==================== 타입 정의 ====================
 
@@ -153,6 +150,9 @@ const getMemberId = (sessionUserId?: string | number | null): number => {
   // 카카오 로그인 세션 우선
   if (sessionUserId) {
     return typeof sessionUserId === 'number' ? sessionUserId : parseInt(sessionUserId, 10);
+  }
+  if (typeof window === "undefined") {
+    return 0;
   }
   // 로컬 로그인 확인
   try {
@@ -360,6 +360,9 @@ export default function LayeringPage() {
   const [infoModalError, setInfoModalError] = useState<string | null>(null);
   const [infoModalData, setInfoModalData] = useState<PerfumeInfo | null>(null);
 
+  /** 렌더 시 안전한 memberId 상태 */
+  const [memberId, setMemberId] = useState(0);
+
   /** 채팅 메시지 영역 자동 스크롤을 위한 ref */
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -372,6 +375,10 @@ export default function LayeringPage() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages, loading]);
+
+  useEffect(() => {
+    setMemberId(getMemberId(session?.user?.id));
+  }, [session?.user?.id]);
 
   /**
    * 자연어 질문 분석 및 레이어링 추천 요청
@@ -1178,7 +1185,7 @@ export default function LayeringPage() {
                 <div className="flex gap-2 items-center w-full">
                   {/* [추가] 내 향수 선택 팝오버 */}
                   <LayeringPerfumePicker
-                    memberId={getMemberId(session?.user?.id)}
+                    memberId={memberId}
                     onSelect={(name) => {
                       const newText = queryText + (queryText ? " " : "") + name;
                       setQueryText(newText);

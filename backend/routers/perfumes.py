@@ -4,7 +4,7 @@
 
 import importlib
 import os
-from typing import Any
+from typing import Any,Optional,List
 
 from pydantic import BaseModel
 # [수정: 2026-01-28] DB 커넥션 풀 사용을 위한 임포트 추가

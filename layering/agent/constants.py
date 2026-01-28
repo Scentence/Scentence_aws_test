@@ -89,6 +89,24 @@ KEYWORD_MAP: Dict[str, Sequence[str]] = {
 KEYWORD_VECTOR_BOOST: float = 30.0
 MATCH_SCORE_THRESHOLD: float = 0.7
 
+PERFUME_ALIAS_MAP: Dict[str, Dict[str, str]] = {
+    "운 자르뎅 수르뜨와": {"name": "Un Jardin Sur Le Toit", "brand": "Hermes"},
+    "디올 소바쥬": {"name": "Sauvage", "brand": "Dior"},
+    "디올 소바주": {"name": "Sauvage", "brand": "Dior"},
+    "소바쥬": {"name": "Sauvage", "brand": "Dior"},
+    "우드 세이지 시솔트": {"name": "Wood Sage & Sea Salt", "brand": "Jo Malone"},
+    "우드 세이지 씨솔트": {"name": "Wood Sage & Sea Salt", "brand": "Jo Malone"},
+    "우드 세이지 앤 씨 솔트": {"name": "Wood Sage & Sea Salt", "brand": "Jo Malone"},
+    "조말론 우드 세이지 시솔트": {"name": "Wood Sage & Sea Salt", "brand": "Jo Malone"},
+}
+
+BRAND_ALIAS_MAP: Dict[str, str] = {
+    "조말론": "Jo Malone",
+    "조 말론": "Jo Malone",
+    "디올": "Dior",
+    "에르메스": "Hermes",
+}
+
 
 def accord_index(name: str) -> int:
     """Return the configured index for an accord, raising if missing."""

@@ -73,3 +73,42 @@ def test_short_abbreviation_not_matched():
     analysis = analyze_user_query("ck", repo)
 
     assert analysis.detected_perfumes == []
+
+
+def test_korean_alias_un_jardin_sur_le_toit_detected():
+    repo = PerfumeRepository()
+    analysis = analyze_user_query("운 자르뎅 수르뜨와와 레이어링하기 좋은 향수 추천해줘", repo)
+
+    assert any(
+        "un jardin sur le toit" in perfume.perfume_name.lower()
+        for perfume in analysis.detected_perfumes
+    )
+
+
+def test_korean_alias_dior_sauvage_detected():
+    repo = PerfumeRepository()
+    analysis = analyze_user_query("디올 소바쥬를 갖고 있는데 좀 더 우디한 느낌으로", repo)
+
+    assert any(
+        "sauvage" in perfume.perfume_name.lower()
+        and "dior" in perfume.perfume_brand.lower()
+        for perfume in analysis.detected_perfumes
+    )
+
+
+def test_korean_alias_wood_sage_sea_salt_detected():
+    repo = PerfumeRepository()
+    analysis = analyze_user_query("조말론 우드 세이지 시솔트를 기반으로", repo)
+
+    assert any(
+        "wood sage" in perfume.perfume_name.lower()
+        for perfume in analysis.detected_perfumes
+    )
+
+
+def test_brand_layering_request_returns_brand_pick():
+    repo = PerfumeRepository()
+    analysis = analyze_user_query("조말론 향수중에 어디에나 레이어링하기 좋은 향수 있어?", repo)
+
+    assert analysis.brand_name is not None
+    assert analysis.brand_best_perfume is not None

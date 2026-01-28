@@ -98,6 +98,47 @@ def evaluate_pair(
     return _result_to_candidate(result)
 
 
+def calculate_compatibility_score(
+    base: PerfumeVector,
+    candidate: PerfumeVector,
+) -> Tuple[float, bool]:
+    neutral_target = [0.0] * len(base.vector)
+    result = calculate_advanced_layering(base, candidate, neutral_target)
+    score = result.total_score - result.score_breakdown.target
+    return score, result.feasible
+
+
+def rank_brand_universal_perfume(
+    brand_perfumes: Sequence[PerfumeVector],
+    repository: PerfumeRepository,
+) -> Tuple[PerfumeVector | None, float, int]:
+    all_candidates = list(repository.all_candidates())
+    best_perfume: PerfumeVector | None = None
+    best_score = float("-inf")
+    best_count = 0
+
+    for base in brand_perfumes:
+        total_score = 0.0
+        count = 0
+        for candidate in all_candidates:
+            if candidate.perfume_id == base.perfume_id:
+                continue
+            score, feasible = calculate_compatibility_score(base, candidate)
+            if not feasible:
+                continue
+            total_score += score
+            count += 1
+        average_score = total_score / count if count else 0.0
+        if best_perfume is None or average_score > best_score:
+            best_perfume = base
+            best_score = average_score
+            best_count = count
+
+    if best_perfume is None:
+        return None, 0.0, 0
+    return best_perfume, best_score, best_count
+
+
 def _clash_penalty(
     base_dominant: Iterable[str],
     candidate_dominant: Iterable[str],

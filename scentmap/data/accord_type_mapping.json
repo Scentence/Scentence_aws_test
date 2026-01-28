@@ -1,0 +1,202 @@
+{
+  "accord_types": {
+    "Musk": {
+      "type_name": "따뜻한 은둔자",
+      "type_description_template": "{desc1}의 {desc2}를 좋아하는",
+      "harmonious_accords": ["Amber", "Vanilla", "Sandalwood"],
+      "avoid_accords": ["Citrus", "Aquatic"],
+      "mood": "포근하고 안정적인",
+      "time_of_day": "저녁",
+      "personality_traits": ["차분한", "따뜻한", "내향적인"]
+    },
+    "Vanilla": {
+      "type_name": "아늑한 몽상가",
+      "type_description_template": "{desc1}의 {desc2}에 빠진",
+      "harmonious_accords": ["Amber", "Tonka Bean", "Musk"],
+      "avoid_accords": ["Ozonic", "Marine"],
+      "mood": "달콤하고 편안한",
+      "time_of_day": "오후",
+      "personality_traits": ["감성적인", "로맨틱한", "몽환적인"]
+    },
+    "Citrus": {
+      "type_name": "에너지 충전형",
+      "type_description_template": "{desc1}의 {desc2}로 활력을 얻는",
+      "harmonious_accords": ["Fresh", "Aquatic", "Green"],
+      "avoid_accords": ["Heavy Spicy", "Oud"],
+      "mood": "상쾌하고 활기찬",
+      "time_of_day": "아침",
+      "personality_traits": ["활발한", "긍정적인", "외향적인"]
+    },
+    "Woody": {
+      "type_name": "차분한 탐험가",
+      "type_description_template": "{desc1}의 {desc2}에 끌리는",
+      "harmonious_accords": ["Amber", "Leather", "Vetiver"],
+      "avoid_accords": ["Sweet", "Gourmand"],
+      "mood": "깊이 있고 세련된",
+      "time_of_day": "저녁",
+      "personality_traits": ["성숙한", "차분한", "지적인"]
+    },
+    "Floral": {
+      "type_name": "우아한 감성파",
+      "type_description_template": "{desc1}의 {desc2}를 즐기는",
+      "harmonious_accords": ["Powdery", "Musk", "Fresh"],
+      "avoid_accords": ["Leather", "Tobacco"],
+      "mood": "우아하고 로맨틱한",
+      "time_of_day": "낮",
+      "personality_traits": ["섬세한", "감성적인", "우아한"]
+    },
+    "Fresh": {
+      "type_name": "청량한 자유인",
+      "type_description_template": "{desc1}의 {desc2}를 사랑하는",
+      "harmonious_accords": ["Citrus", "Aquatic", "Green"],
+      "avoid_accords": ["Oriental", "Resinous"],
+      "mood": "청량하고 자유로운",
+      "time_of_day": "아침",
+      "personality_traits": ["자유로운", "활동적인", "자연친화적인"]
+    },
+    "Oriental": {
+      "type_name": "신비로운 매혹가",
+      "type_description_template": "{desc1}의 {desc2}에 매료된",
+      "harmonious_accords": ["Amber", "Spicy", "Vanilla"],
+      "avoid_accords": ["Aquatic", "Fresh"],
+      "mood": "신비롭고 매혹적인",
+      "time_of_day": "밤",
+      "personality_traits": ["매력적인", "신비로운", "강렬한"]
+    },
+    "Spicy": {
+      "type_name": "강렬한 개성가",
+      "type_description_template": "{desc1}의 {desc2}를 추구하는",
+      "harmonious_accords": ["Woody", "Oriental", "Leather"],
+      "avoid_accords": ["Light Floral", "Sweet"],
+      "mood": "강렬하고 독특한",
+      "time_of_day": "저녁",
+      "personality_traits": ["대담한", "개성있는", "강렬한"]
+    },
+    "Amber": {
+      "type_name": "따뜻한 감각가",
+      "type_description_template": "{desc1}의 {desc2}를 음미하는",
+      "harmonious_accords": ["Vanilla", "Woody", "Musk"],
+      "avoid_accords": ["Citrus", "Fresh"],
+      "mood": "따뜻하고 풍부한",
+      "time_of_day": "저녁",
+      "personality_traits": ["감각적인", "따뜻한", "풍부한"]
+    },
+    "Aquatic": {
+      "type_name": "깨끗한 순수주의자",
+      "type_description_template": "{desc1}의 {desc2}를 선호하는",
+      "harmonious_accords": ["Fresh", "Citrus", "Marine"],
+      "avoid_accords": ["Heavy Oriental", "Musk"],
+      "mood": "깨끗하고 시원한",
+      "time_of_day": "아침",
+      "personality_traits": ["순수한", "깨끗한", "단순한"]
+    },
+    "Green": {
+      "type_name": "자연친화 힐링형",
+      "type_description_template": "{desc1}의 {desc2}에서 위안을 받는",
+      "harmonious_accords": ["Fresh", "Woody", "Herbal"],
+      "avoid_accords": ["Sweet", "Gourmand"],
+      "mood": "자연스럽고 편안한",
+      "time_of_day": "오전",
+      "personality_traits": ["자연친화적인", "평화로운", "건강한"]
+    },
+    "Gourmand": {
+      "type_name": "달콤한 미식가",
+      "type_description_template": "{desc1}의 {desc2}를 탐닉하는",
+      "harmonious_accords": ["Vanilla", "Caramel", "Chocolate"],
+      "avoid_accords": ["Fresh", "Aquatic"],
+      "mood": "달콤하고 풍부한",
+      "time_of_day": "오후",
+      "personality_traits": ["감각적인", "미식가", "풍부한"]
+    }
+  },
+  "default_type": {
+    "type_name": "독특한 탐험가",
+    "type_description_template": "당신만의 독특한 {desc1} 취향을 가진",
+    "harmonious_accords": [],
+    "avoid_accords": [],
+    "mood": "독창적이고 특별한",
+    "personality_traits": ["독특한", "탐험적인", "개성있는"]
+  },
+  "mbti_accord_affinity": {
+    "ISTJ": {
+      "preferred_accords": ["Woody", "Fresh", "Green"],
+      "preferred_moods": ["차분한", "안정적인", "실용적인"]
+    },
+    "ISFJ": {
+      "preferred_accords": ["Floral", "Powdery", "Vanilla"],
+      "preferred_moods": ["따뜻한", "부드러운", "배려하는"]
+    },
+    "INFJ": {
+      "preferred_accords": ["Oriental", "Musk", "Floral"],
+      "preferred_moods": ["신비로운", "깊이있는", "감성적인"]
+    },
+    "INTJ": {
+      "preferred_accords": ["Woody", "Amber", "Spicy"],
+      "preferred_moods": ["지적인", "독립적인", "세련된"]
+    },
+    "ISTP": {
+      "preferred_accords": ["Woody", "Fresh", "Aquatic"],
+      "preferred_moods": ["자유로운", "실용적인", "모험적인"]
+    },
+    "ISFP": {
+      "preferred_accords": ["Floral", "Fresh", "Green"],
+      "preferred_moods": ["자연스러운", "부드러운", "감각적인"]
+    },
+    "INFP": {
+      "preferred_accords": ["Floral", "Vanilla", "Green"],
+      "preferred_moods": ["몽환적인", "이상적인", "감성적인"]
+    },
+    "INTP": {
+      "preferred_accords": ["Fresh", "Aquatic", "Woody"],
+      "preferred_moods": ["논리적인", "독창적인", "분석적인"]
+    },
+    "ESTJ": {
+      "preferred_accords": ["Fresh", "Woody", "Citrus"],
+      "preferred_moods": ["효율적인", "리더십있는", "활동적인"]
+    },
+    "ESFJ": {
+      "preferred_accords": ["Floral", "Fresh", "Vanilla"],
+      "preferred_moods": ["사교적인", "따뜻한", "협력적인"]
+    },
+    "ENFJ": {
+      "preferred_accords": ["Floral", "Oriental", "Citrus"],
+      "preferred_moods": ["카리스마있는", "열정적인", "공감적인"]
+    },
+    "ENTJ": {
+      "preferred_accords": ["Spicy", "Woody", "Oriental"],
+      "preferred_moods": ["강력한", "결단력있는", "대담한"]
+    },
+    "ESTP": {
+      "preferred_accords": ["Citrus", "Spicy", "Fresh"],
+      "preferred_moods": ["활발한", "모험적인", "에너지넘치는"]
+    },
+    "ESFP": {
+      "preferred_accords": ["Floral", "Fresh", "Citrus"],
+      "preferred_moods": ["즐거운", "사교적인", "활기찬"]
+    },
+    "ENFP": {
+      "preferred_accords": ["Floral", "Citrus", "Fresh"],
+      "preferred_moods": ["열정적인", "창의적인", "자유로운"]
+    },
+    "ENTP": {
+      "preferred_accords": ["Citrus", "Spicy", "Aquatic"],
+      "preferred_moods": ["혁신적인", "논쟁적인", "창의적인"]
+    }
+  },
+  "accord_suggestions": {
+    "Floral": ["Fruity", "Powdery", "Citrus"],
+    "Woody": ["Spicy", "Amber", "Musk"],
+    "Citrus": ["Fresh", "Aquatic", "Floral"],
+    "Fresh": ["Aquatic", "Green", "Citrus"],
+    "Spicy": ["Woody", "Oriental", "Amber"],
+    "Fruity": ["Floral", "Gourmand", "Vanilla"],
+    "Oriental": ["Spicy", "Amber", "Woody"],
+    "Gourmand": ["Vanilla", "Amber", "Fruity"],
+    "Aquatic": ["Fresh", "Citrus", "Green"],
+    "Green": ["Fresh", "Woody", "Floral"],
+    "Powdery": ["Floral", "Vanilla", "Musk"],
+    "Amber": ["Vanilla", "Woody", "Musk"],
+    "Musk": ["Amber", "Vanilla", "Powdery"],
+    "Vanilla": ["Amber", "Gourmand", "Musk"]
+  }
+}

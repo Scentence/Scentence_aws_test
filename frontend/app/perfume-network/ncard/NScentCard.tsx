@@ -40,11 +40,8 @@ export const NScentCard: React.FC<NScentCardProps> = ({ card, userName }) => {
     };
   };
 
-  // 배경 이미지 경로 설정 (AWS S3 또는 CDN 배포 고려)
-  // 실제 배포 시에는 환경 변수(process.env.NEXT_PUBLIC_ASSET_URL) 등을 활용
-  const assetBaseUrl = process.env.NEXT_PUBLIC_ASSET_URL || '/assets';
-  // MBTI별로 다른 배경을 보여주고 싶다면 아래와 같이 맵핑
-  const bgImageUrl = `${assetBaseUrl}/scent-bg-${card.mbti.toLowerCase()}.jpg`;
+  // 배경 이미지 경로 설정
+  const bgImageUrl = card.image_url;
   // 우선은 테스트를 위해 기본 이미지 경로 (없을 경우를 대비해 placeholder 또는 그라디언트 처리)
   const fallbackBg = 'linear-gradient(135deg, #a8caba 0%, #5d4157 100%)';
 
@@ -177,8 +174,14 @@ export const NScentCard: React.FC<NScentCardProps> = ({ card, userName }) => {
             <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.25)', backdropFilter: 'blur(2px)', zIndex: 1 }} />
             <div style={{ position: 'relative', zIndex: 2 }}>
               <div style={{ fontSize: '40px', marginBottom: '10px', opacity: 0.8 }}>“</div>
+              <h2 style={{ fontSize: '20px', fontWeight: 700, margin: '0 0 5px', opacity: 0.9 }}>{card.persona_title}</h2>
               <h1 style={{ fontSize: '48px', fontWeight: 900, margin: '0 0 10px', letterSpacing: '-0.03em', textShadow: '0 2px 10px rgba(0,0,0,0.3)' }}>{card.mbti}</h1>
               <p style={{ fontSize: '15px', lineHeight: '1.6', margin: '0 auto 20px', maxWidth: '280px', wordBreak: 'keep-all', opacity: 0.95, fontWeight: 500 }}>{card.story}</p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center', marginBottom: '15px' }}>
+                {card.keywords.map((kw, idx) => (
+                  <span key={idx} style={{ fontSize: '12px', color: 'rgba(255,255,255,0.8)' }}>#{kw}</span>
+                ))}
+              </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' }}>
                 {card.components.map((item, idx) => (
                   <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 12px', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: '100px', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.2)', fontSize: '12px', fontWeight: 600 }}>

@@ -1,8 +1,18 @@
 [
   {
     "mbti": "ISTJ",
-    "code": "ITSB",
     "headline": "책임감과 신뢰를 조용히 쌓아가는 ISTJ의 성향은, 겉으로 튀지 않지만 가까이 있을수록 또렷하게 느껴지는 깨끗한 우디 향을 닮았다.",
+    "persona": {
+      "space": "오래된 도서관의 침묵",
+      "moment": "정밀하게 태엽이 감기는 순간",
+      "sensation": "빳빳하게 다려진 셔츠의 질감",
+      "keywords": ["정갈한", "단단한", "흐트러짐 없는", "묵직한", "이성적인"]
+    },
+    "images": {
+      "space": "/images/mbti/istj_space.jpg",
+      "moment": "/images/mbti/istj_moment.jpg",
+      "sensation": "/images/mbti/istj_sensation.jpg"
+    },
     "intro": "이 향은 조용하지만 정직하게 존재한다. 시간이 지나도 변하지 않는 안정감.",
     "core_traits": {
       "presence": "피부에 밀착되어 가까운 사람에게만 은은하게 전달",
@@ -33,15 +43,24 @@
     },
     "growth": {
       "partner_mbti": "ENFP",
-      "partner_code": "PNCX",
       "change": "정석적 구조에 몽환적 감성이 더해져 입체감 획득",
       "result": "단정함 속에 부드러운 감성이 스며든 예상 밖의 매력 발현"
     }
   },
   {
     "mbti": "ISFJ",
-    "code": "ICSB",
     "headline": "말보다 행동으로 다정을 전하는 보호자형인 ISFJ의 성향은, 피부에 남아 포근하게 감싸는 머스크 향을 닮았다.",
+    "persona": {
+      "space": "볕이 잘 드는 아늑한 거실",
+      "moment": "정성껏 우려낸 찻잔의 온기",
+      "sensation": "잘 마른 리넨의 보드라운 감촉",
+      "keywords": ["포근한", "세심한", "은은하게 스며드는", "사려 깊은", "깨끗한"]
+    },
+    "images": {
+      "space": "/images/mbti/isfj_space.jpg",
+      "moment": "/images/mbti/isfj_moment.jpg",
+      "sensation": "/images/mbti/isfj_sensation.jpg"
+    },
     "intro": "이 향은 조용히 퍼지지만 오래 기억에 남는다. 편안함과 신뢰감의 조합.",
     "core_traits": {
       "presence": "즉각적이지 않지만 피부에 남아 여운 형성",
@@ -79,8 +98,18 @@
   },
   {
     "mbti": "INFJ",
-    "code": "INCB",
     "headline": "깊은 내면으로 사람을 끌어당기는 이상주의자인 INFJ의 성향은, 은은하게 퍼지며 분위기를 바꾸는 신비로운 무드향을 닮았다.",
+    "persona": {
+      "space": "안개 낀 새벽의 호숫가",
+      "moment": "깊은 밤 홀로 켜둔 촛불의 일렁임",
+      "sensation": "심연으로 가라앉는 고요한 파동",
+      "keywords": ["신비로운", "깊이 있는", "고요한", "영적인", "서늘한"]
+    },
+    "images": {
+      "space": "/images/mbti/infj_space.jpg",
+      "moment": "/images/mbti/infj_moment.jpg",
+      "sensation": "/images/mbti/infj_sensation.jpg"
+    },
     "intro": "이 향은 말없이 공간의 무드를 바꾼다. 깊이감 있는 존재.",
     "core_traits": {
       "presence": "조용하지만 점차 공간에 스며듦",
@@ -118,8 +147,18 @@
   },
   {
     "mbti": "INTJ",
-    "code": "ITNB",
     "headline": "감정보다 논리로 세상을 설계하는 전략가인 INTJ의 성향은, 차분하지만 힘 있는 앰버 우디 향을 닮았다.",
+    "persona": {
+      "space": "차가운 대리석 위의 건축물",
+      "moment": "체스판 위 마지막 수를 두는 찰나",
+      "sensation": "날카롭게 벼려진 금속의 서늘함",
+      "keywords": ["날카로운", "세련된", "선명한", "흔들림 없는", "지적인"]
+    },
+    "images": {
+      "space": "/images/mbti/intj_space.jpg",
+      "moment": "/images/mbti/intj_moment.jpg",
+      "sensation": "/images/mbti/intj_sensation.jpg"
+    },
     "intro": "이 향은 조용하지만 확고하다. 무게감 있는 존재.",
     "core_traits": {
       "presence": "밀착되어 개인에게 집중된 힘",
@@ -157,8 +196,18 @@
   },
   {
     "mbti": "ISTP",
-    "code": "ITSX",
     "headline": "조용하지만 즉각 반응하는 현실 해결사인 ISTP의 성향은, 밀착된 향 속에 날카로운 한 줄기가 숨어 있는 레더 향을 닮았다.",
+    "persona": {
+      "space": "비 갠 뒤의 서늘한 돌담길",
+      "moment": "무심하게 깎아낸 나무 조각의 결",
+      "sensation": "정제된 엔진 오일의 매끄러운 향",
+      "keywords": ["담백한", "무심한", "시원한", "정제된", "실용적인"]
+    },
+    "images": {
+      "space": "/images/mbti/istp_space.jpg",
+      "moment": "/images/mbti/istp_moment.jpg",
+      "sensation": "/images/mbti/istp_sensation.jpg"
+    },
     "intro": "이 향은 조용하지만 예리하다. 필요한 순간 강렬하게 각인.",
     "core_traits": {
       "presence": "은은하지만 피부에 강하게 남음",
@@ -196,8 +245,18 @@
   },
   {
     "mbti": "ISFP",
-    "code": "ICSX",
     "headline": "따뜻하지만 자신만의 감각을 지닌 자유로운 예술가인 ISFP의 성향은, 부드러운 머스크에 달콤함이 스친 향을 닮았다.",
+    "persona": {
+      "space": "꽃비가 내리는 숲속 오두막",
+      "moment": "캔버스 위 물감이 번져가는 찰나",
+      "sensation": "유연하게 흐르는 선율",
+      "keywords": ["유연한", "감각적인", "다채로운", "편안한", "서정적인"]
+    },
+    "images": {
+      "space": "/images/mbti/isfp_space.jpg",
+      "moment": "/images/mbti/isfp_moment.jpg",
+      "sensation": "/images/mbti/isfp_sensation.jpg"
+    },
     "intro": "이 향은 부드럽지만 자신만의 색을 가진다. 독특한 온기.",
     "core_traits": {
       "presence": "가까이서만 느껴지는 친밀한 향",
@@ -235,8 +294,18 @@
   },
   {
     "mbti": "INFP",
-    "code": "INCX",
     "headline": "감정과 이상을 조용히 퍼뜨리는 낭만가인 INFP의 성향은, 공기처럼 감싸는 몽환적 무드향을 닮았다.",
+    "persona": {
+      "space": "비밀스러운 정원의 달빛",
+      "moment": "오래된 책장 사이 말려둔 꽃잎",
+      "sensation": "꿈결처럼 일렁이는 보랏빛 안개",
+      "keywords": ["내밀한", "부드러운", "몽환적인", "온기 있는", "순수한"]
+    },
+    "images": {
+      "space": "/images/mbti/infp_space.jpg",
+      "moment": "/images/mbti/infp_moment.jpg",
+      "sensation": "/images/mbti/infp_sensation.jpg"
+    },
     "intro": "이 향은 꿈처럼 퍼진다. 현실과 이상 사이의 존재.",
     "core_traits": {
       "presence": "조용히 스며들어 분위기를 바꿈",
@@ -274,8 +343,18 @@
   },
   {
     "mbti": "INTP",
-    "code": "ITNX",
     "headline": "현실보다 아이디어로 세상을 해석하는 사색가인 INTP의 성향은, 차갑고 추상적인 미네랄 향을 닮았다.",
+    "persona": {
+      "space": "미지의 행성, 푸른 불꽃의 방",
+      "moment": "흩어진 단서가 하나로 꿰어지는 순간",
+      "sensation": "낯설고 예리한 영감의 스파크",
+      "keywords": ["독창적인", "낯선", "긴장감 있는", "분석적인", "예리한"]
+    },
+    "images": {
+      "space": "/images/mbti/intp_space.jpg",
+      "moment": "/images/mbti/intp_moment.jpg",
+      "sensation": "/images/mbti/intp_sensation.jpg"
+    },
     "intro": "이 향은 차갑고 명료하다. 개념적 존재.",
     "core_traits": {
       "presence": "은은하게 남아 사유를 자극",
@@ -313,8 +392,18 @@
   },
   {
     "mbti": "ESTJ",
-    "code": "PTSB",
     "headline": "질서와 효율로 분위기를 주도하는 리더인 ESTJ의 성향은, 공간을 단숨에 정리하는 클린 우디 향을 닮았다.",
+    "persona": {
+      "space": "완벽한 대칭의 유리 빌딩",
+      "moment": "정상을 향해 직선으로 긋는 획",
+      "sensation": "압도적이고 단단한 질서의 무게",
+      "keywords": ["단정한", "압도적인", "체계적인", "힘 있는", "확신에 찬"]
+    },
+    "images": {
+      "space": "/images/mbti/estj_space.jpg",
+      "moment": "/images/mbti/estj_moment.jpg",
+      "sensation": "/images/mbti/estj_sensation.jpg"
+    },
     "intro": "이 향은 즉각적으로 공간을 장악한다. 명확하고 단호한 존재.",
     "core_traits": {
       "presence": "뿌리자마자 공간으로 확산",
@@ -352,8 +441,18 @@
   },
   {
     "mbti": "ESFJ",
-    "code": "PCSB",
     "headline": "주변을 밝히며 사람들을 편안하게 만드는 조화자인 ESFJ의 성향은, 화사하게 퍼지는 플로럴 파우더 향을 닮았다.",
+    "persona": {
+      "space": "갓 구운 빵의 온기가 가득한 집",
+      "moment": "모두가 모인 저녁 식탁의 환대",
+      "sensation": "마음을 녹이는 보드라운 온기",
+      "keywords": ["조화로운", "달콤한", "환대하는", "보드라운", "협력적인"]
+    },
+    "images": {
+      "space": "/images/mbti/esfj_space.jpg",
+      "moment": "/images/mbti/esfj_moment.jpg",
+      "sensation": "/images/mbti/esfj_sensation.jpg"
+    },
     "intro": "이 향은 따뜻하게 공간을 감싼다. 친근하고 포근한 존재.",
     "core_traits": {
       "presence": "즉각적으로 화사하게 퍼짐",
@@ -391,8 +490,18 @@
   },
   {
     "mbti": "ENFJ",
-    "code": "PNCB",
     "headline": "사람들을 하나로 묶는 카리스마 리더인 ENFJ의 성향은, 따뜻하게 확산되는 우아한 무드 플로럴 향을 닮았다.",
+    "persona": {
+      "space": "세상을 비추는 아침 햇살",
+      "moment": "마음을 움직이는 선한 울림의 파장",
+      "sensation": "온화하게 퍼지는 영향력의 향기",
+      "keywords": ["온화한", "이끄는", "풍부한", "진심 어린", "이타적인"]
+    },
+    "images": {
+      "space": "/images/mbti/enfj_space.jpg",
+      "moment": "/images/mbti/enfj_moment.jpg",
+      "sensation": "/images/mbti/enfj_sensation.jpg"
+    },
     "intro": "이 향은 공간 전체를 감싸며 분위기를 만든다. 카리스마 있는 포용.",
     "core_traits": {
       "presence": "강하게 퍼지며 공간 장악",
@@ -430,8 +539,18 @@
   },
   {
     "mbti": "ENTJ",
-    "code": "PTNB",
     "headline": "목표를 향해 공간을 장악하는 추진형 리더인 ENTJ의 성향은, 강렬하게 퍼지는 앰버 스파이스 향을 닮았다.",
+    "persona": {
+      "space": "만년설이 덮인 정상의 바람",
+      "moment": "대담하게 지도를 그려 나가는 순간",
+      "sensation": "묵직하고 확신에 찬 카리스마",
+      "keywords": ["묵직한", "카리스마 있는", "대담한", "결단력 있는", "고급스러운"]
+    },
+    "images": {
+      "space": "/images/mbti/entj_space.jpg",
+      "moment": "/images/mbti/entj_moment.jpg",
+      "sensation": "/images/mbti/entj_sensation.jpg"
+    },
     "intro": "이 향은 즉각적으로 공간을 지배한다. 압도적이고 확고한 존재.",
     "core_traits": {
       "presence": "강렬하게 공간으로 확산",
@@ -469,8 +588,18 @@
   },
   {
     "mbti": "ESTP",
-    "code": "PTSX",
     "headline": "순간의 에너지로 분위기를 바꾸는 행동가인 ESTP의 성향은, 터지듯 퍼지는 시트러스 스파이스 향을 닮았다.",
+    "persona": {
+      "space": "한여름 태양의 파동",
+      "moment": "탄산수가 터지는 짜릿한 순간",
+      "sensation": "아스팔트 위를 스치는 뜨거운 바람",
+      "keywords": ["역동적인", "강렬한", "직관적인", "에너제틱한", "선명한"]
+    },
+    "images": {
+      "space": "/images/mbti/estp_space.jpg",
+      "moment": "/images/mbti/estp_moment.jpg",
+      "sensation": "/images/mbti/estp_sensation.jpg"
+    },
     "intro": "이 향은 즉각적으로 에너지를 발산한다. 스파크가 튀는 존재.",
     "core_traits": {
       "presence": "폭발적으로 공간에 확산",
@@ -508,8 +637,18 @@
   },
   {
     "mbti": "ESFP",
-    "code": "PCSX",
     "headline": "즐거움으로 사람들을 끌어들이는 무드메이커인 ESFP의 성향은, 달콤하고 화사하게 번지는 프루티 향을 닮았다.",
+    "persona": {
+      "space": "샴페인 거품이 가득한 파티장",
+      "moment": "화려하게 터지는 폭죽의 잔상",
+      "sensation": "오감을 깨우는 찬란한 빛의 조각",
+      "keywords": ["화려한", "생기 넘치는", "즐거운", "감각을 깨우는", "친근한"]
+    },
+    "images": {
+      "space": "/images/mbti/esfp_space.jpg",
+      "moment": "/images/mbti/esfp_moment.jpg",
+      "sensation": "/images/mbti/esfp_sensation.jpg"
+    },
     "intro": "이 향은 즉시 기분을 밝힌다. 즐거움을 나누는 존재.",
     "core_traits": {
       "presence": "밝게 퍼지며 공간을 화사하게",
@@ -547,8 +686,18 @@
   },
   {
     "mbti": "ENFP",
-    "code": "PNCX",
     "headline": "감정과 상상력으로 세상을 물들이는 영감가인 ENFP의 성향은, 자유롭게 퍼지는 컬러풀 무드향을 닮았다.",
+    "persona": {
+      "space": "무지개가 핀 들판의 산들바람",
+      "moment": "비눗방울이 공중으로 흩어지는 찰나",
+      "sensation": "통통 튀는 도파민의 색채",
+      "keywords": ["통통 튀는", "다정한", "희망찬", "영감을 주는", "긍정적인"]
+    },
+    "images": {
+      "space": "/images/mbti/enfp_space.jpg",
+      "moment": "/images/mbti/enfp_moment.jpg",
+      "sensation": "/images/mbti/enfp_sensation.jpg"
+    },
     "intro": "이 향은 자유롭게 공간을 채운다. 상상력을 자극하는 존재.",
     "core_traits": {
       "presence": "활발하게 공간으로 확산",
@@ -586,8 +735,18 @@
   },
   {
     "mbti": "ENTP",
-    "code": "PTNX",
     "headline": "아이디어로 판을 흔드는 도전자인 ENTP의 성향은, 예측 불가하게 반전이 튀는 실험적 향을 닮았다.",
+    "persona": {
+      "space": "번뜩이는 아이디어의 실험실",
+      "moment": "고정관념이 깨지는 유쾌한 충격",
+      "sensation": "위트 있게 쨍한 반전의 향조",
+      "keywords": ["위트 있는", "쨍한", "예측 불가능한", "현대적인", "대담한"]
+    },
+    "images": {
+      "space": "/images/mbti/entp_space.jpg",
+      "moment": "/images/mbti/entp_moment.jpg",
+      "sensation": "/images/mbti/entp_sensation.jpg"
+    },
     "intro": "이 향은 예측을 벗어난다. 끊임없이 변하는 존재.",
     "core_traits": {
       "presence": "강하게 퍼지며 주목 끔",

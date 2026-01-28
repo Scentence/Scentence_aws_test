@@ -16,6 +16,9 @@ class AccordDetail(BaseModel):
 # 향기 분석 카드 (메인)
 class ScentCardBase(BaseModel):
     mbti: str = Field(..., description="MBTI 타입")
+    persona_title: str = Field(..., description="페르소나 타이틀 (예: 새벽 안개 속의 숲)")
+    image_url: str = Field(..., description="선택된 테마 이미지 URL")
+    keywords: List[str] = Field(..., description="감성 키워드 리스트")
     components: List[MBTIComponent] = Field(..., description="4가지 축 분석")
     recommends: List[AccordDetail] = Field(..., description="추천 어코드")
     avoids: List[AccordDetail] = Field(..., description="상극 어코드")

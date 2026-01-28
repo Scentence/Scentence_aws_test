@@ -17,8 +17,18 @@ class SessionStartResponse(BaseModel):
 class ActivityLogRequest(BaseModel):
     """활동 로그 요청"""
     accord_selected: Optional[str] = None
-    perfume_id: Optional[int] = None
-    reaction: Optional[str] = None  # 'liked', 'interested', 'passed'
+    filter_changed: Optional[str] = None
+    dwell_time: Optional[int] = None
+    interaction_count: Optional[int] = None
+
+
+class UpdateContextRequest(BaseModel):
+    """분석 컨텍스트 업데이트 요청"""
+    member_id: Optional[int] = None
+    mbti: Optional[str] = None
+    selected_accords: List[str] = []
+    filters: dict = {}
+    visible_perfume_ids: List[int] = []
 
 
 class ActivityLogResponse(BaseModel):

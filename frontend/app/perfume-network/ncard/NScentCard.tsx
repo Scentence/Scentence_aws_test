@@ -67,21 +67,24 @@ export const NScentCard: React.FC<NScentCardProps> = ({ card, userName }) => {
   };
 
   return (
-    <div style={{ 
-      width: '100%',
-      maxWidth: '440px',
-      backgroundColor: theme.bg,
-      borderRadius: '12px',
-      boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
-      overflow: 'hidden',
-      fontFamily: 'inherit',
-      color: theme.text,
-      margin: '10px auto',
-      display: 'flex',
-      flexDirection: 'column',
-      border: '1px solid #efefef',
-      position: 'relative'
-    }}>
+    <div 
+      className="animate-in fade-in zoom-in duration-700 ease-out"
+      style={{ 
+        width: '100%',
+        maxWidth: '440px',
+        backgroundColor: theme.bg,
+        borderRadius: '12px',
+        boxShadow: '0 10px 40px rgba(0,0,0,0.15)',
+        overflow: 'hidden',
+        fontFamily: 'inherit',
+        color: theme.text,
+        margin: '10px auto',
+        display: 'flex',
+        flexDirection: 'column',
+        border: '1px solid #efefef',
+        position: 'relative'
+      }}
+    >
       
       {/* ------------------------------ 프로필 헤더 ------------------------------ */}
       <header style={{ 

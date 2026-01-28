@@ -16,7 +16,7 @@ interface Props {
   selectedGenders: string[];
   setSelectedGenders: (genders: string[] | ((prev: string[]) => string[])) => void;
   setSelectedPerfumeId: (id: string | null) => void;
-  logActivity: (data: { accord_selected?: string }) => void;
+  logActivity: (data: { accord_selected?: string; filter_changed?: string }) => void;
   showMyPerfumesOnly: boolean;
   myPerfumeFilters: FilterOptions | null;
 }
@@ -126,7 +126,11 @@ export default function NMapFilters({
                   <div className="flex-1 overflow-y-auto">
                     {group.options.map(opt => (
                       <label key={opt} className="flex items-center gap-2 px-2 py-1.5 hover:bg-[#F5F2EA] text-sm cursor-pointer">
-                        <input type="checkbox" checked={group.selected.includes(opt)} onChange={() => { group.setter((prev: string[]) => prev.includes(opt) ? prev.filter(v => v !== opt) : [...prev, opt]); setSelectedPerfumeId(null); }} className="accent-[#C8A24D]" />
+                        <input type="checkbox" checked={group.selected.includes(opt)} onChange={() => { 
+                          group.setter((prev: string[]) => prev.includes(opt) ? prev.filter(v => v !== opt) : [...prev, opt]); 
+                          setSelectedPerfumeId(null); 
+                          logActivity({ filter_changed: group.label });
+                        }} className="accent-[#C8A24D]" />
                         <span className="text-xs">{formatLabelWithEnglishPair(opt, group.formatter)}</span>
                       </label>
                     ))}

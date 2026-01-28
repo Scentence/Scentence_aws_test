@@ -156,9 +156,9 @@ export default function NMapView({ sessionUserId }: { sessionUserId?: string | n
       {/* 고정 버튼 (하단 우측) */}
       <div className="fixed bottom-6 right-6 z-50">
         <button
-          onClick={() => cardTriggerReady ? handleGenerateCard() : alert("아직 정보가 충분하지 않아요. 관심있는 향수를 더 클릭해보세요!")}
+          onClick={() => cardTriggerReady ? handleGenerateCard() : alert("아직 정보가 충분하지 않아요. 관심있는 향이나 필터를 더 클릭해보세요!")}
           className={`relative w-16 h-16 rounded-full shadow-2xl flex items-center justify-center text-3xl transition-all duration-300 group ${cardTriggerReady ? "bg-gradient-to-br from-[#6B4E71] via-[#8B6E8F] to-[#9B7EAC] animate-pulse-glow hover:scale-110" : "bg-gradient-to-br from-[#6B4E71] to-[#8B6E8F] hover:scale-105"}`}
-          title={cardTriggerReady ? "향기카드 만들기 (준비 완료!)" : "더 많은 향수를 탐색해보세요"}
+          title={cardTriggerReady ? "나의 향 MBTI 확인하기 (준비 완료!)" : "더 많은 향기를 탐색해보세요"}
         >
           {cardTriggerReady && <div className="absolute inset-0 rounded-full bg-gradient-to-r from-transparent via-white to-transparent opacity-30 animate-shimmer"></div>}
           <span className={`relative z-10 transition-transform duration-300 ${cardTriggerReady ? "group-hover:rotate-12" : "group-hover:scale-110"}`}>🫧</span>
@@ -166,7 +166,7 @@ export default function NMapView({ sessionUserId }: { sessionUserId?: string | n
         </button>
         {cardTriggerReady && (
           <div className="absolute bottom-full right-0 mb-3 bg-[#2E2B28] text-white px-4 py-2 rounded-lg text-xs font-medium whitespace-nowrap shadow-lg">
-            향기카드 만들기 준비 완료! 🎉
+            나의 향 MBTI 확인 준비 완료! 🎉
           </div>
         )}
       </div>

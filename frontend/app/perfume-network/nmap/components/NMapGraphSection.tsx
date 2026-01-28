@@ -20,7 +20,7 @@ interface Props {
   selectedGenders: string[];
   showMyPerfumesOnly: boolean;
   myPerfumeIds: Set<string>;
-  logActivity: (data: { perfume_id: number; reaction: string }) => void;
+  logActivity: (data: { perfume_id?: number; accord_selected?: string; filter_changed?: string }) => void;
   memberId: string | null;
   setShowLoginPrompt: (show: boolean) => void;
   setShowMyPerfumesOnly: (show: boolean | ((prev: boolean) => boolean)) => void;
@@ -199,7 +199,13 @@ export default function NMapGraphSection({
         const nodeId = p.nodes[0];
         if (nodeId && !nodeId.startsWith("accord_")) {
           setSelectedPerfumeId(nodeId);
-          // 자동 로깅 제거: 단순히 클릭한 것만으로는 반응을 남기지 않음
+          // 향수 노드 클릭 시 활동 카운트 증가
+          const perfumeIdNum = nodeId.match(/\d+/)?.[0];
+          if (perfumeIdNum) logActivity({ perfume_id: Number(perfumeIdNum) });
+        } else if (nodeId && nodeId.startsWith("accord_")) {
+          // 어코드 노드 클릭 시
+          const accordName = nodeId.replace("accord_", "");
+          logActivity({ accord_selected: accordName });
         } else setSelectedPerfumeId(null);
       });
     } else {

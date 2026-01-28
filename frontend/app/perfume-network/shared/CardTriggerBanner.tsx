@@ -30,9 +30,9 @@ const CardTriggerBanner = ({ message, onAccept, onDismiss }: CardTriggerBannerPr
           {/* 메시지 및 버튼 */}
           <div className="flex-1 space-y-4">
             <div className="space-y-1">
-              <h4 className="text-sm font-bold text-[#C8A24D]">향기 카드 준비 완료!</h4>
+              <h4 className="text-sm font-bold text-[#C8A24D]">향 MBTI 분석 준비 완료!</h4>
               <p className="text-xs text-white/80 leading-relaxed break-keep">
-                {message || "지금까지 탐색한 향기들을 분석하여 당신만의 카드를 만들 수 있습니다."}
+                {message || "탐색하신 데이터를 바탕으로 당신의 향 MBTI를 확인해보세요."}
               </p>
             </div>
 
@@ -41,7 +41,7 @@ const CardTriggerBanner = ({ message, onAccept, onDismiss }: CardTriggerBannerPr
                 onClick={onAccept}
                 className="flex-1 py-2.5 rounded-xl bg-white text-[#2E2B28] text-xs font-bold hover:bg-[#F8F4EC] transition-colors active:scale-95"
               >
-                카드 만들기
+                향 MBTI 확인하기
               </button>
               <button
                 onClick={onDismiss}

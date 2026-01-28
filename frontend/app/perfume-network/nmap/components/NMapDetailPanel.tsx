@@ -10,7 +10,7 @@ interface Props {
   logActivity: (data: { 
     accord_selected?: string; 
     perfume_id?: number; 
-    reaction?: string; 
+    filter_changed?: string;
   }) => void;
 }
 
@@ -94,13 +94,6 @@ export default function NMapDetailPanel({
   const matchedAccords = selectedAccords.filter(acc => accordList.map(a => a.toLowerCase()).includes(acc.toLowerCase()));
   const unmatchedAccords = accordList.filter(acc => !matchedAccords.some(m => m.toLowerCase() === acc.toLowerCase()));
 
-  const handleReaction = (reaction: string) => {
-    const perfumeIdNum = selectedPerfumeId?.match(/\d+/)?.[0];
-    if (perfumeIdNum) {
-      logActivity({ perfume_id: Number(perfumeIdNum), reaction });
-    }
-  };
-
   return (
     <div className="rounded-3xl bg-white/80 border border-[#E2D7C5] p-6 min-h-[400px] space-y-5 flex flex-col">
       <div className="flex-1 space-y-5">
@@ -120,34 +113,6 @@ export default function NMapDetailPanel({
             ) : (
               <p>이 향수는 <span className="font-semibold text-[#5C5448]">{accordText}</span> 로 구성되어 있어요.</p>
             )}
-          </div>
-        </div>
-
-        {/* 반응 버튼 섹션 */}
-        <div className="bg-[#F8F4EC] rounded-2xl p-4 space-y-3">
-          <p className="text-[11px] font-bold text-[#7A6B57] text-center">이 향수, 어떤가요?</p>
-          <div className="flex gap-2">
-            <button 
-              onClick={() => handleReaction("liked")}
-              className="flex-1 flex flex-col items-center gap-1 py-2 rounded-xl bg-white border border-[#E2D7C5] hover:border-[#C8A24D] hover:bg-[#C8A24D]/5 transition-all group"
-            >
-              <span className="text-xl group-hover:scale-110 transition-transform">❤️</span>
-              <span className="text-[10px] font-bold text-[#5C5448]">좋아요</span>
-            </button>
-            <button 
-              onClick={() => handleReaction("interested")}
-              className="flex-1 flex flex-col items-center gap-1 py-2 rounded-xl bg-white border border-[#E2D7C5] hover:border-[#C8A24D] hover:bg-[#C8A24D]/5 transition-all group"
-            >
-              <span className="text-xl group-hover:scale-110 transition-transform">✨</span>
-              <span className="text-[10px] font-bold text-[#5C5448]">관심있어요</span>
-            </button>
-            <button 
-              onClick={() => handleReaction("passed")}
-              className="flex-1 flex flex-col items-center gap-1 py-2 rounded-xl bg-white border border-[#E2D7C5] hover:border-red-300 hover:bg-red-50 transition-all group"
-            >
-              <span className="text-xl group-hover:scale-110 transition-transform">💨</span>
-              <span className="text-[10px] font-bold text-[#5C5448]">넘길래요</span>
-            </button>
           </div>
         </div>
 

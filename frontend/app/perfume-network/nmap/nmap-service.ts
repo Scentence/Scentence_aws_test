@@ -31,6 +31,15 @@ export const nmapService = {
   },
 
   /**
-   * (선택 사항) 향수 맵 분석 결과를 향기 카드로 변환하여 저장하는 로직이 필요할 경우 여기에 추가
+   * 향수 맵 필터링을 위한 옵션 목록 조회
    */
+  async getFilterOptions(): Promise<any> {
+    try {
+      const response = await axios.get(`${API_CONFIG.BASE_URL}/nmap/filter-options`);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to fetch filter options:', error);
+      throw error;
+    }
+  },
 };

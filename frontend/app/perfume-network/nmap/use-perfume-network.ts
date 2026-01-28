@@ -103,12 +103,24 @@ export function usePerfumeNetwork(sessionUserId?: string | number) {
     startScentSession();
   }, [memberIdReady, memberId]);
 
-  // 3. 활동 로깅
+  // 3. 활동 로깅 및 트리거 체크
+  const [dwellTime, setDwellTime] = useState(0); // 체류 시간 상태
+  const [interactionCount, setInteractionCount] = useState(0); // 클릭 횟수 상태
+
+  // 페이지 체류 시간 추적 타이머
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setDwellTime(prev => prev + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // 상호작용 활동 로깅 함수
   const logActivity = async (data: {
     accord_selected?: string;
-    perfume_id?: number;
-    reaction?: string;
+    filter_changed?: string;
   }) => {
+    setInteractionCount(prev => prev + 1);
     if (!scentSessionId) return;
     
     try {
@@ -117,7 +129,11 @@ export function usePerfumeNetwork(sessionUserId?: string | number) {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(data),
+          body: JSON.stringify({
+            ...data,
+            dwell_time: dwellTime,
+            interaction_count: interactionCount + 1
+          }),
         }
       );
       
@@ -126,15 +142,15 @@ export function usePerfumeNetwork(sessionUserId?: string | number) {
         setCardTriggerReady(result.card_trigger_ready);
         if (result.card_trigger_ready && !showCardTrigger) {
           setShowCardTrigger(true);
-          setTriggerMessage(result.trigger_message || "지금까지 탐색한 향으로 향기카드를 만들어볼까요?");
+          setTriggerMessage(result.trigger_message || "탐색 데이터가 충분해요! 나의 향 MBTI를 확인해볼까요?");
         }
       }
     } catch (e) {
-      console.warn("⚠️ 활동 로깅 실패:", e);
+      // 로깅 실패 무시
     }
   };
 
-  // 4. 카드 생성
+  // 4. 카드 생성 처리 (향 MBTI 확인)
   const handleGenerateCard = async () => {
     if (!scentSessionId) return;
     setShowCardTrigger(false);
@@ -142,7 +158,41 @@ export function usePerfumeNetwork(sessionUserId?: string | number) {
     setError(null);
     
     try {
-      const response = await fetch(`${SESSION_API_BASE}/session/${scentSessionId}/generate-card`, {
+      // 로컬 스토리지에서 MBTI 정보 획득
+      let userMbti = "INFJ"; 
+      const storedAuth = localStorage.getItem("localAuth");
+      if (storedAuth) {
+        try {
+          const parsed = JSON.parse(storedAuth);
+          if (parsed.mbti) userMbti = parsed.mbti;
+        } catch (e) {}
+      }
+
+      // 현재 그래프 가시 영역 향수 ID 리스트 추출
+      const visiblePerfumeIds = fullPayload?.nodes
+        .filter(n => n.type === "perfume")
+        .map(n => Number(n.id)) || [];
+
+      // 분석용 컨텍스트 정보 백엔드 전송
+      await fetch(`${SESSION_API_BASE}/session/${scentSessionId}/update-context`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          member_id: memberId ? Number(memberId) : null,
+          mbti: userMbti,
+          selected_accords: selectedAccords,
+          filters: {
+            brands: selectedBrands,
+            seasons: selectedSeasons,
+            occasions: selectedOccasions,
+            genders: selectedGenders
+          },
+          visible_perfume_ids: visiblePerfumeIds
+        })
+      });
+
+      // 카드 생성 요청 실행
+      const response = await fetch(`${SESSION_API_BASE}/session/${scentSessionId}/generate-card?use_template=false`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });

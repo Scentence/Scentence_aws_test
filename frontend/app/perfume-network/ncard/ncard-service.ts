@@ -37,11 +37,15 @@ export const ncardService = {
 
   // 조회
   // 백엔드로부터 향기카드 리스트를 가져옴
-  getScentCards: async (): Promise<ScentCard[]> => {
+  getScentCards: async (memberId: number): Promise<ScentCard[]> => {
     try {
-      const response = await fetch(`${API_CONFIG.BASE_URL}/ncard/`);
-      if (!response.ok) throw new Error('Network response was not ok');
-      return await response.json();
+      const response = await axios.get(`${API_CONFIG.BASE_URL}/session/my-cards`, {
+        params: { member_id: memberId }
+      });
+      return response.data.cards.map((c: any) => ({
+        id: c.card_id,
+        ...c.card_data
+      }));
     } catch (error) {
       console.warn('Backend not reachable, using frontend dummy data');
       return [
@@ -73,16 +77,31 @@ export const ncardService = {
 
   // 추가
   // 향수 맵 분석 데이터를 기반으로 실제 향기 카드를 생성하고 저장
-  generateAndSaveCard: async (mbti: string, selectedAccords: string[]): Promise<ScentCard> => {
+  generateAndSaveCard: async (sessionId: string): Promise<ScentCard> => {
     try {
-      const response = await axios.post(`${API_CONFIG.BASE_URL}/ncard/generate`, {
-        mbti,
-        selected_accords: selectedAccords
-      });
-      return response.data;
+      const response = await axios.post(`${API_CONFIG.BASE_URL}/session/${sessionId}/generate-card`);
+      const cardData = response.data.card;
+      return {
+        id: response.data.card_id,
+        ...cardData
+      };
     } catch (error) {
       console.error('Failed to generate card:', error);
       throw error;
+    }
+  },
+
+  // 카드 저장 (회원용)
+  saveCard: async (sessionId: string, cardId: string, memberId: number): Promise<boolean> => {
+    try {
+      await axios.post(`${API_CONFIG.BASE_URL}/session/${sessionId}/save-card`, 
+        { card_id: cardId },
+        { params: { member_id: memberId } }
+      );
+      return true;
+    } catch (error) {
+      console.error('Failed to save card:', error);
+      return false;
     }
   }
 };

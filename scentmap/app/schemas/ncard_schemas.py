@@ -13,6 +13,13 @@ class AccordDetail(BaseModel):
     reason: str = Field(..., description="선정/상극 이유")
     notes: Optional[List[str]] = Field(None, description="주요 재료")
 
+# 대표 향수 정보
+class RepresentativePerfume(BaseModel):
+    id: int
+    name: str
+    brand: str
+    image: Optional[str] = None
+
 # 향기 분석 카드 (메인)
 class ScentCardBase(BaseModel):
     mbti: str = Field(..., description="MBTI 타입")
@@ -24,6 +31,10 @@ class ScentCardBase(BaseModel):
     avoids: List[AccordDetail] = Field(..., description="상극 어코드")
     story: str = Field(..., description="감성 스토리")
     summary: str = Field(..., description="마무리 요약")
+    recommended_perfume: Optional[RepresentativePerfume] = Field(None, description="대표 향수 정보")
+    suggested_accords: Optional[List[str]] = Field(None, description="다음 탐색 제안 어코드")
+    scent_type: Optional[dict] = Field(None, description="상세 분석 데이터")
+    created_at: Optional[str] = Field(None, description="생성 일시")
 
 # 향기 분석 카드 생성 스키마
 class ScentCardCreate(ScentCardBase):

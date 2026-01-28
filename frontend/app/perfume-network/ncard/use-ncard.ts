@@ -15,10 +15,11 @@ export const useNCard = () => {
   const [error, setError] = useState<string | null>(null);
 
   // 향기 분석 카드 데이터 가져오기 함수
-  const fetchCards = async () => {
+  const fetchCards = async (memberId?: number) => {
     try {
       setLoading(true);
-      const data = await ncardService.getScentCards();
+      // 회원 ID가 있는 경우에만 서버에서 조회, 없으면 빈 배열 또는 더미
+      const data = memberId ? await ncardService.getScentCards(memberId) : [];
       setCards(data);
     } catch (err) {
       setError('Failed to fetch scent cards');
@@ -28,10 +29,10 @@ export const useNCard = () => {
   };
 
   // 카드 생성 함수 추가
-  const generateCard = async (mbti: string, selectedAccords: string[]) => {
+  const generateCard = async (sessionId: string) => {
     try {
       setLoading(true);
-      const newCard = await ncardService.generateAndSaveCard(mbti, selectedAccords);
+      const newCard = await ncardService.generateAndSaveCard(sessionId);
       setCards(prev => [newCard, ...prev]);
       return newCard;
     } catch (err) {

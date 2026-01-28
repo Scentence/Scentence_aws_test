@@ -13,7 +13,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 from agent.schemas import ChatRequest
 from agent.graph import app_graph
 from agent.database import save_chat_message, get_chat_history, get_user_chat_list
-from routers import users
+from routers import users, perfumes, archive # <--- ksu 추가
 
 app = FastAPI(title="Perfume Re-Act Chatbot")
 
@@ -22,6 +22,8 @@ os.makedirs(uploads_dir, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 
 app.include_router(users.router)
+app.include_router(perfumes.router) # <--- ksu 추가
+app.include_router(archive.router) # <--- ksu 추가
 
 origins = [
     "http://localhost:3000",

@@ -1,4 +1,4 @@
-/* PerfumeDetailModal.tsx (Color Updated) */
+/* PerfumeDetailModal.tsx (3-State Buttons: HAVE, HAD-Amber, WISH) */
 "use client";
 
 import { useState } from "react";
@@ -9,7 +9,8 @@ interface MyPerfume {
     name: string;
     brand: string;
     image_url: string | null;
-    status: string;
+    status: string; // HAVE, HAD, RECOMMENDED
+    preference?: string; // 추가
 }
 
 interface Props {
@@ -17,9 +18,10 @@ interface Props {
     onClose: () => void;
     onUpdateStatus: (id: number, status: string) => void;
     onDelete: (id: number, rating: number) => void;
+    onUpdatePreference: (id: number, preference: string) => void;
 }
 
-export default function PerfumeDetailModal({ perfume, onClose, onUpdateStatus, onDelete }: Props) {
+export default function PerfumeDetailModal({ perfume, onClose, onUpdateStatus, onDelete, onUpdatePreference }: Props) {
     const [isDeleting, setIsDeleting] = useState(false);
 
     const handleDeleteWithRating = (rating: number) => {
@@ -40,19 +42,21 @@ export default function PerfumeDetailModal({ perfume, onClose, onUpdateStatus, o
                     &times;
                 </button>
 
+                {/* Left: Image Section */}
                 <div className={`w-full md:w-1/2 aspect-square bg-[#Fdfcf8] flex items-center justify-center p-10 relative transition-all ${isDeleting ? 'brightness-50 grayscale' : ''}`}>
                     <div className="absolute w-[80%] h-[80%] rounded-full bg-[#f5f1e6] blur-3xl opacity-60"></div>
                     {perfume.image_url ? (
                         <img
                             src={perfume.image_url}
                             alt={perfume.name}
-                            className="max-w-full max-h-full object-contain relative z-10 drop-shadow-xl"
+                            className="max-w-full max-h-full object-contain relative z-10 drop-shadow-xl scale-[1.2] -translate-y-4"
                         />
                     ) : (
                         <span className="text-gray-300 font-medium">No Image</span>
                     )}
                 </div>
 
+                {/* Right: Info Section */}
                 <div className="w-full md:w-1/2 p-10 flex flex-col justify-center relative">
 
                     {!isDeleting ? (
@@ -65,32 +69,84 @@ export default function PerfumeDetailModal({ perfume, onClose, onUpdateStatus, o
 
                             <div className="space-y-6">
                                 <div className="space-y-3">
-                                    <label className="text-gray-400 text-xs font-bold uppercase tracking-wider">Current Status</label>
-                                    <div className="flex gap-2">
-                                        {/* 상태 버튼 (Color Updated) */}
-                                        <button
-                                            onClick={() => onUpdateStatus(perfume.my_perfume_id, 'HAVE')}
-                                            className={`
-                        flex-1 py-4 text-lg font-bold rounded-xl border transition-all
-                        ${perfume.status === 'HAVE'
-                                                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-200'
-                                                    : 'bg-white text-gray-400 border-gray-100 hover:bg-indigo-50 hover:text-indigo-600'}
-                      `}
-                                        >
-                                            보유 (HAVE)
-                                        </button>
-                                        <button
-                                            onClick={() => onUpdateStatus(perfume.my_perfume_id, 'WANT')}
-                                            className={`
-                        flex-1 py-4 text-lg font-bold rounded-xl border transition-all
-                        ${perfume.status === 'WANT'
-                                                    ? 'bg-rose-500 text-white border-rose-500 shadow-lg shadow-rose-200'
-                                                    : 'bg-white text-gray-400 border-gray-100 hover:bg-rose-50 hover:text-rose-500'}
-                      `}
-                                        >
-                                            위시 (WANT)
-                                        </button>
-                                    </div>
+                                    <label className="text-gray-400 text-xs font-bold uppercase tracking-wider">
+                                        {perfume.status === 'HAD' ? "My Rating (경험 평가)" : "Current Status"}
+                                    </label>
+
+                                    {perfume.status === 'HAD' ? (
+                                        // [HAD 상태일 때: 평가 버튼]
+                                        <div className="flex flex-col gap-2">
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => onUpdatePreference(perfume.my_perfume_id, 'GOOD')}
+                                                    className={`
+                                                        flex-1 py-3 px-2 rounded-xl border transition-all flex items-center justify-center gap-2
+                                                        ${perfume.preference === 'GOOD'
+                                                            ? 'bg-green-500 text-white border-green-500 shadow-md'
+                                                            : 'bg-white text-gray-500 border-gray-200 hover:bg-green-50 hover:text-green-600'}
+                                                    `}
+                                                >
+                                                    <span>👍</span> <span className="text-xs font-bold">좋았어요</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => onUpdatePreference(perfume.my_perfume_id, 'NEUTRAL')}
+                                                    className={`
+                                                        flex-1 py-3 px-2 rounded-xl border transition-all flex items-center justify-center gap-2
+                                                        ${perfume.preference === 'NEUTRAL'
+                                                            ? 'bg-gray-500 text-white border-gray-500 shadow-md'
+                                                            : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50 hover:text-gray-600'}
+                                                    `}
+                                                >
+                                                    <span>😐</span> <span className="text-xs font-bold">무난해요</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => onUpdatePreference(perfume.my_perfume_id, 'BAD')}
+                                                    className={`
+                                                        flex-1 py-3 px-2 rounded-xl border transition-all flex items-center justify-center gap-2
+                                                        ${perfume.preference === 'BAD'
+                                                            ? 'bg-red-500 text-white border-red-500 shadow-md'
+                                                            : 'bg-white text-gray-500 border-gray-200 hover:bg-red-50 hover:text-red-600'}
+                                                    `}
+                                                >
+                                                    <span>👎</span> <span className="text-xs font-bold">별로예요</span>
+                                                </button>
+                                            </div>
+                                            <div className="text-center mt-2">
+                                                <button onClick={() => onUpdateStatus(perfume.my_perfume_id, 'HAVE')} className="text-[10px] text-gray-400 underline hover:text-gray-600">
+                                                    다시 보유 상태로 변경하기 (Status Change)
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        // [HAVE / WISH 상태일 때: 상태 변경 버튼]
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => onUpdateStatus(perfume.my_perfume_id, 'HAVE')}
+                                                className={`
+                                                    flex-1 py-3 text-sm font-bold rounded-xl border transition-all
+                                                    ${perfume.status === 'HAVE'
+                                                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-200'
+                                                        : 'bg-white text-gray-400 border-gray-100 hover:bg-indigo-50 hover:text-indigo-600'}
+                                                `}
+                                            >
+                                                보유 (HAVE)
+                                            </button>
+
+                                            {/* HAD 버튼 제거됨 (삭제 기능으로 대체) */}
+
+                                            <button
+                                                onClick={() => onUpdateStatus(perfume.my_perfume_id, 'RECOMMENDED')}
+                                                className={`
+                                                    flex-1 py-3 text-sm font-bold rounded-xl border transition-all
+                                                    ${perfume.status === 'RECOMMENDED' || perfume.status === 'WANT'
+                                                        ? 'bg-rose-500 text-white border-rose-500 shadow-lg shadow-rose-200'
+                                                        : 'bg-white text-gray-400 border-gray-100 hover:bg-rose-50 hover:text-rose-500'}
+                                                `}
+                                            >
+                                                위시 (WISH)
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="pt-6 border-t border-gray-100">
@@ -144,12 +200,24 @@ export default function PerfumeDetailModal({ perfume, onClose, onUpdateStatus, o
                                 </button>
                             </div>
 
-                            <button
-                                onClick={() => setIsDeleting(false)}
-                                className="mt-4 text-xs text-gray-400 hover:text-gray-600 underline"
-                            >
-                                취소 (돌아가기)
-                            </button>
+                            <div className="mt-6 flex flex-col items-center gap-3">
+                                <button
+                                    onClick={() => {
+                                        onDelete(perfume.my_perfume_id, undefined as any); // Hard Delete
+                                        onClose();
+                                    }}
+                                    className="text-xs text-red-300 hover:text-red-500 underline transition"
+                                >
+                                    기록 없이 영구 삭제하기
+                                </button>
+
+                                <button
+                                    onClick={() => setIsDeleting(false)}
+                                    className="text-xs text-gray-400 hover:text-gray-600 underline"
+                                >
+                                    취소 (돌아가기)
+                                </button>
+                            </div>
                         </div>
                     )}
                 </div>

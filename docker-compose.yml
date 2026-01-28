@@ -46,6 +46,7 @@ services:
       - NEXT_PUBLIC_ADMIN_EMAILS=${NEXT_PUBLIC_ADMIN_EMAILS}
       - LAYERING_API_URL=http://layering:8002
       - WATCHPACK_POLLING=true
+      - NEXT_PUBLIC_ENABLE_AUTH=true
     depends_on:
       - backend
     # [추가 2] 개발 모드로 강제 실행 (Dockerfile 설정 무시)

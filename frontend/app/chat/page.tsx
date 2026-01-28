@@ -2,6 +2,7 @@
 
 import { FormEvent, useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import ChatList from "../../components/Chat/ChatList";
 import { Message } from "../../components/Chat/MessageItem";
@@ -13,6 +14,7 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const API_URL = `${BACKEND_URL}/chat`;
 
 export default function ChatPage() {
+    const { data: session } = useSession(); // 카카오 로그인 세션
     const router = useRouter();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false); // 온오프 토글 (기본은 닫힘 상태)
     const [messages, setMessages] = useState<Message[]>([]);
@@ -62,15 +64,15 @@ export default function ChatPage() {
 
     const handleSelectThread = async (id: string) => {
         if (loading) return;
-        
+
         setLoading(true);
         setThreadId(id);
         localStorage.setItem("chat_thread_id", id); // 로컬 스토리지 갱신
-        
+
         try {
             const response = await fetch(`${BACKEND_URL}/chat/history/${id}`);
             if (!response.ok) throw new Error("내역 로드 실패");
-            
+
             const data = await response.json();
             // 백엔드 필드명(text)을 프론트엔드 필드명(text)에 맞춰 매핑
             const formattedMessages = data.messages.map((m: any) => ({
@@ -78,7 +80,7 @@ export default function ChatPage() {
                 text: m.text,
                 isStreaming: false
             }));
-            
+
             setMessages(formattedMessages);
             setIsSidebarOpen(false); // 모바일 편의를 위해 선택 후 사이드바 닫기
         } catch (err) {
@@ -94,20 +96,25 @@ export default function ChatPage() {
         const trimmed = inputValue.trim();
         if (!trimmed || !threadId) return;
 
-        // [★추가] 로그인 정보(MemberID) 가져오기
+        // [★추가] 로그인 정보(MemberID) 가져오기 (카카오 세션 또는 로컬 로그인)
         let currentMemberId = 0;
-        try {
-            const localAuth = localStorage.getItem("localAuth");
-            if (localAuth) {
-                const parsed = JSON.parse(localAuth);
-                if (parsed && parsed.memberId) {
-                    currentMemberId = parseInt(parsed.memberId, 10);
+        // 카카오 로그인 세션 확인
+        if (session?.user?.id) {
+            currentMemberId = parseInt(session.user.id, 10);
+        } else {
+            // 로컬 로그인 확인
+            try {
+                const localAuth = localStorage.getItem("localAuth");
+                if (localAuth) {
+                    const parsed = JSON.parse(localAuth);
+                    if (parsed && parsed.memberId) {
+                        currentMemberId = parseInt(parsed.memberId, 10);
+                    }
                 }
+            } catch (e) {
+                console.error("Member ID Parsing Error:", e);
             }
-        } catch (e) {
-            console.error("Member ID Parsing Error:", e);
         }
-
         setMessages((prev) => prev.map(m => ({ ...m, isStreaming: false })));
         setMessages((prev) => [...prev, { role: "user", text: trimmed, isStreaming: false }]);
         setInputValue("");

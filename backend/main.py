@@ -39,7 +39,7 @@ app.add_middleware(
 )
 
 async def stream_generator(
-    user_query: str, thread_id: str, member_id: int = 0
+    user_query: str, thread_id: str, member_id: int = 0, user_mode: str = "BEGINNER"
 ) -> Generator[str, None, None]:
 
     save_chat_message(thread_id, member_id, "user", user_query)
@@ -56,9 +56,12 @@ async def stream_generator(
         else:
             restored_messages.append(AIMessage(content=msg["text"]))
 
+    normalized_mode = normalize_user_mode(user_mode)
+    
     inputs = {
         "messages": restored_messages + [HumanMessage(content=user_query)],
         "member_id": member_id,
+        "user_mode": normalized_mode,
     }
 
     full_ai_response = ""
@@ -192,7 +195,7 @@ async def stream_generator(
 @app.post("/chat")
 async def chat_stream(request: ChatRequest):
     return StreamingResponse(
-        stream_generator(request.user_query, request.thread_id, request.member_id),
+        stream_generator(request.user_query, request.thread_id, request.member_id, request.user_mode),
         media_type="text/event-stream",
     )
 

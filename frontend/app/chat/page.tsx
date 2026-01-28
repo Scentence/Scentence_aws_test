@@ -48,6 +48,19 @@ export default function ChatPage() {
             localStorage.setItem("chat_thread_id", newId);
             setThreadId(newId);
         }
+
+        try {
+            const localAuth = localStorage.getItem("localAuth");
+            if (localAuth) {
+                const parsed = JSON.parse(localAuth);
+                if (parsed && parsed.memberId && !parsed.user_mode) {
+                    parsed.user_mode = "BEGINNER";
+                    localStorage.setItem("localAuth", JSON.stringify(parsed));
+                }
+            }
+        } catch (e) {
+            console.error("LocalAuth backfill error:", e);
+        }
     }, []);
 
     if (!isMounted) return <div className="min-h-screen bg-[#FAF8F5]" />;
@@ -129,7 +142,8 @@ export default function ChatPage() {
                 body: JSON.stringify({
                     user_query: trimmed,
                     thread_id: threadId,
-                    member_id: currentMemberId  // [★추가] 백엔드로 내 ID 전송!
+                    member_id: currentMemberId,
+                    user_mode: currentUserMode
                 }),
             });
 

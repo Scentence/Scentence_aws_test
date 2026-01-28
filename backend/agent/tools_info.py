@@ -10,7 +10,7 @@ from psycopg2.extras import RealDictCursor
 from .database import get_db_connection, release_db_connection
 
 # 스키마 임포트
-from .tools_schemas_info import NoteSearchInput, AccordSearchInput
+from .tools_schemas_info import NoteSearchInput, AccordSearchInput, PerfumeIdSearchInput
 
 # [내부 헬퍼 설정] (화면 출력 방지 태그 포함)
 NORMALIZER_LLM = ChatOpenAI(
@@ -174,6 +174,50 @@ def lookup_perfume_info_tool(user_input: str) -> str:
     finally:
         cur.close()
         release_db_connection(conn)
+
+
+# =================================================================
+# Tool 1-2. 향수 ID 기반 상세 조회 (id-first)
+# =================================================================
+@tool(args_schema=PerfumeIdSearchInput)
+async def lookup_perfume_by_id_tool(perfume_id: int) -> str:
+    """
+    perfume_id를 받아 향수 상세 정보를 반환합니다.
+    """
+    conn = None
+    cur = None
+    try:
+        conn = await get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        sql = """
+            SELECT 
+                p.perfume_id, p.perfume_brand, p.perfume_name, p.img_link,
+                (SELECT gender FROM TB_PERFUME_GENDER_R WHERE perfume_id = p.perfume_id LIMIT 1) as gender,
+                (SELECT STRING_AGG(DISTINCT note, ', ') FROM TB_PERFUME_NOTES_M WHERE perfume_id = p.perfume_id AND type='TOP') as top_notes,
+                (SELECT STRING_AGG(DISTINCT note, ', ') FROM TB_PERFUME_NOTES_M WHERE perfume_id = p.perfume_id AND type='MIDDLE') as middle_notes,
+                (SELECT STRING_AGG(DISTINCT note, ', ') FROM TB_PERFUME_NOTES_M WHERE perfume_id = p.perfume_id AND type='BASE') as base_notes,
+                (SELECT STRING_AGG(accord, ', ' ORDER BY ratio DESC) FROM TB_PERFUME_ACCORD_R WHERE perfume_id = p.perfume_id) as accords,
+                (SELECT STRING_AGG(season, ', ' ORDER BY ratio DESC) FROM TB_PERFUME_SEASON_R WHERE perfume_id = p.perfume_id) as seasons,
+                (SELECT STRING_AGG(occasion, ', ' ORDER BY ratio DESC) FROM TB_PERFUME_OCA_R WHERE perfume_id = p.perfume_id) as occasions
+            FROM TB_PERFUME_BASIC_M p
+            WHERE p.perfume_id = %s
+        """
+        
+        cur.execute(sql, (perfume_id,))
+        result = cur.fetchone()
+        
+        if result:
+            return json.dumps(dict(result), ensure_ascii=False)
+        else:
+            return f"DB 검색 실패: perfume_id={perfume_id}"
+    except Exception as e:
+        return f"DB 에러: {e}"
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            release_db_connection(conn)
 
 
 # =================================================================

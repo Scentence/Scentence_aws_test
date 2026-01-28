@@ -17,6 +17,12 @@ class AccordSearchInput(BaseModel):
         description="검색할 어코드(향조) 이름 리스트 (예: ['Woody', 'Citrus', 'Powdery'])"
     )
 
+class PerfumeIdSearchInput(BaseModel):
+    """향수 ID 기반 검색 도구 입력 스키마"""
+    perfume_id: int = Field(
+        description="조회할 향수의 perfume_id (예: 12345)"
+    )
+
 # ==========================================
 # [에이전트 분석 결과 스키마]
 # ==========================================

@@ -2,12 +2,10 @@
 향수 검색 API 라우터 (Re-created, 한글 검색 지원 Ver)
 """
 
+import importlib
 import os
-from typing import List, Optional
+from typing import Any
 
-import psycopg2
-from psycopg2.extras import RealDictCursor
-from fastapi import APIRouter, Query
 from pydantic import BaseModel
 # [수정: 2026-01-28] DB 커넥션 풀 사용을 위한 임포트 추가
 # database.py에서 정의한 풀(Pool) 관리 함수를 가져옵니다.
@@ -101,7 +99,16 @@ def get_search_variants(q: str) -> List[str]:
 # API & 검색 편의기능
 # ============================================================
 
-@router.get("/search", response_model=List[PerfumeSearchResult])
+def normalize_ratio(ratio: float | None) -> int:
+    if ratio is None:
+        return 0
+    if ratio <= 1.0:
+        value = ratio * 100
+    else:
+        value = ratio
+    return int(max(0, min(value, 100)))
+
+@router.get("/search", response_model=list[PerfumeSearchResult])
 def search_perfumes(q: str = Query(..., min_length=1, description="검색어")):
     search_term = f"%{q}%"
 

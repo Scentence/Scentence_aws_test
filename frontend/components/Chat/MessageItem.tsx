@@ -131,16 +131,11 @@ const parseMessageContent = (text: string) => {
                     
                     // [기존 유지] 이미지 (Rounded-2xl 사각형 유지)
                     img: ({ node, ...props }: any) => {
-                        const imageUrl = props.src || "";
-                        const isSquare = imageUrl.includes("aspect_ratio=1:1");
                         return (
                             <span className="mx-auto my-6 block h-40 w-40 md:h-[250px] md:w-[250px] overflow-hidden rounded-2xl shadow-lg border border-slate-200 relative bg-white">
                                 <img
                                     {...props}
-                                    className={`h-full w-full transition-all duration-300 ${isSquare
-                                            ? "object-contain p-2"
-                                            : "object-cover object-center scale-125"
-                                        }`}
+                                    className="h-full w-full object-contain p-2 transition-all duration-300"
                                     alt={props.alt || "Perfume Image"}
                                 />
                             </span>

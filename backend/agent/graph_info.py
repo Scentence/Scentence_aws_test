@@ -13,6 +13,7 @@ from .tools_schemas_info import IngredientAnalysisResult
 # [2] 도구 임포트
 from .tools_info import (
     lookup_perfume_info_tool,
+    lookup_perfume_by_id_tool,
     lookup_note_info_tool,
     lookup_accord_info_tool,
 )
@@ -36,7 +37,124 @@ ROUTER_LLM = ChatOpenAI(model="gpt-4o", temperature=0, streaming=False)
 
 
 # ==========================================
-# 4. Node Functions
+# 4. Utility Functions for Ordinal/Pronoun Resolution
+# ==========================================
+
+import re
+from typing import List, Dict, Optional
+
+
+def extract_save_refs(messages: List) -> List[Dict[str, any]]:
+    """
+    Extract SAVE tags from most recent AIMessage containing recommendations.
+    Returns list of {id: int, name: str} in order of appearance.
+    """
+    save_pattern = re.compile(r'\[\[SAVE:(\d+):([^\]]+)\]\]')
+    
+    for msg in reversed(messages):
+        if isinstance(msg, AIMessage) and msg.content:
+            matches = save_pattern.findall(msg.content)
+            if matches:
+                return [{"id": int(m[0]), "name": m[1]} for m in matches]
+    
+    return []
+
+
+def parse_ordinal(user_query: str) -> Optional[int]:
+    """
+    Parse ordinal numbers from Korean text (supports 1-10).
+    Returns 1-based index (1, 2, 3, ...) or None if not found.
+    """
+    query_lower = user_query.lower()
+    
+    numeric_match = re.search(r'(\d+)\s*(번째|번)\b', query_lower)
+    if numeric_match:
+        return int(numeric_match.group(1))
+    
+    korean_ordinals = {
+        '첫': 1, '첫번째': 1, '1번째': 1, '1번': 1,
+        '두': 2, '두번째': 2, '둘째': 2, '2번째': 2, '2번': 2,
+        '세': 3, '세번째': 3, '셋째': 3, '3번째': 3, '3번': 3,
+        '네': 4, '네번째': 4, '넷째': 4, '4번째': 4, '4번': 4,
+        '다섯': 5, '다섯번째': 5, '다섯째': 5, '5번째': 5, '5번': 5,
+        '여섯': 6, '여섯번째': 6, '여섯째': 6, '6번째': 6, '6번': 6,
+        '일곱': 7, '일곱번째': 7, '일곱째': 7, '7번째': 7, '7번': 7,
+        '여덟': 8, '여덟번째': 8, '여덟째': 8, '8번째': 8, '8번': 8,
+        '아홉': 9, '아홉번째': 9, '아홉째': 9, '9번째': 9, '9번': 9,
+        '열': 10, '열번째': 10, '열째': 10, '10번째': 10, '10번': 10,
+    }
+    
+    for pattern, num in korean_ordinals.items():
+        if pattern in query_lower:
+            return num
+    
+    return None
+
+
+def resolve_target_from_ordinal_or_pronoun(
+    user_query: str,
+    router_target_name: str,
+    save_refs: List[Dict[str, any]]
+) -> Optional[Dict[str, any]]:
+    """
+    Resolve target perfume from ordinal numbers or pronouns.
+    Returns {id: int, name: str} or None if resolution fails.
+    """
+    pronouns = ['이거', '그거', '이 향수', '저거']
+    generic_terms = ['추천해줘', '비슷한거']
+    
+    ordinal = parse_ordinal(user_query)
+    is_pronoun = any(p in user_query for p in pronouns)
+    is_generic = router_target_name in generic_terms or any(g in router_target_name for g in generic_terms)
+    
+    if ordinal:
+        if 1 <= ordinal <= len(save_refs):
+            return save_refs[ordinal - 1]
+        else:
+            return None
+    
+    if is_pronoun or is_generic:
+        if save_refs:
+            return save_refs[-1]
+    
+    return None
+
+
+# ==========================================
+# 5. Streaming Helper for Silent Failure Prevention
+# ==========================================
+
+async def stream_fixed_message(text: str) -> AIMessage:
+    """
+    Stream a fixed message through LLM to ensure output appears in UI.
+    Prevents silent failures by guaranteeing on_chat_model_stream events.
+    """
+    system_prompt = "Output EXACTLY the next user message. Do not add, remove, or change any character. No quotes."
+    messages = [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=text)
+    ]
+    
+    response = await INFO_LLM.ainvoke(messages)
+    
+    if response.content.strip() != text.strip():
+        print(f"      ⚠️ [Stream Mismatch] Expected: '{text}' | Got: '{response.content}'", flush=True)
+        
+        retry_system = "Your previous output was invalid. Output the next user message EXACTLY, character-for-character."
+        retry_messages = [
+            SystemMessage(content=retry_system),
+            HumanMessage(content=text)
+        ]
+        response = await INFO_LLM.ainvoke(retry_messages)
+        
+        if response.content.strip() != text.strip():
+            print(f"      ⚠️ [Stream Retry Failed] Using retry output anyway", flush=True)
+    
+    return response
+
+
+# ==========================================
+# 6. Node Functions
 # ==========================================
 
 
@@ -71,6 +189,40 @@ def info_supervisor_node(state: InfoState):
         )
         final_target = decision.target_name
 
+        save_refs = extract_save_refs(chat_history)
+        
+        resolved = resolve_target_from_ordinal_or_pronoun(
+            user_query, final_target, save_refs
+        )
+        
+        if resolved:
+            ordinal = parse_ordinal(user_query)
+            if ordinal:
+                print(f"      🧷 [Ordinal Resolve] n={ordinal} -> id={resolved['id']}, name={resolved['name']}", flush=True)
+            else:
+                print(f"      🧷 [Pronoun Resolve] -> id={resolved['id']}, name={resolved['name']}", flush=True)
+            
+            info_type = decision.info_type
+            if any(kw in user_query for kw in ['비슷', '추천', '대체', '같은']):
+                info_type = "similarity"
+            elif resolved:
+                info_type = "perfume"
+            
+            return {
+                "info_type": info_type,
+                "target_id": resolved['id'],
+                "target_name": resolved['name']
+            }
+        
+        if not save_refs and (parse_ordinal(user_query) or any(p in user_query for p in ['이거', '그거', '이 향수', '저거'])):
+            fail_msg = "최근에 추천드린 향수 목록을 찾지 못했어요. 향수 이름을 직접 말씀해 주시면 바로 찾아드릴게요."
+            return {"info_type": "unknown", "target_name": "unknown", "fail_msg": fail_msg}
+        
+        ordinal = parse_ordinal(user_query)
+        if ordinal and ordinal > len(save_refs):
+            fail_msg = f"지금 추천은 1~{len(save_refs)}번째까지 있어요. 원하시는 번호로 다시 말씀해 주세요."
+            return {"info_type": "unknown", "target_name": "unknown", "fail_msg": fail_msg}
+        
         if not final_target or final_target in [
             "이거",
             "그거",
@@ -96,14 +248,18 @@ def info_supervisor_node(state: InfoState):
 async def perfume_describer_node(state: InfoState):
     """[Perfume Expert] 상세 정보"""
     target = state["target_name"]
+    target_id = state.get("target_id")
 
-    # [★설정] 사용자 모드 (DB 연동 전 하드코딩: "BEGINNER" or "EXPERT")
-    USER_MODE = "BEGINNER"
+    user_mode = state.get("user_mode", "BEGINNER")
     try:
-        print(f"\n   ▶️ [Info Subgraph] Perfume Describer: '{target}'", flush=True)
-
-        # 1. 도구 호출
-        search_result_json = await lookup_perfume_info_tool.ainvoke(target)
+        if target_id:
+            print(f"\n   ▶️ [Info Subgraph] Perfume Describer (ID-first): id={target_id}, name='{target}'", flush=True)
+            print(f"      🆔 [Lookup] by_id perfume_id={target_id}", flush=True)
+            search_result_json = await lookup_perfume_by_id_tool.ainvoke({"perfume_id": target_id})
+        else:
+            print(f"\n   ▶️ [Info Subgraph] Perfume Describer (name-based): '{target}'", flush=True)
+            print(f"      🏷️ [Lookup] by_name", flush=True)
+            search_result_json = await lookup_perfume_info_tool.ainvoke(target)
 
         # [★추가] DB에서 실제로 어떤 값이 왔는지 로그를 찍어야 원인 분석이 가능합니다.
         print(f"      🔍 [DB Result]: {str(search_result_json)[:200]}...", flush=True)
@@ -120,11 +276,30 @@ async def perfume_describer_node(state: InfoState):
         )
 
         if is_error or is_empty:
-            # 에러 메시지를 LLM에게 넘기지 않고 여기서 바로 사과 답변을 반환합니다.
-            fail_msg = f"죄송합니다. '{target}'에 대한 상세 정보를 데이터베이스에서 찾을 수 없습니다. 😢"
-            return {"messages": [AIMessage(content=fail_msg)], "final_answer": fail_msg}
+            if target_id and target:
+                print(f"      🔄 [Fallback] ID lookup failed, trying name-based lookup", flush=True)
+                search_result_json = await lookup_perfume_info_tool.ainvoke(target)
+                
+                is_error_retry = any(
+                    keyword in search_result_json
+                    for keyword in ["검색 실패", "찾을 수 없습니다", "DB 에러", "Error"]
+                )
+                is_empty_retry = (
+                    not search_result_json
+                    or search_result_json == "{}"
+                    or search_result_json == "[]"
+                )
+                
+                if is_error_retry or is_empty_retry:
+                    fail_msg = f"죄송합니다. '{target}'에 대한 상세 정보를 데이터베이스에서 찾을 수 없습니다. 😢"
+                    response = await stream_fixed_message(fail_msg)
+                    return {"messages": [response], "final_answer": response.content}
+            else:
+                fail_msg = f"죄송합니다. '{target}'에 대한 상세 정보를 데이터베이스에서 찾을 수 없습니다. 😢"
+                response = await stream_fixed_message(fail_msg)
+                return {"messages": [response], "final_answer": response.content}
 
-        if USER_MODE == "EXPERT":
+        if user_mode == "EXPERT":
             print("      😎 [Mode] 전문가용 분석 프롬프트 적용")
             selected_prompt = PERFUME_DESCRIBER_PROMPT_EXPERT
         else:
@@ -144,7 +319,8 @@ async def perfume_describer_node(state: InfoState):
     except Exception as e:
         print(f"      ❌ Perfume Describer 에러: {e}", flush=True)
         msg = f"죄송합니다. '{target}' 정보를 불러오는 중 기술적인 오류가 발생했습니다."
-        return {"messages": [AIMessage(content=msg)], "final_answer": msg}
+        response = await stream_fixed_message(msg)
+        return {"messages": [response], "final_answer": response.content}
 
 
 async def ingredient_specialist_node(state: InfoState):
@@ -233,7 +409,8 @@ async def ingredient_specialist_node(state: InfoState):
                 flush=True,
             )
             fail_msg = f"죄송합니다. 말씀하신 '{user_query}' 성분에 대한 상세 정보가 현재 데이터베이스에 등록되어 있지 않습니다. 😢"
-            return {"messages": [AIMessage(content=fail_msg)], "final_answer": fail_msg}
+            response = await stream_fixed_message(fail_msg)
+            return {"messages": [response], "final_answer": response.content}
         # =============================================================
 
         # 4. LLM 기반 답변 생성 (데이터가 있을 때만 실행)
@@ -257,14 +434,14 @@ async def ingredient_specialist_node(state: InfoState):
     except Exception as e:
         print(f"      ❌ Ingredient Specialist 에러: {e}", flush=True)
         msg = "성분 정보를 분석하는 도중 기술적인 문제가 발생했습니다."
-        return {"messages": [AIMessage(content=msg)], "final_answer": msg}
+        response = await stream_fixed_message(msg)
+        return {"messages": [response], "final_answer": response.content}
 
 
 async def similarity_curator_node(state: InfoState):
     """[Similarity Expert] 유사 추천"""
 
-    # [★설정] 사용자 모드
-    USER_MODE = "BEGINNER"
+    user_mode = state.get("user_mode", "BEGINNER")
     try:
         target = state["target_name"]
         print(f"\n   ▶️ [Info Subgraph] Similarity Curator: '{target}'", flush=True)
@@ -293,9 +470,10 @@ async def similarity_curator_node(state: InfoState):
                 flush=True,
             )
             fail_msg = f"현재 저희 데이터베이스에는 '{target}'과 결이 비슷한 향수 정보가 충분하지 않네요. 😅 다른 향수로 다시 찾아봐 드릴까요?"
-            return {"messages": [AIMessage(content=fail_msg)], "final_answer": fail_msg}
+            response = await stream_fixed_message(fail_msg)
+            return {"messages": [response], "final_answer": response.content}
         # =============================================================
-        if USER_MODE == "EXPERT":
+        if user_mode == "EXPERT":
             print("      😎 [Mode] 전문가용 큐레이터 프롬프트 적용")
             selected_prompt = SIMILARITY_CURATOR_PROMPT_EXPERT
         else:
@@ -317,16 +495,22 @@ async def similarity_curator_node(state: InfoState):
         # 시스템 에러 처리 (기존 로직 유지)
         print(f"      ❌ Similarity Curator 에러: {e}", flush=True)
         msg = f"죄송합니다. '{target}'과 유사한 향수를 찾는 과정에서 기술적인 문제가 발생했습니다."
-        return {"messages": [AIMessage(content=msg)], "final_answer": msg}
+        response = await stream_fixed_message(msg)
+        return {"messages": [response], "final_answer": response.content}
 
 
 async def fallback_handler_node(state: InfoState):
     """[Fallback] 안내"""
     print(f"\n   ⚠️ [Info Subgraph] Fallback Handler 실행", flush=True)
+    
+    fail_msg = state.get("fail_msg")
+    if fail_msg:
+        response = await stream_fixed_message(fail_msg)
+        return {"messages": [response], "final_answer": response.content}
+    
     fallback_msg = "죄송합니다. 말씀하신 향수가 무엇인지 정확히 파악하지 못했어요. 😅\n'샤넬 넘버5랑 비슷한 거 추천해줘' 처럼 향수 이름을 콕 집어서 다시 말씀해 주시겠어요?"
-
-    # [★수정] final_answer 추가
-    return {"messages": [AIMessage(content=fallback_msg)], "final_answer": fallback_msg}
+    response = await stream_fixed_message(fallback_msg)
+    return {"messages": [response], "final_answer": response.content}
 
 
 # ==========================================

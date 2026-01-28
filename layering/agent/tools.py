@@ -208,8 +208,8 @@ def _spray_order(base: PerfumeVector, candidate: PerfumeVector) -> List[str]:
     else:
         first, second = candidate, base
     return [
-        f"{first.perfume_name} ({first.perfume_id})",
-        f"{second.perfume_name} ({second.perfume_id})",
+        f"{first.perfume_name}",
+        f"{second.perfume_name}",
     ]
 
 
@@ -221,6 +221,7 @@ def _result_to_candidate(result: LayeringComputationResult) -> LayeringCandidate
         perfume_id=candidate.perfume_id,
         perfume_name=candidate.perfume_name,
         perfume_brand=candidate.perfume_brand,
+        image_url=candidate.image_url,
         total_score=round(result.total_score, 3),
         feasible=result.feasible,
         feasibility_reason=result.feasibility_reason,
@@ -242,14 +243,23 @@ def _cosine_similarity(vector_a: Sequence[float], vector_b: Sequence[float]) -> 
 
 
 def _build_analysis_string(breakdown: ScoreBreakdown) -> str:
-    return (
-        " + ".join(
-            [
-                f"Base {breakdown.base:.2f}",
-                f"Harmony {breakdown.harmony:.2f}",
-                f"Bridge {breakdown.bridge:.2f}",
-                f"Penalty {breakdown.penalty:.2f}",
-                f"Target {breakdown.target:.2f}",
-            ]
-        )
-    )
+    reasons: list[str] = []
+    if breakdown.target >= 1.1:
+        reasons.append("요청한 무드와 잘 맞는 어코드가 또렷하게 살아납니다.")
+    elif breakdown.target >= 0.8:
+        reasons.append("원하는 분위기에 자연스럽게 가까워지는 조합입니다.")
+    else:
+        reasons.append("기존 향을 해치지 않으면서 분위기를 부드럽게 바꿔줍니다.")
+
+    if breakdown.harmony >= 1.0:
+        reasons.append("공통 노트가 있어 잔향이 자연스럽게 이어집니다.")
+    elif breakdown.bridge >= 0.8:
+        reasons.append("어코드 흐름이 매끄러워 전체 톤이 안정적으로 이어집니다.")
+
+    if breakdown.penalty < 0:
+        reasons.append("대비되는 포인트가 더해져 개성이 살아나는 레이어링입니다.")
+
+    if not reasons:
+        reasons.append("균형감 있게 어우러지는 레이어링입니다.")
+
+    return " ".join(reasons[:2])

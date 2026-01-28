@@ -14,8 +14,14 @@ try:  # pragma: no cover - fallback for script execution
         save_my_perfume,
         save_recommendation_results,
     )
-    from .agent.graph import analyze_user_input, analyze_user_query, suggest_perfume_options
+    from .agent.graph import (
+        analyze_user_input,
+        analyze_user_query,
+        is_info_request,
+        suggest_perfume_options,
+    )
     from .agent.schemas import (
+        PerfumeBasic,
         LayeringError,
         LayeringErrorResponse,
         LayeringRequest,
@@ -36,8 +42,9 @@ except ImportError:  # pragma: no cover
         save_my_perfume,
         save_recommendation_results,
     )
-    from agent.graph import analyze_user_input, analyze_user_query, suggest_perfume_options
+    from agent.graph import analyze_user_input, analyze_user_query, is_info_request, suggest_perfume_options
     from agent.schemas import (
+        PerfumeBasic,
         LayeringError,
         LayeringErrorResponse,
         LayeringRequest,
@@ -139,6 +146,7 @@ def layering_recommend(payload: LayeringRequest) -> LayeringResponse:
         if not payload.member_id:
             logger.info("Layering recommend request has no member_id")
         repo = get_repository()
+        base_perfume = repo.get_perfume(payload.base_perfume_id)
         recommendations, total_available = rank_recommendations(
             payload.base_perfume_id,
             payload.keywords,
@@ -152,7 +160,6 @@ def layering_recommend(payload: LayeringRequest) -> LayeringResponse:
             )
         if payload.member_id and payload.save_my_perfume:
             try:
-                base_perfume = repo.get_perfume(payload.base_perfume_id)
                 save_results.append(save_my_perfume(payload.member_id, base_perfume))
             except KeyError:
                 save_results.append(
@@ -211,6 +218,12 @@ def layering_recommend(payload: LayeringRequest) -> LayeringResponse:
         )
 
     return LayeringResponse(
+        base_perfume=PerfumeBasic(
+            perfume_id=base_perfume.perfume_id,
+            perfume_name=base_perfume.perfume_name,
+            perfume_brand=base_perfume.perfume_brand,
+            image_url=base_perfume.image_url,
+        ),
         base_perfume_id=payload.base_perfume_id,
         keywords=payload.keywords,
         total_available=total_available,
@@ -234,15 +247,32 @@ def layering_analyze(payload: UserQueryRequest) -> UserQueryResponse:
         repo = get_repository()
         preferences = analyze_user_input(payload.user_text)
         keywords = preferences.keywords
-        analysis = analyze_user_query(payload.user_text, repo, preferences)
+        info_request = is_info_request(payload.user_text)
+        analysis = analyze_user_query(
+            payload.user_text,
+            repo,
+            preferences,
+            context_recommended_perfume_id=payload.context_recommended_perfume_id,
+        )
         recommendation = None
         note = None
         base_perfume_id = None
         clarification_prompt = None
         clarification_options: list[str] = []
         save_results = []
+        skip_recommendation = False
 
-        if analysis.pairing_analysis:
+        if analysis.recommended_perfume_info:
+            note = "요청하신 향수 정보를 안내합니다."
+            skip_recommendation = True
+        elif info_request and not payload.context_recommended_perfume_id:
+            clarification_prompt = "추천된 향수 정보는 최근 추천 결과가 필요해요. 먼저 레이어링 추천을 받아주세요."
+            clarification_options = []
+            skip_recommendation = True
+
+        if skip_recommendation:
+            pass
+        elif analysis.pairing_analysis:
             recommendation = analysis.pairing_analysis.result
             if analysis.detected_pair:
                 base_perfume_id = analysis.detected_pair.base_perfume_id
@@ -278,6 +308,22 @@ def layering_analyze(payload: UserQueryRequest) -> UserQueryResponse:
                 )
         if payload.member_id:
             logger.info("Layering analyze save_results=%s", save_results)
+
+        if not keywords and note is None and recommendation is not None and not skip_recommendation:
+            note = "요청 의도 키워드를 찾지 못해 기본 조합으로 추천했어요."
+
+        base_perfume = None
+        if base_perfume_id:
+            try:
+                base = repo.get_perfume(base_perfume_id)
+                base_perfume = PerfumeBasic(
+                    perfume_id=base.perfume_id,
+                    perfume_name=base.perfume_name,
+                    perfume_brand=base.perfume_brand,
+                    image_url=base.image_url,
+                )
+            except KeyError:
+                base_perfume = None
     except LayeringDataError as exc:
         logger.exception("Layering data error during analysis")
         error_payload = build_error_response(
@@ -321,9 +367,11 @@ def layering_analyze(payload: UserQueryRequest) -> UserQueryResponse:
         raw_text=payload.user_text,
         keywords=keywords,
         base_perfume_id=base_perfume_id,
+        base_perfume=base_perfume,
         detected_perfumes=analysis.detected_perfumes,
         detected_pair=analysis.detected_pair,
         recommendation=recommendation,
+        recommended_perfume_info=analysis.recommended_perfume_info,
         clarification_prompt=clarification_prompt,
         clarification_options=clarification_options,
         note=note,

@@ -16,6 +16,23 @@ def test_analyze_user_input_heuristics(monkeypatch):
     assert 0.0 <= summary.intensity <= 1.0
 
 
+def test_analyze_user_input_korean_keywords(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    cool_summary = analyze_user_input("ck one이 좀 더 차가운 향이 되게")
+    floral_summary = analyze_user_input("ck one에서 좀 더 플로럴하게")
+
+    assert "차가운" in cool_summary.keywords
+    assert "플로럴" in floral_summary.keywords
+
+
+def test_analyze_user_input_prefers_longer_matches(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    summary = analyze_user_input("green tea layered with ck one")
+
+    assert "green tea" in summary.keywords
+    assert "green" not in summary.keywords
+
+
 def test_normalize_keywords_splits_delimiters():
     assert _normalize_keywords("citrus; warm, sweet") == ["citrus", "warm", "sweet"]
     assert _normalize_keywords(["citrus; warm", "sweet"]) == ["citrus", "warm", "sweet"]

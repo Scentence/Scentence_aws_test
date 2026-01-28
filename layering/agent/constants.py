@@ -69,9 +69,21 @@ CLASH_PAIRS: Tuple[Tuple[Set[str], Set[str]], ...] = (
 KEYWORD_MAP: Dict[str, Sequence[str]] = {
     "citrus": ["Citrus", "Fresh"],
     "cool": ["Aquatic", "Fresh", "Green"],
+    "cold": ["Aquatic", "Fresh", "Green"],
+    "fresh": ["Fresh", "Green"],
+    "green": ["Green", "Fresh"],
+    "green tea": ["Green", "Fresh"],
+    "floral": ["Floral"],
     "warm": ["Oriental", "Spicy", "Resinous"],
     "sweet": ["Gourmand", "Sweet", "Fruity"],
     "amber": ["Resinous"],
+    "차가운": ["Aquatic", "Fresh", "Green"],
+    "시원한": ["Aquatic", "Fresh", "Green"],
+    "청량": ["Aquatic", "Fresh", "Green"],
+    "쿨": ["Aquatic", "Fresh", "Green"],
+    "플로럴": ["Floral"],
+    "꽃향": ["Floral"],
+    "꽃내음": ["Floral"],
 }
 
 KEYWORD_VECTOR_BOOST: float = 30.0

@@ -26,6 +26,8 @@ class ActivityLogResponse(BaseModel):
     logged: bool
     card_trigger_ready: bool
     trigger_message: Optional[str] = None
+    daily_limit_reached: Optional[bool] = None
+    daily_limit_remaining: Optional[int] = None
 
 
 class AccordInfo(BaseModel):

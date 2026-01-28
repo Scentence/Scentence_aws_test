@@ -9,6 +9,8 @@ from scentmap.db import init_db_schema, close_pool
 from scentmap.app.api.network import router as network_router
 from scentmap.app.api.label import router as labels_router
 from scentmap.app.api.session import router as session_router
+from scentmap.app.api.ncard import router as ncard_router
+from scentmap.app.api.nmap.router import router as nmap_router
 
 from scentmap.app.services.label_service import load_labels
 
@@ -64,7 +66,8 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.include_router(network_router)
 app.include_router(labels_router)
 app.include_router(session_router)
-
+app.include_router(ncard_router)
+app.include_router(nmap_router)
 
 @app.get("/")
 def root():

@@ -4,8 +4,8 @@ services:
   # [1] 백엔드 (FastAPI) - 기존 유지
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: scentence-backend
     dns:
       - 8.8.8.8

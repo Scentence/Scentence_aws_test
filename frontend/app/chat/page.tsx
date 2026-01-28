@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import ChatList from "../../components/Chat/ChatList";
 import { Message } from "../../components/Chat/MessageItem";
 import Sidebar from "../../components/Chat/Sidebar";
+import { SavedPerfumesProvider } from "../../contexts/SavedPerfumesContext";
 
 // [수정] AWS와 로컬 모두 대응하기 위한 환경 변수 처리
 // .env에 NEXT_PUBLIC_API_URL이 있으면 그걸 쓰고, 없으면 로컬(localhost:8000)을 씁니다.
@@ -25,6 +26,7 @@ export default function ChatPage() {
     const [statusLog, setStatusLog] = useState("");
     const [isMounted, setIsMounted] = useState(false);
     const [threadId, setThreadId] = useState("");
+    const [memberId, setMemberId] = useState<number | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     const scrollToBottom = useCallback(() => {
@@ -62,6 +64,29 @@ export default function ChatPage() {
             console.error("LocalAuth backfill error:", e);
         }
     }, []);
+
+    // Extract memberId from session or localStorage
+    useEffect(() => {
+        let currentMemberId = 0;
+
+        if (session?.user?.id) {
+            currentMemberId = parseInt(session.user.id, 10);
+        } else {
+            try {
+                const localAuth = localStorage.getItem("localAuth");
+                if (localAuth) {
+                    const parsed = JSON.parse(localAuth);
+                    if (parsed && parsed.memberId) {
+                        currentMemberId = parseInt(parsed.memberId, 10);
+                    }
+                }
+            } catch (e) {
+                console.error("Member ID extraction error:", e);
+            }
+        }
+
+        setMemberId(currentMemberId > 0 ? currentMemberId : null);
+    }, [session]);
 
     if (!isMounted) return <div className="min-h-screen bg-[#FAF8F5]" />;
 
@@ -112,7 +137,8 @@ export default function ChatPage() {
         // [★추가] 로그인 정보(MemberID) 가져오기 (카카오 세션 또는 로컬 로그인)
         let currentMemberId = 0;
         let currentUserMode = "BEGINNER";
-        // 카카오 로그인 세션 확인
+        
+        // 1. 멤버 ID 결정 (카카오 세션 우선, 없으면 로컬)
         if (session?.user?.id) {
             currentMemberId = parseInt(session.user.id, 10);
         } else {
@@ -124,13 +150,23 @@ export default function ChatPage() {
                     if (parsed && parsed.memberId) {
                         currentMemberId = parseInt(parsed.memberId, 10);
                     }
-                    if (parsed && parsed.user_mode) {
-                        currentUserMode = parsed.user_mode;
-                    }
                 }
             } catch (e) {
                 console.error("Member ID Parsing Error:", e);
             }
+        }
+
+        // 2. 유저 모드 결정 (항상 localAuth 확인)
+        try {
+            const localAuth = localStorage.getItem("localAuth");
+            if (localAuth) {
+                const parsed = JSON.parse(localAuth);
+                if (parsed && parsed.user_mode) {
+                    currentUserMode = parsed.user_mode;
+                }
+            }
+        } catch (e) {
+            console.error("User Mode Parsing Error:", e);
         }
         setMessages((prev) => prev.map(m => ({ ...m, isStreaming: false })));
         setMessages((prev) => [...prev, { role: "user", text: trimmed, isStreaming: false }]);
@@ -219,9 +255,10 @@ export default function ChatPage() {
     };
 
     return (
-        <div className="flex h-[100dvh] bg-[#FDFBF8] overflow-hidden text-[#393939]">
-            {/* ✅ 사이드바에 스위치 상태와 끄기 기능을 전달합니다. */}
-            <Sidebar
+        <SavedPerfumesProvider memberId={memberId}>
+            <div className="flex h-[100dvh] bg-[#FDFBF8] overflow-hidden text-[#393939]">
+                {/* ✅ 사이드바에 스위치 상태와 끄기 기능을 전달합니다. */}
+                <Sidebar
                 isOpen={isSidebarOpen}
                 activeThreadId={threadId}           // ✅ 추가
                 onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -281,8 +318,8 @@ export default function ChatPage() {
                         {error && <div className="text-sm text-rose-500">{error}</div>}
                     </form>
                 </div>
-            </main >
-
-        </div >
+            </main>
+        </div>
+        </SavedPerfumesProvider>
     );
 }

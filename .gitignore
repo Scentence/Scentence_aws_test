@@ -68,3 +68,7 @@ docs/
 .pytest_cache/
 
 docs/
+
+# [.md 파일 관리]
+**/*.md
+!README.md

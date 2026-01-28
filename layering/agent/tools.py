@@ -73,9 +73,13 @@ def rank_recommendations(
     repository: PerfumeRepository,
 ) -> Tuple[List[LayeringCandidate], int]:
     base = repository.get_perfume(base_perfume_id)
+    base_key = _normalize_identity(base.perfume_name, base.perfume_brand)
     target_vector = get_target_vector(keywords)
     candidates: List[LayeringCandidate] = []
     for candidate in repository.all_candidates(exclude_id=base_perfume_id):
+        candidate_key = _normalize_identity(candidate.perfume_name, candidate.perfume_brand)
+        if candidate_key == base_key:
+            continue
         result = calculate_advanced_layering(base, candidate, target_vector)
         if not result.feasible:
             continue
@@ -83,6 +87,19 @@ def rank_recommendations(
     candidates.sort(key=lambda item: item.total_score, reverse=True)
     total_available = len(candidates)
     return candidates[:3], total_available
+
+
+def _normalize_identity(name: str, brand: str) -> str:
+    return f"{brand.strip().lower()}::{name.strip().lower()}"
+
+
+def _build_brand_reason(avg_score: float, feasible_count: int) -> str:
+    if feasible_count <= 0:
+        return "브랜드 내 레이어링 후보가 제한적이라 가장 안정적인 향을 골랐습니다."
+    return (
+        f"브랜드 내 {feasible_count}개 조합에서 평균 궁합 점수 {avg_score:.2f}로 안정적인 편이라, "
+        "레이어링 범용성이 높습니다."
+    )
 
 
 def evaluate_pair(
@@ -111,7 +128,7 @@ def calculate_compatibility_score(
 def rank_brand_universal_perfume(
     brand_perfumes: Sequence[PerfumeVector],
     repository: PerfumeRepository,
-) -> Tuple[PerfumeVector | None, float, int]:
+) -> Tuple[PerfumeVector | None, float, int, str | None]:
     all_candidates = list(repository.all_candidates())
     best_perfume: PerfumeVector | None = None
     best_score = float("-inf")
@@ -135,8 +152,11 @@ def rank_brand_universal_perfume(
             best_count = count
 
     if best_perfume is None:
-        return None, 0.0, 0
-    return best_perfume, best_score, best_count
+        return None, 0.0, 0, None
+    reason = _build_brand_reason(best_score, best_count)
+    return best_perfume, best_score, best_count, reason
+
+
 
 
 def _clash_penalty(

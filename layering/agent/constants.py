@@ -75,6 +75,7 @@ KEYWORD_MAP: Dict[str, Sequence[str]] = {
     "green tea": ["Green", "Fresh"],
     "floral": ["Floral"],
     "warm": ["Oriental", "Spicy", "Resinous"],
+    "spicy": ["Spicy"],
     "sweet": ["Gourmand", "Sweet", "Fruity"],
     "amber": ["Resinous"],
     "차가운": ["Aquatic", "Fresh", "Green"],
@@ -84,6 +85,12 @@ KEYWORD_MAP: Dict[str, Sequence[str]] = {
     "플로럴": ["Floral"],
     "꽃향": ["Floral"],
     "꽃내음": ["Floral"],
+    "스파이시": ["Spicy"],
+    "알싸": ["Spicy"],
+    "매콤": ["Spicy"],
+    "매운": ["Spicy"],
+    "톡쏘는": ["Spicy"],
+    "자극적": ["Spicy"],
 }
 
 KEYWORD_VECTOR_BOOST: float = 30.0
@@ -98,6 +105,8 @@ PERFUME_ALIAS_MAP: Dict[str, Dict[str, str]] = {
     "우드 세이지 씨솔트": {"name": "Wood Sage & Sea Salt", "brand": "Jo Malone"},
     "우드 세이지 앤 씨 솔트": {"name": "Wood Sage & Sea Salt", "brand": "Jo Malone"},
     "조말론 우드 세이지 시솔트": {"name": "Wood Sage & Sea Salt", "brand": "Jo Malone"},
+    "ck one": {"name": "CK One", "brand": "Calvin Klein"},
+    "씨케이 원": {"name": "CK One", "brand": "Calvin Klein"},
 }
 
 BRAND_ALIAS_MAP: Dict[str, str] = {

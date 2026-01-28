@@ -125,7 +125,7 @@ class RecommendationFeedbackRequest(BaseModel):
     member_id: int = Field(..., description="Member identifier")
     perfume_id: str = Field(..., description="Recommended perfume identifier")
     perfume_name: str = Field(..., description="Recommended perfume name")
-    preference: Literal["GOOD", "BAD", "NEUTRAL"] = Field(
+    preference: Literal["GOOD", "BAD"] = Field(
         ..., description="Satisfaction value for the recommendation"
     )
 
@@ -172,6 +172,7 @@ class UserQueryAnalysis(BaseModel):
     brand_name: Optional[str] = None
     brand_best_perfume: Optional[PerfumeBasic] = None
     brand_best_score: Optional[float] = None
+    brand_best_reason: Optional[str] = None
 
 
 class UserQueryResponse(BaseModel):
@@ -186,6 +187,7 @@ class UserQueryResponse(BaseModel):
     brand_name: Optional[str] = None
     brand_best_perfume: Optional[PerfumeBasic] = None
     brand_best_score: Optional[float] = None
+    brand_best_reason: Optional[str] = None
     clarification_prompt: Optional[str] = None
     clarification_options: List[str] = Field(default_factory=list)
     note: Optional[str] = None

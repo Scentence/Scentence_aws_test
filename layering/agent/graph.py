@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -54,7 +55,7 @@ def _split_query_segments(text: str) -> list[str]:
     if not text:
         return []
     lowered = text.lower()
-    separators = [" and ", "&", ",", ";"]
+    separators = [" and ", "&", ",", ";", " 그리고 ", " 또는 ", " 혹은 "]
     segments = [lowered]
     for sep in separators:
         next_segments: list[str] = []
@@ -75,11 +76,109 @@ def _heuristic_preferences(user_text: str) -> PreferenceSummary:
                 continue
         keywords.append(key)
     intensity = 0.5
-    if any(token in normalized for token in ["매우", "아주", "강하게", "intense", "strong"]):
+    high_tokens = [
+        "매우",
+        "아주",
+        "진하게",
+        "강렬하게",
+        "강하게",
+        "intense",
+        "strong",
+        "bold",
+    ]
+    mid_tokens = ["적당히", "중간", "보통", "적당한", "무난하게"]
+    low_tokens = ["살짝", "은은하게", "가볍게", "약하게", "soft", "light"]
+    if any(token in normalized for token in high_tokens):
         intensity = 0.9
-    elif any(token in normalized for token in ["살짝", "약하게", "soft", "light"]):
+    elif any(token in normalized for token in low_tokens):
         intensity = 0.3
+    elif any(token in normalized for token in mid_tokens):
+        intensity = 0.55
     return PreferenceSummary(keywords=keywords, intensity=intensity, raw_text=user_text)
+
+
+def _normalize_text_for_match(text: str) -> str:
+    cleaned = re.sub(r"[^a-z0-9가-힣]+", " ", text.casefold())
+    return " ".join(cleaned.split())
+
+
+def _merge_candidate_hits(
+    hits: list[tuple[Any, float, str]],
+) -> list[tuple[Any, float, str]]:
+    merged: dict[str, tuple[Any, float, str]] = {}
+    for perfume, score, matched_text in hits:
+        current = merged.get(perfume.perfume_id)
+        if current is None or score > current[1]:
+            merged[perfume.perfume_id] = (perfume, score, matched_text)
+    return list(merged.values())
+
+
+def _extract_perfume_query_llm(user_text: str) -> list[str]:
+    if not os.getenv("OPENAI_API_KEY"):
+        return []
+    try:
+        from langchain_openai import ChatOpenAI
+        from langchain_core.messages import SystemMessage, HumanMessage
+    except ImportError:
+        return []
+
+    system_prompt = (
+        "You are a perfume database expert. Extract a perfume brand and name from the user input. "
+        "Return JSON with keys: brand, name. Use English names when possible. "
+        "If no perfume is mentioned, return empty strings."
+    )
+    model = ChatOpenAI(model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"), temperature=0)
+    messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_text)]
+    try:
+        response = model.invoke(messages)
+        raw = response.content or ""
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start == -1 or end == -1:
+            return []
+        payload = json.loads(raw[start : end + 1])
+    except Exception:
+        return []
+
+    if not isinstance(payload, dict):
+        return []
+    brand = str(payload.get("brand", "")).strip()
+    name = str(payload.get("name", "")).strip()
+    queries: list[str] = []
+    if brand and name:
+        queries.append(f"{brand} {name}")
+    if name:
+        queries.append(name)
+    return queries
+
+
+def _collect_perfume_candidates(
+    user_text: str,
+    repository: PerfumeRepository,
+    limit: int = 6,
+) -> list[tuple[Any, float, str]]:
+    hits: list[tuple[Any, float, str]] = []
+    hits.extend(repository.find_perfume_candidates(user_text, limit=limit))
+
+    if not hits:
+        segments = _split_query_segments(user_text)
+        for segment in segments:
+            hits.extend(repository.find_perfume_candidates(segment, limit=limit))
+
+    if not hits:
+        normalized = _normalize_text_for_match(user_text)
+        tokens = normalized.split()
+        if 2 <= len(tokens) <= 8:
+            for size in range(2, min(5, len(tokens)) + 1):
+                for idx in range(len(tokens) - size + 1):
+                    phrase = " ".join(tokens[idx : idx + size])
+                    hits.extend(repository.find_perfume_candidates(phrase, limit=limit))
+
+    if not hits:
+        for query in _extract_perfume_query_llm(user_text):
+            hits.extend(repository.find_perfume_candidates(query, limit=limit))
+
+    return _merge_candidate_hits(hits)
 
 
 def analyze_user_input(user_text: str) -> PreferenceSummary:
@@ -165,6 +264,26 @@ def is_info_request(user_text: str) -> bool:
     return any(token in normalized for token in keywords)
 
 
+def is_application_request(user_text: str) -> bool:
+    normalized = user_text.lower()
+    if "어디에나" in normalized:
+        return False
+    action_terms = ["뿌려", "분사", "바르", "바르는", "레이어링할 때"]
+    location_terms = ["어디", "부위", "피부", "손목", "목", "귀 뒤"]
+    return any(term in normalized for term in action_terms) and any(
+        term in normalized for term in location_terms
+    )
+
+
+def _is_context_pairing_request(user_text: str) -> bool:
+    normalized = user_text.lower()
+    triggers = ["방금", "아까", "이전", "지난", "추천한", "그 향수", "저 향수"]
+    pairing_terms = ["레이어링", "섞", "같이", "조합", "어때", "가능"]
+    return any(token in normalized for token in triggers) and any(
+        token in normalized for token in pairing_terms
+    )
+
+
 def is_brand_layering_request(user_text: str) -> bool:
     normalized = user_text.lower()
     if "향수" not in normalized and "브랜드" not in normalized:
@@ -189,6 +308,15 @@ def analyze_user_query(
         preferences = _heuristic_preferences(user_text)
 
     if is_info_request(user_text):
+        info_candidates = _collect_perfume_candidates(user_text, repository, limit=3)
+        detected = _build_detected_perfumes(info_candidates)
+        if detected:
+            info = get_perfume_info(detected[0].perfume_id)
+            return UserQueryAnalysis(
+                raw_text=user_text,
+                detected_perfumes=detected,
+                recommended_perfume_info=info,
+            )
         if context_recommended_perfume_id:
             info = get_perfume_info(context_recommended_perfume_id)
             return UserQueryAnalysis(
@@ -198,12 +326,36 @@ def analyze_user_query(
             )
         return UserQueryAnalysis(raw_text=user_text, detected_perfumes=[])
 
-    candidates = repository.find_perfume_candidates(user_text, limit=6)
+    candidates = _collect_perfume_candidates(user_text, repository, limit=6)
     detected_perfumes = _build_detected_perfumes(candidates)
 
     detected_pair = None
     pairing_analysis = None
-    if len(detected_perfumes) >= 2:
+    context_pairing_request = _is_context_pairing_request(user_text)
+    if (
+        context_recommended_perfume_id
+        and context_pairing_request
+        and len(detected_perfumes) == 1
+    ):
+        base_candidate = detected_perfumes[0]
+        candidate_id = context_recommended_perfume_id
+        if base_candidate.perfume_id != candidate_id:
+            detected_pair = DetectedPair(
+                base_perfume_id=base_candidate.perfume_id,
+                candidate_perfume_id=candidate_id,
+            )
+            pairing_result = evaluate_pair(
+                base_candidate.perfume_id,
+                candidate_id,
+                preferences.keywords,
+                repository,
+            )
+            pairing_analysis = PairingAnalysis(
+                base_perfume_id=base_candidate.perfume_id,
+                candidate_perfume_id=candidate_id,
+                result=pairing_result,
+            )
+    elif len(detected_perfumes) >= 2:
         base_candidate = detected_perfumes[0]
         candidate = detected_perfumes[1]
         detected_pair = DetectedPair(
@@ -227,7 +379,7 @@ def analyze_user_query(
         if brand_candidates:
             brand_name = brand_candidates[0]
             brand_perfumes = repository.get_brand_perfumes(brand_name)
-            best_perfume, avg_score, _ = rank_brand_universal_perfume(
+            best_perfume, avg_score, _, reason = rank_brand_universal_perfume(
                 brand_perfumes,
                 repository,
             )
@@ -243,6 +395,7 @@ def analyze_user_query(
                         image_url=best_perfume.image_url,
                     ),
                     brand_best_score=round(avg_score, 3),
+                    brand_best_reason=reason,
                 )
 
     return UserQueryAnalysis(
@@ -260,7 +413,7 @@ def suggest_perfume_options(
 ) -> list[str]:
     if not user_text or not user_text.strip():
         return []
-    candidates = repository.find_perfume_candidates(user_text, limit=limit)
+    candidates = _collect_perfume_candidates(user_text, repository, limit=limit)
     detected = _build_detected_perfumes(candidates)
     return [f"{item.perfume_name} ({item.perfume_brand})" for item in detected]
 

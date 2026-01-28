@@ -34,11 +34,14 @@ function AuthSync({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         if (status === "authenticated" && session?.user) {
             // 카카오 로그인 세션이 있으면 localAuth에도 저장
+            const user = session.user as any;
             const localAuthData = {
-                memberId: session.user.id,
-                email: session.user.email || "",
-                nickname: session.user.name || "",
-                profileImage: session.user.image || "",
+                memberId: user.id,
+                email: user.email || "",
+                nickname: user.name || "",
+                profileImage: user.image || "",
+                roleType: user.roleType || "USER",
+                user_mode: user.userMode || "BEGINNER",
                 provider: "kakao",
                 loggedInAt: new Date().toISOString(),
             };

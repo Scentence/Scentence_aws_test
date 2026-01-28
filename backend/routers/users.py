@@ -297,11 +297,13 @@ def login_with_kakao(req: KakaoLoginRequest):
 
 
         role_type = _get_role_type(cur, member_id)
+        user_mode = _get_user_mode(cur, member_id)
         conn.commit()
         return {
             "member_id": str(member_id),
             "nickname": nickname,
             "role_type": role_type,
+            "user_mode": user_mode,
         }
 
     except Exception as e:
@@ -437,6 +439,22 @@ def _get_role_type(cur, member_id: int) -> str:
         return (role_type or "USER").upper()
     except psycopg2.errors.UndefinedColumn:
         return "USER"
+
+
+def _get_user_mode(cur, member_id: int) -> str:
+    """회원의 user_mode를 조회 (챗봇 응답 스타일 결정용)"""
+    try:
+        cur.execute(
+            "SELECT user_mode FROM tb_member_basic_m WHERE member_id=%s",
+            (member_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return "BEGINNER"
+        user_mode = row.get("user_mode")
+        return (user_mode or "BEGINNER").upper()
+    except psycopg2.errors.UndefinedColumn:
+        return "BEGINNER"
 
 
 def _is_admin_member(cur, member_id: int) -> bool:

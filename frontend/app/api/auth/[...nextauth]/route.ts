@@ -51,9 +51,11 @@ const handler = NextAuth({
                         return `/link-account?${params.toString()}`;
                     }
 
-                    user.id = data.member_id; // DB의 진짜 회원번호(PK) 가져오기
-                    console.log('[NextAuth signIn] member_id from backend:', data.member_id);
-                    console.log('[NextAuth signIn] user.id set to:', user.id);
+                    // DB에서 받은 정보를 user 객체에 저장
+                    user.id = data.member_id;
+                    (user as any).roleType = data.role_type || "USER";
+                    (user as any).userMode = data.user_mode || "BEGINNER";
+                    console.log('[NextAuth signIn] member_id:', data.member_id, 'role_type:', data.role_type, 'user_mode:', data.user_mode);
                     return true;
                 } catch (error) {
                     console.error('Sync Error:', error);
@@ -63,17 +65,18 @@ const handler = NextAuth({
             return true;
         },
         async jwt({ token, user }) {
-            console.log('[NextAuth jwt] user:', user);
-            console.log('[NextAuth jwt] user?.id:', user?.id);
             if (user) {
-                token.id = user.id; // 토큰에 회원번호 심기
-                console.log('[NextAuth jwt] token.id set to:', token.id);
+                token.id = user.id;
+                token.roleType = (user as any).roleType || "USER";
+                token.userMode = (user as any).userMode || "BEGINNER";
             }
             return token;
         },
         async session({ session, token }) {
             if (session.user) {
-                session.user.id = token.id as string; // 세션에서 회원번호 꺼낼 수 있게
+                session.user.id = token.id as string;
+                (session.user as any).roleType = token.roleType as string;
+                (session.user as any).userMode = token.userMode as string;
             }
             return session;
         }

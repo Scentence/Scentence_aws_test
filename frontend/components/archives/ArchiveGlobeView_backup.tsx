@@ -1,10 +1,9 @@
 "use client";
 
-import React, { useMemo, useRef, useState, useEffect } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { Canvas, useFrame, useThree, extend } from "@react-three/fiber";
-import { OrbitControls, Html, useCursor, Sparkles, Float, Billboard, shaderMaterial } from "@react-three/drei";
-import { EffectComposer, Bloom } from "@react-three/postprocessing";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { OrbitControls, Html, useCursor, Sparkles, Float, Billboard } from "@react-three/drei";
 
 interface MyPerfume {
     my_perfume_id: number;
@@ -29,7 +28,6 @@ const CARD_THICKNESS = 0.05;
 // [TWEAK] Hover/Focus Scale Factors
 const HOVER_SCALE = 1.15;
 const FOCUS_SCALE = 1.5;
-const IMAGE_HOVER_SCALE = 1.1; // 이미지 호버 스케일
 
 const MOCK_IMAGES = [
     "https://images.unsplash.com/photo-1615634260167-c8cdede054de?auto=format&fit=crop&w=400&q=80",
@@ -142,19 +140,16 @@ function PerfumeCard({
 
                     <AnimatedCardContent isDimmed={isDimmed} isFocused={isFocused}>
 
-                        {/* [GOLD GLOW BACKING]
-                            meshStandardMaterial with emissive for bloom effect
-                            Show only on Hover/Focus
+                        {/* [GOLD GLOW BACKING] 
+                            MeshBasicMaterial -> Ignore Light -> Always Visible 
+                            Show only on Hover/Focus 
                         */}
                         <mesh position={[0, 0, -0.06]}>
                             <boxGeometry args={[CARD_WIDTH + 0.15, CARD_HEIGHT + 0.15, 0.01]} />
-                            <meshStandardMaterial
-                                color="#C5A55D"
-                                emissive="#C5A55D"
-                                emissiveIntensity={(hovered || isFocused) && !isDimmed ? 2 : 0}
+                            <meshBasicMaterial
+                                color="#FFD700" // Pure Gold
                                 transparent
                                 opacity={(hovered || isFocused) && !isDimmed ? 1 : 0}
-                                toneMapped={false}
                             />
                         </mesh>
 
@@ -203,10 +198,7 @@ function PerfumeCard({
                                             <img
                                                 src={displayImage}
                                                 alt={displayName}
-                                                className="w-full h-full object-cover transition-transform duration-300 ease-out"
-                                                style={{
-                                                    transform: (hovered || isFocused) ? `scale(${IMAGE_HOVER_SCALE})` : 'scale(1)',
-                                                }}
+                                                className="w-full h-full object-cover"
                                             />
                                         )}
                                     </div>
@@ -322,16 +314,6 @@ export default function ArchiveGlobeView({ collection = [], isKorean = true }: G
                     autoRotateSpeed={0.05}
                     dampingFactor={0.05}
                 />
-
-                {/* Bloom Effect for Gold Glow */}
-                <EffectComposer>
-                    <Bloom
-                        luminanceThreshold={0.5}
-                        luminanceSmoothing={0.9}
-                        intensity={0.8}
-                        mipmapBlur
-                    />
-                </EffectComposer>
             </Canvas>
 
             <div className="absolute bottom-6 left-0 w-full text-center pointer-events-none opacity-30 select-none">

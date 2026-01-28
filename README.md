@@ -6,6 +6,7 @@ package.json에 추가했습니다.
 "@react-three/drei": "^10.7.7",
 "@react-three/fiber": "^9.5.0",
 "@types/three": "^0.182.0",
+"@react-three/postprocessing": "^10.7.7",
 
 **실행에 문제있으시면**
 docker compose down 혹은 docker compose down -v로

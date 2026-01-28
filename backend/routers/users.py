@@ -519,7 +519,7 @@ def login_local_user(req: LocalLoginRequest):
     try:
         cur.execute(
             """
-            SELECT member_id, pwd_hash, role_type
+            SELECT member_id, pwd_hash, role_type, user_mode
             FROM tb_member_basic_m
             WHERE login_id=%s AND join_channel='LOCAL'
             """,
@@ -546,9 +546,12 @@ def login_local_user(req: LocalLoginRequest):
             conn.commit()
             raise HTTPException(status_code=410, detail="Account deleted")
 
+        # [추가] user_mode가 없으면 기본값 'BEGINNER'
+        user_mode = row.get("user_mode")
         return {
             "member_id": str(row["member_id"]),
             "role_type": (row.get("role_type") or "USER").upper(),
+            "user_mode": (user_mode or "BEGINNER").upper(), # [추가] 반환
         }
 
     except HTTPException:

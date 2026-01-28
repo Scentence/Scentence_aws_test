@@ -1,3 +1,4 @@
+
 export default function ContactPage() {
     return (
         <div className="w-full h-screen bg-[#E5E5E5] flex items-center justify-center">

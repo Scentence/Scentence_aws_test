@@ -5,7 +5,10 @@ interface MyPerfume {
     my_perfume_id: number;
     perfume_id: number;
     name: string;
+    name_en?: string;
+    name_kr?: string;
     brand: string;
+    brand_kr?: string; // 추가
     image_url: string | null;
     status: string;
 }
@@ -13,12 +16,14 @@ interface MyPerfume {
 interface Props {
     perfume: MyPerfume;
     onSelect: (perfume: MyPerfume) => void;
+    isKorean: boolean; // prop 추가
 }
 
-export default function CabinetShelf({ perfume, onSelect }: Props) {
+export default function CabinetShelf({ perfume, onSelect, isKorean }: Props) {
     // 상태별 색상 (삼각형)
     const cornerColor = perfume.status === 'HAVE' ? 'border-t-indigo-600' :
-        perfume.status === 'WANT' ? 'border-t-rose-500' : 'border-t-gray-400';
+        perfume.status === 'HAD' ? 'border-t-amber-500' :
+            (perfume.status === 'WANT' || perfume.status === 'RECOMMENDED') ? 'border-t-rose-500' : 'border-t-gray-400';
 
     return (
         <div
@@ -53,7 +58,7 @@ export default function CabinetShelf({ perfume, onSelect }: Props) {
                         <img
                             src={perfume.image_url}
                             alt={perfume.name}
-                            className="w-full h-full object-contain drop-shadow-md group-hover:scale-110 transition duration-500 will-change-transform mix-blend-multiply"
+                            className="w-full h-full object-contain drop-shadow-md scale-[1.2] -translate-y-2 group-hover:scale-[1.25] transition duration-500 will-change-transform mix-blend-multiply"
                         />
                     ) : (
                         <div className="text-gray-300 text-xs">No Image</div>
@@ -61,14 +66,14 @@ export default function CabinetShelf({ perfume, onSelect }: Props) {
                 </div>
             </div>
 
-            {/* 텍스트 정보 */}
-            <div className="pt-3 pb-1 flex-1 flex flex-col justify-center px-1">
-                <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1 truncate">
-                    {perfume.brand}
+            {/* Text Info */}
+            <div className="mt-4 text-center">
+                <p className="text-[10px] tracking-widest text-gray-400 uppercase font-medium">
+                    {isKorean && perfume.brand_kr ? perfume.brand_kr : perfume.brand}
                 </p>
-                <p className="text-gray-800 font-bold text-sm leading-snug line-clamp-2 group-hover:text-[#C5A55D] transition-colors">
-                    {perfume.name}
-                </p>
+                <h3 className="text-sm font-bold text-gray-900 mt-1 leading-tight line-clamp-2">
+                    {isKorean && perfume.name_kr ? perfume.name_kr : (perfume.name_en || perfume.name)}
+                </h3>
             </div>
         </div>
     );

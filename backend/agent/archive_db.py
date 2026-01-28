@@ -17,7 +17,7 @@ def get_my_perfumes(member_id: int) -> List[Dict[str, Any]]:
     my_perfumes = []
     try:
         cur = conn_user.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        # 성욱님이 쓰시던 테이블명: tb_member_my_perfume_t
+        # 테이블명: tb_member_my_perfume_t
         cur.execute("""
             SELECT 
                 p.member_id, p.perfume_id, p.perfume_name, p.register_status, p.preference,

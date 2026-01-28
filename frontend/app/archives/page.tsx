@@ -194,13 +194,13 @@ export default function ArchivesPage() {
                     Scentence
                 </Link>
                 <div className="flex items-center gap-4">
-                    {/* Language Toggle */}
+                    {/* Language Toggle (Simple) */}
                     <button
                         onClick={() => setIsKorean(!isKorean)}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-full border border-gray-200 text-xs font-bold text-gray-600 hover:bg-gray-50 transition"
+                        className="w-9 h-9 flex items-center justify-center rounded-full border border-gray-200 text-xs font-bold text-gray-600 hover:bg-black hover:text-white transition-all shadow-sm"
+                        title={isKorean ? "Switch to English" : "한글로 전환"}
                     >
-                        <span>🌐</span>
-                        <span>{isKorean ? "한글" : "ENG"}</span>
+                        {isKorean ? "KR" : "EN"}
                     </button>
 
                     <button onClick={() => setIsSearchOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-[#C5A55D] text-white rounded-full hover:bg-[#B09045] transition shadow-md shadow-[#C5A55D]/20">
@@ -299,7 +299,15 @@ export default function ArchivesPage() {
                 </div>
             </Link>
 
-            {isSearchOpen && <PerfumeSearchModal memberId={String(memberId)} onClose={() => setIsSearchOpen(false)} onAdd={handleAdd} />}
+            {isSearchOpen && (
+                <PerfumeSearchModal
+                    memberId={String(memberId)}
+                    onClose={() => setIsSearchOpen(false)}
+                    onAdd={handleAdd}
+                    isKorean={isKorean}                    // <--- 추가 1: 모달에게 "지금 한글이야?" 알려줌
+                    onToggleLanguage={() => setIsKorean(!isKorean)} // <--- 추가 2: 모달에서 언어 바꾸면 부모도 바뀜
+                />
+            )}
             {selectedPerfume && <PerfumeDetailModal perfume={selectedPerfume} onClose={() => setSelectedPerfume(null)} onUpdateStatus={handleUpdateStatus} onDelete={handleDelete} onUpdatePreference={handleUpdatePreference} isKorean={isKorean} />}
         </div>
     );

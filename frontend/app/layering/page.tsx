@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react"; // 카카오 로그인 세션
 import Link from "next/link";
 import AccordWheel from "@/components/layering/AccordWheel";
 import { BACKEND_ACCORDS, ACCORD_LABELS } from "@/lib/accords";
+import LayeringPerfumePicker from "@/components/layering/LayeringPerfumePicker"; // 내 향수 불러오기
 
 // ==================== 타입 정의 ====================
 
@@ -350,6 +351,9 @@ export default function LayeringPage() {
 
   /** 채팅 메시지 영역 자동 스크롤을 위한 ref */
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  /** 채팅 입력 입력창 포커스를 위한 ref */
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   /**
    * 채팅 메시지가 업데이트될 때마다 자동으로 스크롤
@@ -1021,10 +1025,10 @@ export default function LayeringPage() {
                 >
                   <div
                     className={`max-w-[85%] rounded-2xl px-4 py-3 ${message.type === "user"
-                        ? "bg-[#2E2B28] text-white rounded-br-sm"
-                        : message.isRecommendation
-                          ? "bg-gradient-to-r from-[#C8A24D]/20 to-[#D4B570]/20 text-[#2E2B28] border-2 border-[#C8A24D]/40 rounded-bl-sm"
-                          : "bg-[#F8F4EC] text-[#2E2B28] border border-[#E6DDCF] rounded-bl-sm"
+                      ? "bg-[#2E2B28] text-white rounded-br-sm"
+                      : message.isRecommendation
+                        ? "bg-gradient-to-r from-[#C8A24D]/20 to-[#D4B570]/20 text-[#2E2B28] border-2 border-[#C8A24D]/40 rounded-bl-sm"
+                        : "bg-[#F8F4EC] text-[#2E2B28] border border-[#E6DDCF] rounded-bl-sm"
                       }`}
                   >
                     <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
@@ -1106,37 +1110,56 @@ export default function LayeringPage() {
 
             {/* 입력창 영역 - 하단 고정 */}
             <div className="px-6 py-4 bg-white border-t border-[#E2D7C5]">
-              <div className="flex gap-2 items-end">
-                <textarea
-                  value={queryText}
-                  onChange={(event) => setQueryText(event.target.value)}
-                  onKeyDown={(event) => {
-                    // Enter 키로 전송 (Shift+Enter는 줄바꿈)
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault();
-                      handleAnalyze();
-                    }
-                  }}
-                  spellCheck={false}
-                  className="flex-1 rounded-xl border border-[#E1D7C8] bg-white px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#7A6B57]/30 focus:border-[#7A6B57] transition-all h-[72px]"
-                  placeholder="예: CK One이 있는데 더 시트러스하고 시원한 느낌이 나게 하려면?"
-                  disabled={loading}
-                  aria-label="레이어링 질문 입력"
-                />
-                <button
-                  onClick={handleAnalyze}
-                  className="rounded-xl bg-[#2E2B28] px-3 text-sm font-semibold text-white transition-all hover:bg-[#1E1C1A] disabled:opacity-50 disabled:cursor-not-allowed h-[72px] w-[72px] flex items-center justify-center flex-shrink-0"
-                  disabled={loading || !queryText.trim()}
-                  aria-label="메시지 전송"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                  </svg>
-                </button>
+              <div className="flex flex-col gap-2">
+                <div className="flex gap-2 items-center w-full">
+                  {/* [추가] 내 향수 선택 팝오버 */}
+                  <LayeringPerfumePicker
+                    memberId={getMemberId(session?.user?.id)}
+                    onSelect={(name) => {
+                      const newText = queryText + (queryText ? " " : "") + name;
+                      setQueryText(newText);
+                      // 향수 선택 후 입력창에 자동 포커스 및 커서를 맨 뒤로 이동
+                      setTimeout(() => {
+                        if (textareaRef.current) {
+                          textareaRef.current.focus();
+                          textareaRef.current.setSelectionRange(newText.length, newText.length);
+                        }
+                      }, 0);
+                    }}
+                  />
+
+                  <textarea
+                    ref={textareaRef}
+                    value={queryText}
+                    onChange={(event) => setQueryText(event.target.value)}
+                    onKeyDown={(event) => {
+                      // Enter 키로 전송 (Shift+Enter는 줄바꿈)
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        handleAnalyze();
+                      }
+                    }}
+                    spellCheck={false}
+                    className="flex-1 rounded-xl border border-[#E1D7C8] bg-white px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#7A6B57]/30 focus:border-[#7A6B57] transition-all h-[72px]"
+                    placeholder="예: CK One이 있는데 더 시트러스하고 시원한 느낌이 나게 하려면?"
+                    disabled={loading}
+                    aria-label="레이어링 질문 입력"
+                  />
+                  <button
+                    onClick={handleAnalyze}
+                    className="rounded-xl bg-[#2E2B28] px-3 text-sm font-semibold text-white transition-all hover:bg-[#1E1C1A] disabled:opacity-50 disabled:cursor-not-allowed h-[72px] w-[72px] flex items-center justify-center flex-shrink-0"
+                    disabled={loading || !queryText.trim()}
+                    aria-label="메시지 전송"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                  </button>
+                </div>
+                <p className="text-[10px] text-[#8A7F73]">
+                  Enter로 전송, Shift+Enter로 줄바꿈
+                </p>
               </div>
-              <p className="text-[10px] text-[#8A7F73] mt-2">
-                Enter로 전송, Shift+Enter로 줄바꿈
-              </p>
             </div>
           </div>
         </section>

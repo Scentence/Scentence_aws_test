@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import os
-
+from agent.user_mode import normalize_user_mode
 from langchain_core.messages import HumanMessage, AIMessage
 
 # 모듈 임포트

@@ -73,9 +73,12 @@ export const ncardService = {
 
   // 추가
   // 향수 맵 분석 데이터를 기반으로 실제 향기 카드를 생성하고 저장
-  generateAndSaveCard: async (analysisData: any): Promise<ScentCard> => {
+  generateAndSaveCard: async (mbti: string, selectedAccords: string[]): Promise<ScentCard> => {
     try {
-      const response = await axios.post(`${API_CONFIG.BASE_URL}/ncard/generate`, analysisData);
+      const response = await axios.post(`${API_CONFIG.BASE_URL}/ncard/generate`, {
+        mbti,
+        selected_accords: selectedAccords
+      });
       return response.data;
     } catch (error) {
       console.error('Failed to generate card:', error);

@@ -27,10 +27,25 @@ export const useNCard = () => {
     }
   };
 
+  // 카드 생성 함수 추가
+  const generateCard = async (mbti: string, selectedAccords: string[]) => {
+    try {
+      setLoading(true);
+      const newCard = await ncardService.generateAndSaveCard(mbti, selectedAccords);
+      setCards(prev => [newCard, ...prev]);
+      return newCard;
+    } catch (err) {
+      setError('Failed to generate scent card');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // 컴포넌트 마운트 시 최초 1회 실행
   useEffect(() => {
     fetchCards();
   }, []);
 
-  return { cards, loading, error, refresh: fetchCards };
+  return { cards, loading, error, refresh: fetchCards, generateCard };
 };

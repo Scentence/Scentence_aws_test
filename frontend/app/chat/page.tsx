@@ -112,12 +112,9 @@ export default function ChatPage() {
         // [★추가] 로그인 정보(MemberID) 가져오기 (카카오 세션 또는 로컬 로그인)
         let currentMemberId = 0;
         let currentUserMode = "BEGINNER";
-        console.log("[ChatPage] session:", session); // 디버깅
-        console.log("[ChatPage] session.user.id:", session?.user?.id); // 디버깅
         // 카카오 로그인 세션 확인
         if (session?.user?.id) {
             currentMemberId = parseInt(session.user.id, 10);
-            console.log("[ChatPage] Using Kakao member_id:", currentMemberId); // 디버깅
         } else {
             // 로컬 로그인 확인
             try {

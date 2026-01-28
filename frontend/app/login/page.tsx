@@ -52,10 +52,10 @@ export default function LoginPage() {
         return;
       }
       const data = await response.json().catch(() => null);
-        if (data?.withdraw_pending && data?.member_id) {
-          window.location.href = `/recover?memberId=${data.member_id}`;
-          return;
-        }
+      if (data?.withdraw_pending && data?.member_id) {
+        window.location.href = `/recover?memberId=${data.member_id}`;
+        return;
+      }
       let nickname = null;
       let roleType = data?.role_type ?? null;
       if (data?.member_id) {
@@ -159,11 +159,10 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className={`w-full py-3 rounded-xl font-bold transition ${
-              isSubmitting
+            className={`w-full py-3 rounded-xl font-bold transition ${isSubmitting
                 ? "bg-gray-300 text-gray-500 cursor-not-allowed"
                 : "bg-black text-white hover:opacity-90"
-            }`}
+              }`}
           >
             계속
           </button>

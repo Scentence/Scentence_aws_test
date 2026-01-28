@@ -697,6 +697,18 @@ def save_recommendation_feedback(
             message="member_id is missing",
         )
 
+    if preference != "GOOD":
+        logger.info(
+            "Skip recommendation feedback save (preference=%s)",
+            preference,
+        )
+        return schemas.SaveResult(
+            target="my_perfume",
+            saved=False,
+            saved_count=0,
+            message="only GOOD feedback is saved",
+        )
+
     try:
         conn = get_recom_db_connection()
         cur = conn.cursor()

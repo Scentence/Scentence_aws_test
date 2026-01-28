@@ -17,6 +17,7 @@ try:  # pragma: no cover - fallback for script execution
     from .agent.graph import (
         analyze_user_input,
         analyze_user_query,
+        is_application_request,
         is_info_request,
         suggest_perfume_options,
     )
@@ -42,7 +43,13 @@ except ImportError:  # pragma: no cover
         save_my_perfume,
         save_recommendation_results,
     )
-    from agent.graph import analyze_user_input, analyze_user_query, is_info_request, suggest_perfume_options
+    from agent.graph import (
+        analyze_user_input,
+        analyze_user_query,
+        is_application_request,
+        is_info_request,
+        suggest_perfume_options,
+    )
     from agent.schemas import (
         PerfumeBasic,
         LayeringError,
@@ -248,6 +255,30 @@ def layering_analyze(payload: UserQueryRequest) -> UserQueryResponse:
         preferences = analyze_user_input(payload.user_text)
         keywords = preferences.keywords
         info_request = is_info_request(payload.user_text)
+        if is_application_request(payload.user_text):
+            note = (
+                "레이어링은 맥박이 뛰는 부위에 1~2회씩 얇게 뿌리고,"
+                " 지속력이 강한 향은 먼저, 가벼운 향은 나중에 덧뿌리면 좋아요."
+                " 손목·귀 뒤·목선처럼 체온이 있는 곳을 추천합니다."
+            )
+            return UserQueryResponse(
+                raw_text=payload.user_text,
+                keywords=keywords,
+                base_perfume_id=None,
+                base_perfume=None,
+                detected_perfumes=[],
+                detected_pair=None,
+                recommendation=None,
+                recommended_perfume_info=None,
+                brand_name=None,
+                brand_best_perfume=None,
+                brand_best_score=None,
+                brand_best_reason=None,
+                clarification_prompt=None,
+                clarification_options=[],
+                note=note,
+                save_results=[],
+            )
         analysis = analyze_user_query(
             payload.user_text,
             repo,
@@ -262,6 +293,7 @@ def layering_analyze(payload: UserQueryRequest) -> UserQueryResponse:
         brand_name = analysis.brand_name
         brand_best_perfume = analysis.brand_best_perfume
         brand_best_score = analysis.brand_best_score
+        brand_best_reason = analysis.brand_best_reason
         save_results = []
         skip_recommendation = False
 
@@ -381,6 +413,7 @@ def layering_analyze(payload: UserQueryRequest) -> UserQueryResponse:
         brand_name=brand_name,
         brand_best_perfume=brand_best_perfume,
         brand_best_score=brand_best_score,
+        brand_best_reason=brand_best_reason,
         clarification_prompt=clarification_prompt,
         clarification_options=clarification_options,
         note=note,

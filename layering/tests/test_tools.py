@@ -99,17 +99,40 @@ def test_rank_brand_universal_perfume_returns_top_pick():
     sample = next(iter(repo.all_candidates()))
     brand_perfumes = repo.get_brand_perfumes(sample.perfume_brand)
 
-    best_perfume, avg_score, count = rank_brand_universal_perfume(brand_perfumes, repo)
+    best_perfume, avg_score, count, reason = rank_brand_universal_perfume(brand_perfumes, repo)
 
     assert best_perfume is not None
     assert isinstance(avg_score, float)
     assert isinstance(count, int)
+    assert isinstance(reason, str)
 
 
 def test_rank_brand_universal_perfume_handles_empty_list():
     repo = PerfumeRepository()
-    best_perfume, avg_score, count = rank_brand_universal_perfume([], repo)
+    best_perfume, avg_score, count, reason = rank_brand_universal_perfume([], repo)
 
     assert best_perfume is None
     assert avg_score == 0.0
     assert count == 0
+    assert reason is None
+
+
+def test_get_target_vector_spicy_keyword():
+    vector = get_target_vector(["spicy"])
+    assert vector[ACCORD_INDEX["Spicy"]] == 30.0
+
+
+def test_rank_recommendations_excludes_base_name_brand():
+    repo = PerfumeRepository()
+    base = next(iter(repo.all_candidates()))
+    recommendations, _ = rank_recommendations(base.perfume_id, [], repo)
+
+    base_name = base.perfume_name.lower()
+    base_brand = base.perfume_brand.lower()
+    assert all(
+        not (
+            rec.perfume_name.lower() == base_name
+            and rec.perfume_brand.lower() == base_brand
+        )
+        for rec in recommendations
+    )

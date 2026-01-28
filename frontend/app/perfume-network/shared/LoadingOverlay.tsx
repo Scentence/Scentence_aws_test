@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 /**
  * 향수 맵 및 카드 생성 시 사용되는 공통 로딩 오버레이

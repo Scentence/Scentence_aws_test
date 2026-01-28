@@ -311,46 +311,22 @@
       "P": 35
     }
   },
-  "axis_descriptions": {
-    "E": {
-      "name": "Extraversion (외향)",
-      "description": "공간을 채우는 압도적 존재감 및 화려한 오프닝",
-      "keywords": ["외향적", "확산성", "강렬한", "화려한"]
-    },
-    "I": {
-      "name": "Introversion (내향)",
-      "description": "피부에 밀착되어 은은하게 남는 내밀한 여운",
-      "keywords": ["내향적", "밀착된", "은은한", "친밀한"]
-    },
-    "S": {
-      "name": "Sensing (감각)",
-      "description": "원료의 생동감이 느껴지는 직관적이고 사실적인 향",
-      "keywords": ["직관적", "사실적", "원료중심", "생동감"]
-    },
-    "N": {
-      "name": "Intuition (직관)",
-      "description": "장면과 기억을 소환하는 추상적이고 서사적인 향",
-      "keywords": ["추상적", "서사적", "몽환적", "이미지중심"]
-    },
-    "T": {
-      "name": "Thinking (사고)",
-      "description": "이성적이고 정돈된 드라이/메탈릭한 구조적 인상",
-      "keywords": ["논리적", "구조적", "드라이", "메탈릭"]
-    },
-    "F": {
-      "name": "Feeling (감정)",
-      "description": "감성을 자극하는 부드럽고 따뜻한 포근한 인상",
-      "keywords": ["감성적", "따뜻한", "부드러운", "포근한"]
-    },
-    "J": {
-      "name": "Judging (판단)",
-      "description": "균형 잡힌 밸런스의 대중적이고 클래식한 조화",
-      "keywords": ["체계적", "클래식", "안정적", "균형잡힌"]
-    },
-    "P": {
-      "name": "Perceiving (인식)",
-      "description": "독특한 킥(Kick)이 있는 실험적이고 개성 있는 감성",
-      "keywords": ["개성적", "실험적", "독특한", "자유로운"]
-    }
+  "mbti_code_mapping": {
+    "ESFJ": "ESFJ",
+    "ESFP": "ESFP",
+    "ESTJ": "ESTJ",
+    "ESTP": "ESTP",
+    "ISFJ": "ISFJ",
+    "ISFP": "ISFP",
+    "ISTJ": "ISTJ",
+    "ISTP": "ISTP",
+    "ENFJ": "ENFJ",
+    "ENFP": "ENFP",
+    "ENTJ": "ENTJ",
+    "ENTP": "ENTP",
+    "INFJ": "INFJ",
+    "INFP": "INFP",
+    "INTJ": "INTJ",
+    "INTP": "INTP"
   }
 }

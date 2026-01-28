@@ -9,6 +9,7 @@ import NMapDetailPanel from "./components/NMapDetailPanel";
 import CardTriggerBanner from "@/app/perfume-network/shared/CardTriggerBanner";
 import LoadingOverlay from "@/app/perfume-network/shared/LoadingOverlay";
 import ScentCardModal from "@/app/perfume-network/ncard/ScentCardModal";
+import { NScentCard } from "@/app/perfume-network/ncard/NScentCard";
 
 export default function NMapView({ sessionUserId }: { sessionUserId?: string | number }) {
   const {
@@ -40,13 +41,33 @@ export default function NMapView({ sessionUserId }: { sessionUserId?: string | n
     handleGenerateCard,
     myPerfumeIds,
     myPerfumeFilters,
+    interactionCount,
   } = usePerfumeNetwork(sessionUserId);
 
   const [showLoginPrompt, setShowLoginPrompt] = React.useState(false);
 
+  // 어코드 클릭 시 지도 필터 업데이트 핸들러
+  const handleAccordClick = (accordName: string) => {
+    let newAccords: string[];
+    setSelectedAccords(prev => {
+      if (prev.includes(accordName)) {
+        newAccords = prev.filter(a => a !== accordName);
+      } else {
+        newAccords = [...prev, accordName];
+      }
+      return newAccords;
+    });
+    
+    // 상태 업데이트 반영을 위해 약간의 지연 후 로깅하거나, 
+    // 혹은 직접 계산된 값을 전달하여 정확한 데이터를 서버에 전송합니다.
+    setTimeout(() => {
+      logActivity({ accord_selected: accordName });
+    }, 0);
+  };
+
   return (
-    <div className="min-h-screen bg-[#F5F2EA] text-[#1F1F1F]">
-      <div className="max-w-7xl mx-auto px-6 py-12 space-y-12">
+    <div className="min-h-screen bg-[#F5F2EA] text-[#1F1F1F] relative overflow-x-hidden">
+      <div className={`max-w-7xl mx-auto px-6 py-12 space-y-12 transition-all duration-500 ${showCardModal && generatedCard ? 'mr-[440px]' : ''}`}>
         <NMapHeader />
 
         <NMapFilters
@@ -154,32 +175,37 @@ export default function NMapView({ sessionUserId }: { sessionUserId?: string | n
       )}
 
       {/* 고정 버튼 (하단 우측) */}
-      <div className="fixed bottom-6 right-6 z-50">
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
+        {/* 클릭 카운트 표시 (개발 확인용) */}
+        <div className="bg-white/80 backdrop-blur-md border border-[#E2D7C5] px-3 py-1.5 rounded-full text-[10px] font-bold text-[#7A6B57] shadow-sm animate-fade-in">
+          탐색 활동: <span className="text-[#C8A24D]">{interactionCount}</span>
+        </div>
+
         <button
           onClick={() => cardTriggerReady ? handleGenerateCard() : alert("아직 정보가 충분하지 않아요. 관심있는 향이나 필터를 더 클릭해보세요!")}
           className={`relative w-16 h-16 rounded-full shadow-2xl flex items-center justify-center text-3xl transition-all duration-300 group ${cardTriggerReady ? "bg-gradient-to-br from-[#6B4E71] via-[#8B6E8F] to-[#9B7EAC] animate-pulse-glow hover:scale-110" : "bg-gradient-to-br from-[#6B4E71] to-[#8B6E8F] hover:scale-105"}`}
-          title={cardTriggerReady ? "나의 향 MBTI 확인하기 (준비 완료!)" : "더 많은 향기를 탐색해보세요"}
+          title={generatedCard ? (cardTriggerReady ? "새로운 정보를 토대로 향 MBTI 다시 만들기" : "더 탐색하면 다시 만들 수 있어요") : (cardTriggerReady ? "나의 향 MBTI 확인하기 (준비 완료!)" : "더 많은 향기를 탐색해보세요")}
         >
           {cardTriggerReady && <div className="absolute inset-0 rounded-full bg-gradient-to-r from-transparent via-white to-transparent opacity-30 animate-shimmer"></div>}
-          <span className={`relative z-10 transition-transform duration-300 ${cardTriggerReady ? "group-hover:rotate-12" : "group-hover:scale-110"}`}>🫧</span>
+          <span className={`relative z-10 transition-transform duration-300 ${cardTriggerReady ? "group-hover:rotate-12" : "group-hover:scale-110"}`}>
+            {generatedCard ? "🔄" : "🫧"}
+          </span>
           {cardTriggerReady && <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white text-xs font-bold animate-bounce">!</span>}
         </button>
         {cardTriggerReady && (
           <div className="absolute bottom-full right-0 mb-3 bg-[#2E2B28] text-white px-4 py-2 rounded-lg text-xs font-medium whitespace-nowrap shadow-lg">
-            나의 향 MBTI 확인 준비 완료! 🎉
+            {generatedCard ? "새로운 분석 결과가 준비되었어요! 🎉" : "나의 향 MBTI 확인 준비 완료! 🎉"}
           </div>
         )}
       </div>
 
+      {/* 향기 분석 사이드 패널 (기존 모달 대체) */}
       {showCardModal && generatedCard && (
-        <ScentCardModal
+        <NScentCard
           card={generatedCard}
+          userName={memberId ? "Member" : "Guest"}
           onClose={() => { setShowCardModal(false); setGeneratedCard(null); setGeneratedCardId(null); }}
-          onSave={() => alert("카드가 저장되었습니다!")}
-          onContinueExplore={() => { setShowCardModal(false); setGeneratedCard(null); setGeneratedCardId(null); }}
-          sessionId={scentSessionId || undefined}
-          cardId={generatedCardId || undefined}
-          isLoggedIn={!!memberId}
+          onAccordClick={handleAccordClick}
         />
       )}
     </div>

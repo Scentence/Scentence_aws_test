@@ -56,7 +56,7 @@ export function usePerfumeNetwork(sessionUserId?: string | number) {
   const [cardTriggerReady, setCardTriggerReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 1. 로그인 정보 로드
+      // 1. 로그인 정보 로드
   useEffect(() => {
     if (sessionUserId) {
       setMemberId(String(sessionUserId));
@@ -69,7 +69,7 @@ export function usePerfumeNetwork(sessionUserId?: string | number) {
       return;
     }
     try {
-      const parsed = JSON.parse(stored) as { memberId?: number | string };
+      const parsed = JSON.parse(stored) as { memberId?: number | string; mbti?: string };
       if (parsed?.memberId) {
         setMemberId(String(parsed.memberId));
       }
@@ -85,10 +85,23 @@ export function usePerfumeNetwork(sessionUserId?: string | number) {
     
     const startScentSession = async () => {
       try {
+        // 로컬 스토리지에서 MBTI 정보 획득
+        let userMbti = "INFJ"; 
+        const storedAuth = localStorage.getItem("localAuth");
+        if (storedAuth) {
+          try {
+            const parsed = JSON.parse(storedAuth);
+            if (parsed.mbti) userMbti = parsed.mbti;
+          } catch (e) {}
+        }
+
         const response = await fetch(`${SESSION_API_BASE}/session/start`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ member_id: memberId ? Number(memberId) : null }),
+          body: JSON.stringify({ 
+            member_id: memberId ? Number(memberId) : null,
+            mbti: userMbti
+          }),
         });
         
         if (response.ok) {
@@ -121,6 +134,10 @@ export function usePerfumeNetwork(sessionUserId?: string | number) {
     filter_changed?: string;
   }) => {
     setInteractionCount(prev => prev + 1);
+    
+    // 시각적 피드백: 클릭 시 콘솔에 로그 출력 (개발 확인용)
+    console.log(`[Activity Log] Interaction #${interactionCount + 1}:`, data);
+    
     if (!scentSessionId) return;
     
     try {
@@ -131,6 +148,7 @@ export function usePerfumeNetwork(sessionUserId?: string | number) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             ...data,
+            selected_accords: selectedAccords, // 현재 선택된 모든 어코드 포함
             dwell_time: dwellTime,
             interaction_count: interactionCount + 1
           }),
@@ -139,6 +157,7 @@ export function usePerfumeNetwork(sessionUserId?: string | number) {
       
       if (response.ok) {
         const result = await response.json();
+        console.log("[Activity Log] Server Response:", result);
         setCardTriggerReady(result.card_trigger_ready);
         if (result.card_trigger_ready && !showCardTrigger) {
           setShowCardTrigger(true);
@@ -146,7 +165,7 @@ export function usePerfumeNetwork(sessionUserId?: string | number) {
         }
       }
     } catch (e) {
-      // 로깅 실패 무시
+      console.warn("⚠️ 활동 로깅 실패:", e);
     }
   };
 
@@ -207,6 +226,10 @@ export function usePerfumeNetwork(sessionUserId?: string | number) {
         setGeneratedCard(data.card);
         setGeneratedCardId(String(cardId));
         setShowCardModal(true);
+        
+        // 카드 생성 후 트리거 상태 초기화 (다시 만들기 준비)
+        setCardTriggerReady(false);
+        setInteractionCount(0); 
       } else {
         const errData = await response.json().catch(() => ({ detail: "알 수 없는 오류" }));
         setError(errData.detail || "카드 생성에 실패했습니다.");
@@ -228,7 +251,7 @@ export function usePerfumeNetwork(sessionUserId?: string | number) {
     };
     const fetchFilters = async () => {
       try {
-        const res = await fetch(`${API_BASE}/network/filter-options`);
+        const res = await fetch(`${API_BASE}/nmap/filter-options`);
         if (res.ok) setFilterOptions(await res.json());
       } catch (e) {}
     };
@@ -240,7 +263,7 @@ export function usePerfumeNetwork(sessionUserId?: string | number) {
   const requestUrl = useMemo(() => {
     const params = new URLSearchParams({ min_similarity: "0.0", top_accords: "5" });
     if (memberId) params.set("member_id", memberId);
-    return `${API_BASE}/network/perfumes?${params.toString()}`;
+    return `${API_BASE}/nmap/perfumes?${params.toString()}`;
   }, [memberId]);
 
   useEffect(() => {
@@ -335,5 +358,6 @@ export function usePerfumeNetwork(sessionUserId?: string | number) {
     handleGenerateCard,
     myPerfumeIds,
     myPerfumeFilters,
+    interactionCount,
   };
 }

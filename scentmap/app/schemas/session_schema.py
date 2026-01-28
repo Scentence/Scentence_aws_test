@@ -7,6 +7,7 @@ from uuid import UUID
 class SessionStartRequest(BaseModel):
     """세션 시작 요청"""
     member_id: Optional[int] = None
+    mbti: Optional[str] = None
 
 
 class SessionStartResponse(BaseModel):

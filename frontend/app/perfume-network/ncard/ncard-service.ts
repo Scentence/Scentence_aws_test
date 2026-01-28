@@ -39,13 +39,10 @@ export const ncardService = {
   // 백엔드로부터 향기카드 리스트를 가져옴
   getScentCards: async (memberId: number): Promise<ScentCard[]> => {
     try {
-      const response = await axios.get(`${API_CONFIG.BASE_URL}/session/my-cards`, {
+      const response = await axios.get(`${API_CONFIG.BASE_URL}/ncard/`, {
         params: { member_id: memberId }
       });
-      return response.data.cards.map((c: any) => ({
-        id: c.card_id,
-        ...c.card_data
-      }));
+      return response.data;
     } catch (error) {
       console.warn('Backend not reachable, using frontend dummy data');
       return [
@@ -53,7 +50,7 @@ export const ncardService = {
           id: 1,
           mbti: "INFJ",
           persona_title: "안개 낀 새벽의 호숫가",
-          image_url: "/images/mbti/infj_space.jpg",
+          image_url: "/images/mbti/infj_space.png",
           keywords: ["신비로운", "깊이 있는", "고요한", "영적인", "서늘한"],
           components: [
             { axis: "존재방식", code: "I", desc: "피부에 밀착되어 은은하게 남는 내밀한 여운을 선호합니다." },
@@ -79,12 +76,9 @@ export const ncardService = {
   // 향수 맵 분석 데이터를 기반으로 실제 향기 카드를 생성하고 저장
   generateAndSaveCard: async (sessionId: string): Promise<ScentCard> => {
     try {
+      // 세션 기반 카드 생성 API 호출 (세션에서 MBTI와 어코드 정보 자동 조회)
       const response = await axios.post(`${API_CONFIG.BASE_URL}/session/${sessionId}/generate-card`);
-      const cardData = response.data.card;
-      return {
-        id: response.data.card_id,
-        ...cardData
-      };
+      return response.data.card;
     } catch (error) {
       console.error('Failed to generate card:', error);
       throw error;

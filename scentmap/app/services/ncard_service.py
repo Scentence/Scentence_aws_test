@@ -5,6 +5,7 @@ import logging
 from datetime import datetime
 from typing import List, Dict, Optional, Any
 import psycopg2.extras
+from openai import OpenAI
 from scentmap.db import get_recom_db_connection, get_db_connection
 from scentmap.app.schemas.ncard_schemas import ScentCard, MBTIComponent, AccordDetail, ScentCardBase
 from .scent_analysis_service import (
@@ -25,6 +26,87 @@ class NCardService:
     def __init__(self):
         """서비스 초기화 및 데이터 로드"""
         self.mbti_data = {item["mbti"]: item for item in load_mbti_data()}
+        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY")) if os.getenv("OPENAI_API_KEY") else None
+
+    async def _analyze_with_llm(self, mbti: Optional[str], selected_accords: List[str], descriptions: List[Dict]) -> Dict:
+        """LLM의 사전지식과 프로젝트 정의를 바탕으로 향 MBTI 및 테마 결정"""
+        if not self.client:
+            return None
+        
+        try:
+            # 어코드 설명 및 MBTI 정의 컨텍스트 준비
+            accord_ctx = "\n".join([f"- {d['accord']}: {d['desc1']}, {d['desc2']}" for d in descriptions])
+            
+            prompt = f"""
+            당신은 향기와 성격의 연결고리를 분석하는 전문 조향사이자 심리 분석가입니다.
+            제공된 [향 MBTI 정의]와 [어코드 데이터]를 바탕으로 사용자의 향기 정체성을 결정하세요.
+
+            [향 MBTI 정의 (4개 축)]
+            1. E(외향) / I(내향) : 존재 방식 (확산성 및 발산력)
+               - E: 공간을 채우는 압도적 존재감 및 화려한 오프닝
+               - I: 피부에 밀착되어 은은하게 남는 내밀한 여운
+            2. S(감각) / N(직관) : 인식 방식 (묘사의 구체성)
+               - S: 원료의 생동감이 느껴지는 직관적이고 사실적인 향
+               - N: 장면과 기억을 소환하는 추상적이고 서사적인 향
+            3. T(사고) / F(감정) : 감정 질감 (향의 온도와 구조)
+               - T: 이성적이고 정돈된 드라이/메탈릭한 구조적 인상
+               - F: 감성을 자극하는 부드럽고 따뜻한 포근한 인상
+            4. J(판단) / P(인식) : 취향 안정성 (조향의 전형성)
+               - J: 균형 잡힌 밸런스의 대중적이고 클래식한 조화
+               - P: 독특한 킥(Kick)이 있는 실험적이고 개성 있는 감성
+
+            [사용자 데이터]
+            - 실제 성격 MBTI: {mbti or '알 수 없음'}
+            - 선택한 어코드들: {', '.join(selected_accords)}
+            - 어코드 상세 인상:
+            {accord_ctx}
+
+            [임무]
+            1. 사용자가 선택한 어코드들의 조합과 실제 MBTI를 분석하여, 가장 적합한 '향 MBTI(4문자)'를 결정하세요.
+            2. 각 축(E/I, S/N, T/F, J/P)에 대한 분석 점수(0~100)를 산출하세요.
+            3. 각 축별로 결정된 성향(예: E 또는 I)에 가장 어울리는 어코드를 사용자가 선택한 어코드들 중에서 3개씩 선정하세요.
+               - E/I 축: 결정된 성향(E 또는 I)에 맞는 어코드 3개
+               - S/N 축: 결정된 성향(S 또는 N)에 맞는 어코드 3개
+               - T/F 축: 결정된 성향(T 또는 F)에 맞는 어코드 3개
+               - J/P 축: 결정된 성향(J 또는 P)에 맞는 어코드 3개
+            4. 위에서 선정된 총 12개의 어코드 중, 가장 사용자에게 어울릴 것 같은 최종 3가지 향(어코드)을 선정하고 각각의 선정 이유를 작성하세요.
+            5. 제공된 사용자의 MBTI 페르소나 데이터 중 'space', 'moment', 'sensation' 세 가지 테마 중 사용자의 선택 어코드와 가장 잘 어울리는 하나를 '대표 테마'로 선택하세요.
+            6. 선택한 테마를 바탕으로 'persona_title'을 결정하고, "내면의 [성격 특징]이 [향의 특징]과 닮아 있음"을 강조하며 3문장 내외의 감성 스토리텔링을 작성하세요.
+
+            [응답 형식 (JSON)]
+            {{
+                "derived_mbti": "결정된 4글자 MBTI",
+                "axis_scores": {{"E": 점수, "I": 점수, "S": 점수, "N": 점수, "T": 점수, "F": 점수, "J": 점수, "P": 점수}},
+                "axis_accords": {{
+                    "E_or_I": {{"selected": "E 또는 I", "accords": ["어코드1", "어코드2", "어코드3"]}},
+                    "S_or_N": {{"selected": "S 또는 N", "accords": ["어코드1", "어코드2", "어코드3"]}},
+                    "T_or_F": {{"selected": "T 또는 F", "accords": ["어코드1", "어코드2", "어코드3"]}},
+                    "J_or_P": {{"selected": "J 또는 P", "accords": ["어코드1", "어코드2", "어코드3"]}}
+                }},
+                "final_three_accords": [
+                    {{"name": "어코드명", "reason": "선정 이유"}},
+                    {{"name": "어코드명", "reason": "선정 이유"}},
+                    {{"name": "어코드명", "reason": "선정 이유"}}
+                ],
+                "selected_theme_type": "space | moment | sensation 중 하나",
+                "persona_title": "선택한 테마의 내용 (예: 무지개가 핀 들판의 산들바람)",
+                "story": "감성 스토리텔링 문구",
+                "reason": "이 MBTI와 테마를 선택한 조향사로서의 분석 이유"
+            }}
+            """
+            
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "당신은 향기 MBTI 시스템의 핵심 결정 엔진입니다. 반드시 JSON 형식으로만 응답하세요."},
+                    {"role": "user", "content": prompt}
+                ],
+                response_format={ "type": "json_object" }
+            )
+            return json.loads(response.choices[0].message.content)
+        except Exception as e:
+            logger.error(f"LLM 분석 실패: {e}")
+            return None
 
     async def generate_card(self, session_id: str, mbti: Optional[str] = None, selected_accords: List[str] = []) -> Dict:
         """세션 데이터를 기반으로 향기 분석 카드 생성 및 DB 저장"""
@@ -48,28 +130,50 @@ class NCardService:
 
             # 2. 향 타입 분석
             analysis = analyze_scent_type(selected_accords, descriptions, user_mbti=mbti)
-            derived_mbti = analysis.get('derived_mbti') or mbti or "INFJ"
-            scent_code = analysis.get('scent_code', 'ISFJ') # 기본값 최신화
+            
+            # LLM 기반 심층 분석 시도 (Decision Maker)
+            llm_analysis = await self._analyze_with_llm(mbti, selected_accords, descriptions)
+            
+            if llm_analysis:
+                derived_mbti = llm_analysis.get('derived_mbti', analysis.get('derived_mbti'))
+                axis_scores = llm_analysis.get('axis_scores', analysis.get('axis_scores'))
+                
+                # LLM이 결정한 MBTI에 맞춰 페르소나 데이터 로드
+                persona_data = self.mbti_data.get(derived_mbti, self.mbti_data.get("INFJ"))
+                
+                # LLM이 선택한 테마 타입에 따라 제목과 이미지 경로 결정
+                theme_type = llm_analysis.get('selected_theme_type', 'space')
+                persona_title = llm_analysis.get('persona_title', persona_data['persona'].get(theme_type))
+                story = llm_analysis.get('story')
+                
+                # 이미지 경로도 선택된 테마에 맞춰 매칭
+                image_url = persona_data["images"].get(theme_type, persona_data["images"]["space"])
+            else:
+                # Fallback: 기존 규칙 기반 분석
+                derived_mbti = analysis.get('derived_mbti') or mbti or "INFJ"
+                axis_scores = analysis.get('axis_scores', {})
+                persona_data = self.mbti_data.get(derived_mbti, self.mbti_data.get("INFJ"))
+                persona_title = persona_data['persona']['space']
+                image_url = persona_data["images"]["space"]
+                story = f"당신은 {persona_data['headline'].split('성향은,')[0]}성향을 가지고 계시네요. "
+                story += f"오늘 선택하신 {descriptions[0].get('desc1', '향기')}는 {persona_data['persona']['space']}처럼 {persona_data['persona']['keywords'][0]} 당신의 내면과 닮아 있습니다. "
+                story += f"이 향기는 당신의 {derived_mbti}다운 {persona_data['persona']['keywords'][1]} 매력을 더욱 돋보이게 해줄 거예요."
+
+            scent_code = derived_mbti # MBTI 코드를 scent_code로 활용
             
             # 3. 컴포넌트 및 추천 어코드 구성
-            components = self._generate_mbti_components(analysis.get('axis_scores', {}), scent_code)
-            recommends, avoids = self._get_accord_details(analysis, derived_mbti, selected_accords)
-
-            # 4. 스토리텔링 및 페르소나 설정
-            main_desc = analysis['main_accord_desc']
-            persona_data = self.mbti_data.get(derived_mbti, self.mbti_data.get("INFJ"))
-            persona_title = f"{main_desc['desc1']}를 사랑하는 {analysis['type_name']}"
+            components = self._generate_mbti_components(axis_scores, scent_code)
             
-            # 기획 의도에 따른 스토리 생성 (2-3문장)
-            story = f"당신은 {main_desc['desc1']}의 {main_desc['desc2']}를 좋아하는 {analysis['type_name']} 타입이에요. "
-            story += f"{persona_data['impression']} 당신의 내면은 {persona_title}처럼 깊고 고유한 색채를 품고 있습니다. "
-            story += f"오늘 선택하신 향기들은 당신의 {derived_mbti}다운 면모를 투영하듯 감각적인 조화를 이룹니다."
+            # LLM이 선정한 최종 3가지 향 활용
+            if llm_analysis and 'final_three_accords' in llm_analysis:
+                recommends = llm_analysis['final_three_accords']
+            else:
+                recommends, _ = self._get_accord_details(analysis, derived_mbti, selected_accords)
+            
+            # 기피 어코드는 기존 로직 활용
+            _, avoids = self._get_accord_details(analysis, derived_mbti, selected_accords)
 
-            # 5. 추천 향수 및 다음 탐색 제안 (기획 반영)
-            recommended_perfume = self._get_representative_perfume(selected_accords)
-            suggested_accords = analysis.get('type_info', {}).get('harmonious_accords', [])[:3]
-
-            # 6. 카드 데이터 조립
+            # 4. 카드 데이터 조립
             card_data = {
                 "mbti": derived_mbti,
                 "components": components,
@@ -78,13 +182,17 @@ class NCardService:
                 "story": story,
                 "summary": f"{analysis['type_name']}인 당신에게 어울리는 향기 리포트입니다.",
                 "persona_title": persona_title,
-                "image_url": persona_data["images"]["space"],
+                "image_url": image_url,
                 "keywords": analysis.get('axis_keywords', persona_data["persona"]["keywords"]),
-                "recommended_perfume": recommended_perfume,
-                "suggested_accords": suggested_accords,
+                "recommended_perfume": self._get_representative_perfume(selected_accords),
+                "suggested_accords": analysis.get('type_info', {}).get('harmonious_accords', [])[:3],
                 "scent_type": analysis,
                 "created_at": datetime.now().isoformat()
             }
+            
+            # LLM 분석 결과에 축별 어코드 정보가 있으면 추가
+            if llm_analysis and 'axis_accords' in llm_analysis:
+                card_data["axis_accords"] = llm_analysis['axis_accords']
 
             # 7. DB 저장
             card_id = self._save_card_to_db(session_id, card_data)
@@ -116,38 +224,79 @@ class NCardService:
 
     def _get_accord_details(self, analysis: Dict, mbti: str, selected: List[str]) -> tuple:
         """추천 및 기피 어코드 상세 정보 생성"""
+        # 분석된 MBTI에 기반한 추천 어코드 선정 (v1 기획 반영)
+        type_info = analysis.get('type_info', {})
+        harmonious = type_info.get('harmonious_accords', [])
+        avoid = type_info.get('avoid_accords', [])
+        
         recommends = [
-            {"name": acc, "reason": f"{mbti} 성향과 조화를 이루는 추천 향입니다."} 
-            for acc in analysis.get('type_info', {}).get('harmonious_accords', [])[:2]
+            {"name": acc, "reason": f"{mbti} 성향의 {analysis.get('type_name', '')}분들에게 안정감을 주는 향입니다."} 
+            for acc in harmonious[:3]
         ]
         avoids = [
-            {"name": acc, "reason": "현재의 분위기와 상충될 수 있는 향입니다."} 
-            for acc in analysis.get('type_info', {}).get('avoid_accords', [])[:2]
+            {"name": acc, "reason": "현재의 분위기와 상충되어 집중을 방해할 수 있는 향입니다."} 
+            for acc in avoid[:2]
         ]
         return recommends, avoids
 
     def _get_representative_perfume(self, selected_accords: List[str]) -> Optional[Dict]:
-        """선택된 어코드 비중이 가장 높은 대표 향수 1개 조회"""
+        """선택 어코드 빈도 가중치 기반 대표 향수 조회"""
         if not selected_accords: return None
         try:
+            from collections import Counter
+            
+            # 어코드 빈도 계산 (사용자가 여러 번 클릭한 어코드에 가중치 부여)
+            accord_frequency = Counter(selected_accords)
+            
+            # 상위 빈도 어코드 선정 (최대 8개)
+            top_accords = [accord for accord, _ in accord_frequency.most_common(8)]
+            
             with get_db_connection() as conn:
                 with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-                    # 가장 많이 선택된 어코드 기준 (첫 번째 어코드)
-                    main_accord = selected_accords[0]
-                    cur.execute("""
-                        SELECT b.perfume_id, b.perfume_name, b.perfume_brand, b.img_link, a.vote
-                        FROM TB_PERFUME_BASIC_M b
-                        JOIN TB_PERFUME_ACCORD_M a ON b.perfume_id = a.perfume_id
-                        WHERE a.accord = %s
-                        ORDER BY a.vote DESC LIMIT 1
-                    """, (main_accord,))
+                    placeholders = ','.join(['%s'] * len(top_accords))
+                    
+                    # CASE 문으로 빈도 가중치를 score에 반영
+                    weight_cases = ' + '.join([
+                        f"CASE WHEN a.accord = %s THEN {freq} * a.vote ELSE 0 END"
+                        for freq in [accord_frequency[acc] for acc in top_accords]
+                    ])
+                    
+                    # 어코드 일치 개수, 빈도 가중치, vote 점수를 종합한 쿼리
+                    query = f"""
+                        WITH perfume_matches AS (
+                            SELECT 
+                                b.perfume_id, 
+                                b.perfume_name, 
+                                b.perfume_brand, 
+                                b.img_link,
+                                COUNT(DISTINCT a.accord) as match_count,
+                                SUM(a.vote) as total_vote_score,
+                                ({weight_cases}) as weighted_score
+                            FROM TB_PERFUME_BASIC_M b
+                            JOIN TB_PERFUME_ACCORD_M a ON b.perfume_id = a.perfume_id
+                            WHERE a.accord IN ({placeholders})
+                            GROUP BY b.perfume_id, b.perfume_name, b.perfume_brand, b.img_link
+                        )
+                        SELECT *, 
+                               (match_count::float / %s * 100) as match_rate
+                        FROM perfume_matches
+                        ORDER BY weighted_score DESC, match_count DESC, total_vote_score DESC
+                        LIMIT 1
+                    """
+                    
+                    # 파라미터: 어코드(weight_cases용) + 어코드(WHERE IN용) + 총 어코드 개수
+                    params = tuple(top_accords) + tuple(top_accords) + (len(set(selected_accords)),)
+                    cur.execute(query, params)
                     row = cur.fetchone()
+                    
                     if row:
                         return {
                             "id": row["perfume_id"],
                             "name": row["perfume_name"],
                             "brand": row["perfume_brand"],
-                            "image": row["img_link"]
+                            "image": row["img_link"],
+                            "match_rate": round(row["match_rate"], 1),
+                            "reason": f"선택하신 어코드 중 {row['match_count']}개가 포함되며, 취향 빈도를 반영한 최적의 향수입니다."
                         }
         except Exception as e:
             logger.error(f"대표 향수 조회 실패: {e}")
@@ -155,6 +304,10 @@ class NCardService:
 
     def _save_card_to_db(self, session_id: str, card_data: Dict) -> Any:
         """생성된 카드 데이터를 DB에 저장"""
+        # 이미지 확장자 처리 (.jpg -> .png)
+        if 'image_url' in card_data:
+            card_data['image_url'] = card_data['image_url'].replace('.jpg', '.png')
+            
         with get_recom_db_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("""

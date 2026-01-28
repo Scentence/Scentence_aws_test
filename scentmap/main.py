@@ -9,7 +9,7 @@ from scentmap.db import init_db_schema, close_pool
 from scentmap.app.api.label import router as labels_router
 from scentmap.app.api.session import router as session_router
 from scentmap.app.api.ncard import router as ncard_router
-from scentmap.app.api.nmap.router import router as nmap_router
+from scentmap.app.api.nmap import router as nmap_router
 from scentmap.app.services.label_service import load_labels
 
 """

@@ -12,7 +12,7 @@ SessionService: 사용자 탐색 세션 관리 및 활동 추적 서비스
 
 logger = logging.getLogger(__name__)
 
-def create_session(member_id: Optional[int] = None) -> Dict:
+def create_session(member_id: Optional[int] = None, mbti: Optional[str] = None) -> Dict:
     """새로운 탐색 세션 생성 및 세션 ID 발급"""
     session_id = str(uuid.uuid4())
     try:
@@ -54,14 +54,14 @@ def update_session_activity(session_id: str, accord_selected: Optional[str] = No
 def update_session_context(session_id: str, member_id: Optional[int] = None, mbti: Optional[str] = None, selected_accords: List[str] = [], filters: dict = {}, visible_perfume_ids: List[int] = []):
     """분석을 위한 상세 세션 컨텍스트 정보 저장"""
     try:
-        context_data = {"mbti": mbti, "filters": filters, "visible_perfumes": visible_perfume_ids[:20]}
+        # device_type 컬럼이 없는 경우를 대비하여 member_id와 selected_accords만 업데이트
         with get_recom_db_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
                     UPDATE TB_SCENT_CARD_SESSION_T
-                    SET member_id = COALESCE(%s, member_id), device_type = %s, selected_accords = %s, last_activity_dt = CURRENT_TIMESTAMP
+                    SET member_id = COALESCE(%s, member_id), selected_accords = %s, last_activity_dt = CURRENT_TIMESTAMP
                     WHERE session_id = %s
-                """, (member_id, json.dumps(context_data), selected_accords, session_id))
+                """, (member_id, selected_accords, session_id))
                 conn.commit()
     except Exception as e:
         logger.error(f"세션 컨텍스트 업데이트 실패: {e}")
@@ -76,7 +76,7 @@ def check_card_trigger(session_id: str) -> Dict:
                 session = cur.fetchone()
                 if not session: return {"ready": False}
                 
-                ready = session['exploration_time'] >= 30 and session['interaction_count'] >= 5
+                ready = session['exploration_time'] >= 30 or session['interaction_count'] >= 15
                 return {"ready": ready, "message": "취향이 충분히 쌓였어요! 나의 향 MBTI를 확인해볼까요?" if ready else None}
     except Exception as e:
         logger.error(f"트리거 체크 실패: {e}")

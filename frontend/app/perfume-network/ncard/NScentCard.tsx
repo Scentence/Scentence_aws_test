@@ -8,10 +8,13 @@ import { ACCORD_ICONS, ACCORD_COLORS, hexToRgba } from '../config';
 interface NScentCardProps {
   card: ScentCard;
   userName?: string; // 회원 이름 (미구현)
+  onClose?: () => void; // 패널 닫기 콜백
+  onAccordClick?: (accordName: string) => void; // 어코드 클릭 콜백
 }
 
-export const NScentCard: React.FC<NScentCardProps> = ({ card, userName }) => {
+export const NScentCard: React.FC<NScentCardProps> = ({ card, userName, onClose, onAccordClick }) => {
   const [currentPage, setCurrentPage] = useState(0);
+  const [isOpen, setIsOpen] = useState(true); // 패널 열림 상태
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // 메인 컬러 테마
@@ -68,24 +71,47 @@ export const NScentCard: React.FC<NScentCardProps> = ({ card, userName }) => {
 
   return (
     <div 
-      className="animate-in fade-in zoom-in duration-700 ease-out"
+      className={`fixed right-0 top-0 h-full transition-transform duration-500 ease-in-out z-50 ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
       style={{ 
         width: '100%',
         maxWidth: '440px',
         backgroundColor: theme.bg,
-        borderRadius: '12px',
-        boxShadow: '0 10px 40px rgba(0,0,0,0.15)',
+        boxShadow: '-10px 0 40px rgba(0,0,0,0.15)',
         overflow: 'hidden',
         fontFamily: 'inherit',
         color: theme.text,
-        margin: '10px auto',
         display: 'flex',
         flexDirection: 'column',
-        border: '1px solid #efefef',
-        position: 'relative'
+        borderLeft: '1px solid #efefef',
       }}
     >
-      
+      {/* ------------------------------ 패널 토글 버튼 ------------------------------ */}
+      <button 
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          position: 'absolute',
+          left: '-40px',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          width: '40px',
+          height: '100px',
+          backgroundColor: theme.bg,
+          border: '1px solid #efefef',
+          borderRight: 'none',
+          borderRadius: '12px 0 0 12px',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '-4px 0 10px rgba(0,0,0,0.05)',
+          zIndex: 60
+        }}
+      >
+        <span style={{ transform: isOpen ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.3s' }}>
+          {isOpen ? '›' : '‹'}
+        </span>
+      </button>
+
       {/* ------------------------------ 프로필 헤더 ------------------------------ */}
       <header style={{ 
         padding: '12px 16px', 
@@ -119,7 +145,12 @@ export const NScentCard: React.FC<NScentCardProps> = ({ card, userName }) => {
           </div>
           <span style={{ fontSize: '14px', fontWeight: 700 }}>{userName || 'Guest'}</span>
         </div>
-        <div style={{ fontSize: '18px', cursor: 'pointer', color: '#262626' }}>•••</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ fontSize: '18px', cursor: 'pointer', color: '#262626' }}>•••</div>
+          {onClose && (
+            <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: theme.subText }}>×</button>
+          )}
+        </div>
       </header>
 
       {/* ------------------------------ 메인 비주얼 카드 (이미지 슬라이드 영역) ------------------------------ */}
@@ -320,7 +351,17 @@ export const NScentCard: React.FC<NScentCardProps> = ({ card, userName }) => {
         </div>
         <div style={{ fontSize: '12px', lineHeight: '1.6', marginBottom: '12px' }}>
           {card.recommends.length > 0 && (
-            <div style={{ color: theme.primary, fontWeight: 500 }}>#추천어코드 {card.recommends.map(acc => `#${acc.name}`).join(' ')}</div>
+            <div style={{ color: theme.primary, fontWeight: 500, display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+              #추천어코드 {card.recommends.map(acc => (
+                <span 
+                  key={acc.name} 
+                  onClick={() => onAccordClick?.(acc.name)}
+                  style={{ cursor: onAccordClick ? 'pointer' : 'default', textDecoration: onAccordClick ? 'underline' : 'none' }}
+                >
+                  #{acc.name}
+                </span>
+              ))}
+            </div>
           )}
           {card.avoids.length > 0 && (
             <div style={{ color: theme.secondary, fontWeight: 500, marginTop: '4px' }}>#기피어코드 {card.avoids.map(acc => `#${acc.name}`).join(' ')}</div>

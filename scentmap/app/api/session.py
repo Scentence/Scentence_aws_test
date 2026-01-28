@@ -18,7 +18,7 @@ router = APIRouter(prefix="/session", tags=["session"])
 def start_session(request: SessionStartRequest):
     """탐색 세션 시작 및 ID 발급"""
     try:
-        session = create_session(member_id=request.member_id)
+        session = create_session(member_id=request.member_id, mbti=request.mbti)
         return SessionStartResponse(session_id=session["session_id"])
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

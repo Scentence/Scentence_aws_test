@@ -352,6 +352,9 @@ export default function LayeringPage() {
   /** 채팅 메시지 영역 자동 스크롤을 위한 ref */
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  /** 채팅 입력 입력창 포커스를 위한 ref */
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
   /**
    * 채팅 메시지가 업데이트될 때마다 자동으로 스크롤
    */
@@ -1107,15 +1110,26 @@ export default function LayeringPage() {
 
             {/* 입력창 영역 - 하단 고정 */}
             <div className="px-6 py-4 bg-white border-t border-[#E2D7C5]">
-              <div className="flex gap-2 items-end">
-                <div className="flex gap-2 items-end">
+              <div className="flex flex-col gap-2">
+                <div className="flex gap-2 items-center w-full">
                   {/* [추가] 내 향수 선택 팝오버 */}
                   <LayeringPerfumePicker
                     memberId={getMemberId(session?.user?.id)}
-                    onSelect={(name) => setQueryText(prev => prev + (prev ? " " : "") + name)}
+                    onSelect={(name) => {
+                      const newText = queryText + (queryText ? " " : "") + name;
+                      setQueryText(newText);
+                      // 향수 선택 후 입력창에 자동 포커스 및 커서를 맨 뒤로 이동
+                      setTimeout(() => {
+                        if (textareaRef.current) {
+                          textareaRef.current.focus();
+                          textareaRef.current.setSelectionRange(newText.length, newText.length);
+                        }
+                      }, 0);
+                    }}
                   />
 
                   <textarea
+                    ref={textareaRef}
                     value={queryText}
                     onChange={(event) => setQueryText(event.target.value)}
                     onKeyDown={(event) => {
@@ -1142,7 +1156,7 @@ export default function LayeringPage() {
                     </svg>
                   </button>
                 </div>
-                <p className="text-[10px] text-[#8A7F73] mt-2">
+                <p className="text-[10px] text-[#8A7F73]">
                   Enter로 전송, Shift+Enter로 줄바꿈
                 </p>
               </div>

@@ -250,8 +250,9 @@ def login_with_kakao(req: KakaoLoginRequest):
                     cur.execute(sql_profile_mig, (nickname, profile_image_url, req.email, member_id))
                     print(f"   └─ 프로필 정보 업데이트 완료 (닉네임: {nickname}, 프사: {'있음' if profile_image_url else '없음'})")
 
-                # 마이그레이션 완료 후, 아래 신규 가입 로직은 건너뜁니다.
-                
+                # 마이그레이션 완료!
+                print(f"✅ 레거시 회원 마이그레이션 완료: 회원번호 {member_id}")
+
             else:
                 # [CASE B] 진짜 신규 가입자
                 # [2-1] 기본 계정 생성 (TB_MEMBER_BASIC_M)
@@ -296,11 +297,13 @@ def login_with_kakao(req: KakaoLoginRequest):
 
 
         role_type = _get_role_type(cur, member_id)
+        user_mode = _get_user_mode(cur, member_id)
         conn.commit()
         return {
             "member_id": str(member_id),
             "nickname": nickname,
             "role_type": role_type,
+            "user_mode": user_mode,
         }
 
     except Exception as e:
@@ -436,6 +439,22 @@ def _get_role_type(cur, member_id: int) -> str:
         return (role_type or "USER").upper()
     except psycopg2.errors.UndefinedColumn:
         return "USER"
+
+
+def _get_user_mode(cur, member_id: int) -> str:
+    """회원의 user_mode를 조회 (챗봇 응답 스타일 결정용)"""
+    try:
+        cur.execute(
+            "SELECT user_mode FROM tb_member_basic_m WHERE member_id=%s",
+            (member_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return "BEGINNER"
+        user_mode = row.get("user_mode")
+        return (user_mode or "BEGINNER").upper()
+    except psycopg2.errors.UndefinedColumn:
+        return "BEGINNER"
 
 
 def _is_admin_member(cur, member_id: int) -> bool:

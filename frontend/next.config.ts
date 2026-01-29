@@ -15,6 +15,8 @@ const layeringApiUrl = normalizedLayeringApiUrl.endsWith("/layering")
   ? normalizedLayeringApiUrl.slice(0, -"/layering".length)
   : normalizedLayeringApiUrl;
 
+const scentmapUrl = process.env.SCENTMAP_INTERNAL_URL ?? "http://localhost:8001";
+
 const nextConfig: NextConfig = {
   // [추가] 윈도우 Docker 환경에서 Hot Reload가 안 될 때를 위한 강제 설정
   webpack: (config) => {
@@ -28,17 +30,46 @@ const nextConfig: NextConfig = {
 
   async rewrites() {
     return [
+      // Health check & validation endpoints (specific routes first)
       {
-        source: '/api/chat',
-        destination: `${backendUrl}/chat`,
+        source: '/api/backend-openapi',
+        destination: `${backendUrl}/openapi.json`,
+      },
+      {
+        source: '/api/layering-health',
+        destination: `${layeringApiUrl}/health`,
+      },
+      {
+        source: '/api/scentmap-health',
+        destination: `${scentmapUrl}/health`,
+      },
+      // Backend API routes
+      {
+        source: '/api/chat/:path*',
+        destination: `${backendUrl}/chat/:path*`,
       },
       {
         source: '/api/users/:path*',
         destination: `${backendUrl}/users/:path*`,
       },
       {
+        source: '/api/perfumes/:path*',
+        destination: `${backendUrl}/perfumes/:path*`,
+      },
+      // Layering API routes
+      {
         source: '/api/layering/:path*',
         destination: `${layeringApiUrl}/layering/:path*`,
+      },
+      // Scentmap API routes
+      {
+        source: '/api/scentmap/:path*',
+        destination: `${scentmapUrl}/:path*`,
+      },
+      // Static uploads (profile images, etc.)
+      {
+        source: '/uploads/:path*',
+        destination: `${backendUrl}/uploads/:path*`,
       },
     ];
   },

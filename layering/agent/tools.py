@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import math
+import re
+import unicodedata
 from typing import Iterable, List, Sequence, Tuple
 
 from .constants import (
@@ -13,7 +15,7 @@ from .constants import (
     KEYWORD_VECTOR_BOOST,
 )
 from .database import PerfumeRepository
-from .schemas import LayeringCandidate, PerfumeVector, ScoreBreakdown
+from .schemas import LayeringCandidate, PerfumeBasic, PerfumeVector, ScoreBreakdown
 from .tools_schemas import LayeringComputationResult
 
 
@@ -80,6 +82,8 @@ def rank_recommendations(
         candidate_key = _normalize_identity(candidate.perfume_name, candidate.perfume_brand)
         if candidate_key == base_key:
             continue
+        if _is_same_perfume_identity(base, candidate):
+            continue
         result = calculate_advanced_layering(base, candidate, target_vector)
         if not result.feasible:
             continue
@@ -89,16 +93,79 @@ def rank_recommendations(
     return candidates[:3], total_available
 
 
+def _strip_diacritics(text: str) -> str:
+    normalized = unicodedata.normalize("NFKD", text)
+    return "".join(char for char in normalized if unicodedata.category(char) != "Mn")
+
+
+def _normalize_brand_name(name: str) -> str:
+    cleaned = _strip_diacritics(name).casefold()
+    cleaned = re.sub(r"[^a-z0-9가-힣]+", " ", cleaned)
+    return " ".join(cleaned.split())
+
+
 def _normalize_identity(name: str, brand: str) -> str:
-    return f"{brand.strip().lower()}::{name.strip().lower()}"
+    normalized_brand = _normalize_brand_name(brand)
+    normalized_name = _normalize_perfume_name(name)
+    return f"{normalized_brand}::{normalized_name}"
 
 
-def _build_brand_reason(avg_score: float, feasible_count: int) -> str:
+def _normalize_perfume_name(name: str) -> str:
+    cleaned = _strip_diacritics(name).casefold()
+    cleaned = re.sub(r"[^a-z0-9가-힣]+", " ", cleaned)
+    tokens = [token for token in cleaned.split() if token]
+    drop_tokens = {
+        "eau",
+        "de",
+        "toilette",
+        "parfum",
+        "perfume",
+        "cologne",
+        "edp",
+        "edt",
+        "edc",
+        "intense",
+        "extrait",
+        "spray",
+    }
+    filtered = [token for token in tokens if token not in drop_tokens]
+    return " ".join(filtered)
+
+
+def _is_same_perfume_identity(base: PerfumeVector, candidate: PerfumeVector) -> bool:
+    base_brand = _normalize_brand_name(base.perfume_brand)
+    candidate_brand = _normalize_brand_name(candidate.perfume_brand)
+    if base_brand and candidate_brand and base_brand != candidate_brand:
+        return False
+
+    base_name = _normalize_perfume_name(base.perfume_name)
+    candidate_name = _normalize_perfume_name(candidate.perfume_name)
+    if base_name and candidate_name and base_name == candidate_name:
+        return True
+    if base_name and candidate_name:
+        if base_name in candidate_name or candidate_name in base_name:
+            return True
+    return False
+
+
+def _build_brand_reason(
+    avg_score: float,
+    feasible_count: int,
+    perfume: PerfumeVector,
+) -> str:
     if feasible_count <= 0:
         return "브랜드 내 레이어링 후보가 제한적이라 가장 안정적인 향을 골랐습니다."
+
+    dominant = [accord for accord in perfume.dominant_accords if accord]
+    if dominant:
+        accords_text = ", ".join(dominant[:3])
+        detail = f"대표 어코드가 {accords_text} 계열이라 다양한 향과 조화가 좋아요."
+    else:
+        detail = "향의 균형이 안정적이라 다른 향과 섞었을 때 무리가 적습니다."
+
     return (
         f"브랜드 내 {feasible_count}개 조합에서 평균 궁합 점수 {avg_score:.2f}로 안정적인 편이라, "
-        "레이어링 범용성이 높습니다."
+        f"레이어링 범용성이 높습니다. {detail}"
     )
 
 
@@ -153,8 +220,38 @@ def rank_brand_universal_perfume(
 
     if best_perfume is None:
         return None, 0.0, 0, None
-    reason = _build_brand_reason(best_score, best_count)
+    reason = _build_brand_reason(best_score, best_count, best_perfume)
     return best_perfume, best_score, best_count, reason
+
+
+def rank_similar_perfumes(
+    base_perfume_id: str,
+    repository: PerfumeRepository,
+    limit: int = 3,
+) -> List[PerfumeBasic]:
+    try:
+        base = repository.get_perfume(base_perfume_id)
+    except KeyError:
+        return []
+    scored: List[tuple[PerfumeVector, float]] = []
+    for candidate in repository.all_candidates(exclude_id=base_perfume_id):
+        if _is_same_perfume_identity(base, candidate):
+            continue
+        similarity = _cosine_similarity(base.vector, candidate.vector)
+        if similarity <= 0:
+            continue
+        scored.append((candidate, similarity))
+
+    scored.sort(key=lambda item: item[1], reverse=True)
+    return [
+        PerfumeBasic(
+            perfume_id=candidate.perfume_id,
+            perfume_name=candidate.perfume_name,
+            perfume_brand=candidate.perfume_brand,
+            image_url=candidate.image_url,
+        )
+        for candidate, _ in scored[:limit]
+    ]
 
 
 

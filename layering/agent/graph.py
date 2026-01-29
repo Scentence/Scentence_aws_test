@@ -19,7 +19,12 @@ from .schemas import (
     PerfumeBasic,
     UserQueryAnalysis,
 )
-from .tools import evaluate_pair, rank_brand_universal_perfume, rank_recommendations
+from .tools import (
+    evaluate_pair,
+    rank_brand_universal_perfume,
+    rank_recommendations,
+    rank_similar_perfumes,
+)
 
 
 class PreferenceSummary(BaseModel):
@@ -102,6 +107,70 @@ def _normalize_text_for_match(text: str) -> str:
     return " ".join(cleaned.split())
 
 
+def _extract_base_hint(user_text: str) -> str | None:
+    if not user_text:
+        return None
+    patterns = [
+        r"(.+?)과\s*비슷",
+        r"(.+?)와\s*비슷",
+        r"(.+?)랑\s*비슷",
+        r"(.+?)하고\s*비슷",
+        r"(.+?)에서",
+        r"(.+?)을\s*기반",
+        r"(.+?)를\s*기반",
+        r"(.+?)을\s*베이스",
+        r"(.+?)를\s*베이스",
+        r"(.+?)을\s*바탕",
+        r"(.+?)를\s*바탕",
+        r"(.+?)을\s*가지고",
+        r"(.+?)를\s*가지고",
+        r"(.+?)이\s*있",
+        r"(.+?)가\s*있",
+    ]
+    earliest = None
+    for pattern in patterns:
+        match = re.search(pattern, user_text, flags=re.IGNORECASE)
+        if not match:
+            continue
+        hint = match.group(1).strip()
+        if not hint:
+            continue
+        if earliest is None or match.start() < earliest[0]:
+            earliest = (match.start(), hint)
+    return earliest[1] if earliest else None
+
+
+def _prioritize_base_hint(
+    user_text: str,
+    repository: PerfumeRepository,
+    detected_perfumes: list[DetectedPerfume],
+) -> list[DetectedPerfume]:
+    base_hint = _extract_base_hint(user_text)
+    if not base_hint:
+        return detected_perfumes
+    hint_candidates = repository.find_perfume_candidates(
+        base_hint,
+        limit=3,
+        min_score=0.6,
+    )
+    if not hint_candidates:
+        return detected_perfumes
+    perfume, score, matched_text = hint_candidates[0]
+    if detected_perfumes and detected_perfumes[0].perfume_id == perfume.perfume_id:
+        return detected_perfumes
+    hinted = DetectedPerfume(
+        perfume_id=perfume.perfume_id,
+        perfume_name=perfume.perfume_name,
+        perfume_brand=perfume.perfume_brand,
+        match_score=score,
+        matched_text=matched_text,
+    )
+    remaining = [
+        item for item in detected_perfumes if item.perfume_id != perfume.perfume_id
+    ]
+    return [hinted, *remaining]
+
+
 def _merge_candidate_hits(
     hits: list[tuple[Any, float, str]],
 ) -> list[tuple[Any, float, str]]:
@@ -160,10 +229,11 @@ def _collect_perfume_candidates(
     hits: list[tuple[Any, float, str]] = []
     hits.extend(repository.find_perfume_candidates(user_text, limit=limit))
 
-    if not hits:
-        segments = _split_query_segments(user_text)
-        for segment in segments:
-            hits.extend(repository.find_perfume_candidates(segment, limit=limit))
+    segments = _split_query_segments(user_text)
+    for segment in segments:
+        if segment == user_text:
+            continue
+        hits.extend(repository.find_perfume_candidates(segment, limit=limit))
 
     if not hits:
         normalized = _normalize_text_for_match(user_text)
@@ -277,11 +347,29 @@ def is_application_request(user_text: str) -> bool:
 
 def _is_context_pairing_request(user_text: str) -> bool:
     normalized = user_text.lower()
-    triggers = ["방금", "아까", "이전", "지난", "추천한", "그 향수", "저 향수"]
+    triggers = [
+        "방금",
+        "아까",
+        "이전",
+        "지난",
+        "추천한",
+        "추천해준",
+        "추천받은",
+        "그 향수",
+        "저 향수",
+    ]
     pairing_terms = ["레이어링", "섞", "같이", "조합", "어때", "가능"]
     return any(token in normalized for token in triggers) and any(
         token in normalized for token in pairing_terms
     )
+
+
+def is_similarity_request(user_text: str) -> bool:
+    normalized = user_text.lower()
+    if "레이어링" in normalized:
+        return False
+    triggers = ["비슷", "같은 느낌", "대체", "유사", "similar", "same vibe", "같은 향"]
+    return any(token in normalized for token in triggers)
 
 
 def is_brand_layering_request(user_text: str) -> bool:
@@ -328,15 +416,30 @@ def analyze_user_query(
 
     candidates = _collect_perfume_candidates(user_text, repository, limit=6)
     detected_perfumes = _build_detected_perfumes(candidates)
+    detected_perfumes = _prioritize_base_hint(user_text, repository, detected_perfumes)
+
+    if is_similarity_request(user_text):
+        if detected_perfumes:
+            base_candidate = detected_perfumes[0]
+            similar = rank_similar_perfumes(base_candidate.perfume_id, repository)
+            return UserQueryAnalysis(
+                raw_text=user_text,
+                detected_perfumes=detected_perfumes,
+                similar_perfumes=similar,
+            )
+        if context_recommended_perfume_id:
+            similar = rank_similar_perfumes(context_recommended_perfume_id, repository)
+            return UserQueryAnalysis(
+                raw_text=user_text,
+                detected_perfumes=[],
+                similar_perfumes=similar,
+            )
+        return UserQueryAnalysis(raw_text=user_text, detected_perfumes=[])
 
     detected_pair = None
     pairing_analysis = None
     context_pairing_request = _is_context_pairing_request(user_text)
-    if (
-        context_recommended_perfume_id
-        and context_pairing_request
-        and len(detected_perfumes) == 1
-    ):
+    if context_recommended_perfume_id and context_pairing_request and detected_perfumes:
         base_candidate = detected_perfumes[0]
         candidate_id = context_recommended_perfume_id
         if base_candidate.perfume_id != candidate_id:

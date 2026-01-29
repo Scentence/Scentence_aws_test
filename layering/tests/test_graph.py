@@ -1,3 +1,5 @@
+import pytest
+
 from agent.database import PerfumeRepository
 from agent.graph import (
     _normalize_keywords,
@@ -79,6 +81,26 @@ def test_analyze_user_query_uses_context_for_followup():
     assert analysis.detected_pair.candidate_perfume_id == "9300"
 
 
+def test_analyze_user_query_similarity_request_returns_similars():
+    repo = PerfumeRepository()
+    analysis = analyze_user_query("CK One이랑 비슷한 향수 있어?", repo)
+
+    assert isinstance(analysis.similar_perfumes, list)
+    assert analysis.similar_perfumes
+
+
+def test_analyze_user_query_similarity_request_uses_context():
+    repo = PerfumeRepository()
+    analysis = analyze_user_query(
+        "비슷한 향수 있어?",
+        repo,
+        context_recommended_perfume_id="8701",
+    )
+
+    assert isinstance(analysis.similar_perfumes, list)
+    assert analysis.similar_perfumes
+
+
 def test_split_query_segments_respects_words():
     segments = _split_query_segments("sandalwood and citrus")
     assert segments == ["sandalwood", "citrus"]
@@ -143,3 +165,35 @@ def test_info_request_returns_perfume_info_from_query():
     analysis = analyze_user_query("CK One 정보 알려줘", repo)
 
     assert analysis.recommended_perfume_info is not None
+
+
+def test_base_hint_prioritizes_un_jardin_sur_le_nil():
+    repo = PerfumeRepository()
+    candidates = repo.find_perfume_candidates("Un Jardin Sur Le Nil", limit=1)
+    if not candidates:
+        pytest.skip("Un Jardin Sur Le Nil not found in dataset")
+    base_id = candidates[0][0].perfume_id
+
+    analysis = analyze_user_query(
+        "Un Jardin Sur Le Nil Eau De Toilette에서 좀 더 플로럴한 향이 나게 레이어링 해줘",
+        repo,
+    )
+
+    assert analysis.detected_perfumes
+    assert analysis.detected_perfumes[0].perfume_id == base_id
+
+
+def test_similarity_query_prioritizes_explicit_target():
+    repo = PerfumeRepository()
+    candidates = repo.find_perfume_candidates("Un Jardin Sur Le Nil", limit=1)
+    if not candidates:
+        pytest.skip("Un Jardin Sur Le Nil not found in dataset")
+    base_id = candidates[0][0].perfume_id
+
+    analysis = analyze_user_query(
+        "Un Jardin Sur Le Nil Eau De Toilette과 비슷한 느낌의 향수있어?",
+        repo,
+    )
+
+    assert analysis.detected_perfumes
+    assert analysis.detected_perfumes[0].perfume_id == base_id

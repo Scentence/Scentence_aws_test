@@ -22,3 +22,6 @@ python-multipart==0.0.6
 
 # 고속 JSON 직렬화 (성능 개선)
 orjson==3.9.15
+
+# OpenAI API (LLM 카드 생성)
+openai>=1.0.0

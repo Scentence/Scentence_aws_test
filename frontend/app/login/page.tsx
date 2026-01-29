@@ -10,7 +10,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [submitMessage, setSubmitMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const apiBaseUrl = ""/api"";
+  const apiBaseUrl = "/api";
 
   const handleKakaoPopup = () => {
     if (typeof window === "undefined") return;

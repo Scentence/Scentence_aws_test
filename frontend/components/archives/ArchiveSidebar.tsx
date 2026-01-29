@@ -33,7 +33,7 @@ export default function ArchiveSidebar({ isOpen, onClose }: ArchiveSidebarProps)
     useEffect(() => {
         if (!isOpen) return;
         if (typeof window === "undefined") return;
-        const apiBaseUrl = ""/api"";
+        const apiBaseUrl = "/api";
         const memberId = session?.user?.id || localUser?.memberId;
         if (!memberId) {
             setProfileImageUrl(null);

@@ -12,7 +12,7 @@ export default function RecoverPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isRecovering, setIsRecovering] = useState(false);
-  const apiBaseUrl = ""/api"";
+  const apiBaseUrl = "/api";
 
   useEffect(() => {
     if (!memberId) return;

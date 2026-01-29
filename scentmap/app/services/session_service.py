@@ -19,34 +19,57 @@ def create_session(member_id: Optional[int] = None, mbti: Optional[str] = None) 
         with get_recom_db_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    INSERT INTO TB_SCENT_CARD_SESSION_T (session_id, member_id, selected_accords, liked_perfume_ids, interested_perfume_ids, passed_perfume_ids, exploration_time, interaction_count)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, (session_id, member_id, [], [], [], [], 0, 0))
+                    INSERT INTO TB_SCENT_CARD_SESSION_T (session_id, member_id, selected_accords, clicked_perfume_ids, liked_perfume_ids, interested_perfume_ids, passed_perfume_ids, exploration_time, interaction_count)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (session_id, member_id, [], [], [], [], [], 0, 0))
                 conn.commit()
         return {"session_id": session_id, "member_id": member_id}
     except Exception as e:
         logger.error(f"세션 생성 실패: {e}")
         raise
 
-def update_session_activity(session_id: str, accord_selected: Optional[str] = None, dwell_time: Optional[int] = None, interaction_count: Optional[int] = None):
+def update_session_activity(
+    session_id: str,
+    accord_selected: Optional[str] = None,
+    selected_accords: Optional[List[str]] = None,
+    perfume_id: Optional[int] = None,
+    dwell_time: Optional[int] = None,
+    interaction_count: Optional[int] = None
+):
     """세션 내 사용자 활동 데이터 업데이트"""
     try:
         with get_recom_db_connection() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-                cur.execute("SELECT selected_accords, interaction_count FROM TB_SCENT_CARD_SESSION_T WHERE session_id = %s", (session_id,))
+                cur.execute("SELECT selected_accords, clicked_perfume_ids, interaction_count FROM TB_SCENT_CARD_SESSION_T WHERE session_id = %s", (session_id,))
                 session = cur.fetchone()
                 if not session: return
 
-                selected_accords = list(session['selected_accords'] or [])
-                if accord_selected and accord_selected not in selected_accords:
-                    selected_accords.append(accord_selected)
+                # 어코드 업데이트 로직
+                accords_to_save = list(session['selected_accords'] or [])
 
+                # 1. 프론트에서 selected_accords 배열을 보낸 경우: 전체 배열로 덮어쓰기
+                if selected_accords is not None:
+                    accords_to_save = selected_accords
+                    logger.info(f"세션 {session_id}: 어코드 배열 업데이트됨 - {accords_to_save}")
+                # 2. 개별 어코드 클릭인 경우: 기존 배열에 추가
+                elif accord_selected and accord_selected not in accords_to_save:
+                    accords_to_save.append(accord_selected)
+                    logger.info(f"세션 {session_id}: 어코드 '{accord_selected}' 추가됨")
+
+                # 향수 클릭 처리: clicked_perfume_ids 배열에 추가
+                clicked_perfumes = list(session['clicked_perfume_ids'] or [])
+                if perfume_id and perfume_id not in clicked_perfumes:
+                    clicked_perfumes.append(perfume_id)
+                    logger.info(f"세션 {session_id}: 향수 ID {perfume_id} 클릭됨 (총 {len(clicked_perfumes)}개)")
+
+                updated_interaction_count = interaction_count or session['interaction_count'] + 1
                 cur.execute("""
                     UPDATE TB_SCENT_CARD_SESSION_T
-                    SET selected_accords = %s, interaction_count = %s, exploration_time = %s, last_activity_dt = CURRENT_TIMESTAMP
+                    SET selected_accords = %s, clicked_perfume_ids = %s, interaction_count = %s, exploration_time = %s, last_activity_dt = CURRENT_TIMESTAMP
                     WHERE session_id = %s
-                """, (selected_accords, interaction_count or session['interaction_count'] + 1, dwell_time or 0, session_id))
+                """, (accords_to_save, clicked_perfumes, updated_interaction_count, dwell_time or 0, session_id))
                 conn.commit()
+                logger.info(f"✅ 세션 {session_id} DB 저장 완료 - 어코드: {len(accords_to_save)}개, 향수 클릭: {len(clicked_perfumes)}개, 총 클릭: {updated_interaction_count}회")
     except Exception as e:
         logger.error(f"세션 활동 업데이트 실패: {e}")
         raise

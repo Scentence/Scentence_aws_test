@@ -163,10 +163,9 @@ def get_accord_descriptions(accord_names: List[str]) -> List[Dict]:
     """어코드 설명 DB 조회"""
     if not accord_names: return []
     try:
+        import psycopg2.extras
         with get_db_connection() as conn:
-            with conn.cursor(cursor_factory=json.loads if hasattr(conn, 'cursor_factory') else None) as cur: # Dummy check for DictCursor
-                import psycopg2.extras
-                cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+            with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
                 placeholders = ','.join(['%s'] * len(accord_names))
                 cur.execute(f"SELECT accord, desc1, desc2, desc3 FROM TB_ACCORD_DESC_M WHERE accord IN ({placeholders})", tuple(accord_names))
                 results = cur.fetchall()

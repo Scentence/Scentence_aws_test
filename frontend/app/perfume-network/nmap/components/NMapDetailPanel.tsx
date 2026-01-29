@@ -7,10 +7,11 @@ interface Props {
   fullPayload: NetworkPayload | null;
   labelsData: LabelsData | null;
   selectedAccords: string[];
-  logActivity: (data: { 
-    accord_selected?: string; 
-    perfume_id?: number; 
+  logActivity: (data: {
+    accord_selected?: string;
+    perfume_id?: number;
     filter_changed?: string;
+    selected_accords_override?: string[];
   }) => void;
 }
 

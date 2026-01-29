@@ -7,6 +7,7 @@ import AccordWheel from "@/components/layering/AccordWheel";
 import { BACKEND_ACCORDS, ACCORD_LABELS } from "@/lib/accords";
 import LayeringPerfumePicker from "@/components/layering/LayeringPerfumePicker"; // 내 향수 불러오기
 import PerfumeInfoModal from "@/components/layering/PerfumeInfoModal";
+import Sidebar from "@/components/common/sidebar";
 
 // ==================== 타입 정의 ====================
 
@@ -368,6 +369,59 @@ export default function LayeringPage() {
 
   /** 채팅 입력 입력창 포커스를 위한 ref */
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // [Fix] Hydration mismatch 해결을 위한 mounted 상태
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  // ==================== [NEW] 전역 헤더 및 프로필 상태 ====================
+  const [isNavOpen, setIsNavOpen] = useState(false);
+  const [localUser, setLocalUser] = useState<any>(null);
+  const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
+
+  // API 호출 경로 설정
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+  useEffect(() => {
+    // 1. 로컬 스토리지 데이터 확인
+    const authData = localStorage.getItem("localAuth");
+    if (authData) {
+      try {
+        const parsed = JSON.parse(authData);
+        setLocalUser(parsed);
+      } catch (e) {
+        console.error("Local auth parse error", e);
+      }
+    }
+
+    // 2. 세션(카카오) 기반 프로필 이미지 가져오기
+    if (session?.user?.id) {
+      fetch(`${API_URL}/users/profile/${session.user.id}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.profile_image_url) {
+            setProfileImageUrl(data.profile_image_url);
+          }
+        })
+        .catch((err) => console.error("Profile image fetch error", err));
+    }
+    // 3. 로컬 사용자 기반 프로필 이미지 가져오기
+    else if (localUser?.memberId) {
+      fetch(`${API_URL}/users/profile/${localUser.memberId}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.profile_image_url) {
+            setProfileImageUrl(data.profile_image_url);
+          }
+        })
+        .catch((err) => console.error("Local profile image fetch error", err));
+    }
+  }, [session, localUser?.memberId]);
+
+  const displayName = session?.user?.name || localUser?.userName || "사용자";
+  const isLoggedIn = !!(session || localUser);
 
   /**
    * 채팅 메시지가 업데이트될 때마다 자동으로 스크롤
@@ -767,10 +821,65 @@ export default function LayeringPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F5F2EA] text-[#1F1F1F]">
-      <div className="max-w-5xl mx-auto px-6 py-12">
-        {/* ==================== 페이지 헤더 ==================== */}
-        <header className="flex items-center justify-between mb-8">
+    <div className="min-h-screen bg-[#FDFBF8] text-black relative font-sans">
+      {/* ==================== [NEW] Sidebar & Overlay ==================== */}
+      <Sidebar
+        isOpen={isNavOpen}
+        onClose={() => setIsNavOpen(false)}
+        context="home"
+      />
+      {isNavOpen && (
+        <div
+          className="fixed inset-0 bg-transparent z-40"
+          onClick={() => setIsNavOpen(false)}
+        />
+      )}
+
+      {/* [STANDARD HEADER] 메인 페이지(app/page.tsx)와 100% 동일한 구조 및 디자인 적용 */}
+      <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-5 py-4 bg-[#FDFBF8] border-b border-[#F0F0F0]">
+        {/* 로고 영역: font-bold, text-black, tracking-tight (표준) */}
+        <Link href="/" className="text-xl font-bold tracking-tight text-black">
+          Scentence
+        </Link>
+
+        {/* 우측 상단 UI: 로그인 상태 및 사이드바 토글 버튼 (표준) */}
+        <div className="flex items-center gap-4">
+          {!isLoggedIn ? (
+            // 비로그인 상태 UI
+            <div className="flex items-center gap-2 text-sm font-medium text-gray-400">
+              <Link href="/login" className="hover:text-black transition-colors">Sign in</Link>
+              <span className="text-gray-300">|</span>
+              <Link href="/signup" className="hover:text-black transition-colors">Sign up</Link>
+            </div>
+          ) : (
+            // 로그인 상태 UI: 이름과 프로필 이미지
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-bold text-gray-800 hidden sm:block">
+                {displayName}님 반가워요!
+              </span>
+              <Link href="/mypage" className="block w-9 h-9 rounded-full overflow-hidden border border-gray-100 shadow-sm hover:opacity-80 transition-opacity">
+                <img
+                  src={profileImageUrl || "/default_profile.png"}
+                  alt="Profile"
+                  className="w-full h-full object-cover"
+                  onError={(e) => { e.currentTarget.src = "/default_profile.png"; }}
+                />
+              </Link>
+            </div>
+          )}
+
+          {/* 글로벌 내비게이션 토글 버튼 (px-5 py-4 패딩 및 w-8 h-8 규격 준수) */}
+          <button onClick={() => setIsNavOpen(!isNavOpen)} className="p-1 rounded-md hover:bg-gray-100 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-[#555]">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9h16.5m-16.5 6.75h16.5" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <div className="max-w-5xl mx-auto px-6 pt-[120px] pb-12">
+        {/* ==================== 페이지 헤더 (본문 타이틀) ==================== */}
+        <div className="flex items-center justify-between mb-8">
           <div className="space-y-3">
             {/* 영문 서브 타이틀 */}
             <p className="text-xs uppercase tracking-[0.3em] text-[#7A6B57] font-medium">
@@ -799,7 +908,7 @@ export default function LayeringPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
             </svg>
           </Link>
-        </header>
+        </div>
 
         {/* ==================== 메인 콘텐츠 그리드 ==================== */}
         <section className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
@@ -850,20 +959,20 @@ export default function LayeringPage() {
                         No Image
                       </div>
                     )}
-                      <div className="flex-1">
-                        <p className="text-[11px] font-semibold text-[#7A6B57]">브랜드 추천</p>
-                        <p className="text-sm font-bold text-[#2E2B28]">
-                          {brandBestPerfume.perfume_name}
+                    <div className="flex-1">
+                      <p className="text-[11px] font-semibold text-[#7A6B57]">브랜드 추천</p>
+                      <p className="text-sm font-bold text-[#2E2B28]">
+                        {brandBestPerfume.perfume_name}
+                      </p>
+                      <p className="text-xs text-[#7A6B57]">
+                        {brandBestPerfume.perfume_brand}
+                      </p>
+                      {brandBestReason && (
+                        <p className="text-[11px] text-[#5C5448] mt-2 leading-relaxed">
+                          {brandBestReason}
                         </p>
-                        <p className="text-xs text-[#7A6B57]">
-                          {brandBestPerfume.perfume_brand}
-                        </p>
-                        {brandBestReason && (
-                          <p className="text-[11px] text-[#5C5448] mt-2 leading-relaxed">
-                            {brandBestReason}
-                          </p>
-                        )}
-                      </div>
+                      )}
+                    </div>
                     {Number.isFinite(brandBestScore) && (
                       <div className="rounded-full border border-[#C8A24D]/30 bg-[#C8A24D]/10 px-3 py-1.5">
                         <p className="text-[10px] font-semibold text-[#7A6B57]">평균 점수</p>
@@ -1119,10 +1228,10 @@ export default function LayeringPage() {
                     </p>
                     <p className={`text-[10px] mt-1.5 ${message.type === "user" ? "text-white/60" : "text-[#8A7F73]"
                       }`}>
-                      {message.timestamp.toLocaleTimeString("ko-KR", {
+                      {isMounted ? message.timestamp.toLocaleTimeString("ko-KR", {
                         hour: "2-digit",
                         minute: "2-digit",
-                      })}
+                      }) : ""}
                     </p>
                   </div>
                 </div>

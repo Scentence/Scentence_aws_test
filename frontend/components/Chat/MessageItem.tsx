@@ -138,7 +138,7 @@ const parseMessageContent = (text: string) => {
                     a: ({ node, ...props }: any) => (
                         <a {...props} target="_blank" rel="noopener noreferrer" className="text-pink-600 hover:underline" />
                     ),
-                    
+
                     // [기존 유지] 이미지 (Rounded-2xl 사각형 유지)
                     img: ({ node, ...props }: any) => {
                         return (
@@ -151,7 +151,7 @@ const parseMessageContent = (text: string) => {
                             </span>
                         );
                     },
-                    
+
                     // [기존 유지] h2: 핑크색 보더 포인트 (브랜드명 등)
                     h2: ({ node, ...props }: any) => (
                         <h2 {...props} className="text-lg font-bold mt-6 mb-3 text-[#393939] border-l-4 border-pink-500 pl-3 leading-none" />
@@ -162,7 +162,7 @@ const parseMessageContent = (text: string) => {
                     h3: ({ node, ...props }: any) => (
                         <h3 {...props} className="text-base font-bold mt-6 mb-2 text-slate-800 border-b-2 border-slate-100 pb-1" />
                     ),
-                    
+
                     // [기존 유지] 기타 스타일
                     hr: ({ node, ...props }: any) => <hr {...props} className="my-8 border-[#E5E4DE]" />,
                     em: ({ node, ...props }: any) => (
@@ -170,17 +170,17 @@ const parseMessageContent = (text: string) => {
                     ),
                     strong: ({ node, ...props }: any) => <strong {...props} className="text-pink-600 font-extrabold" />,
                     p: ({ node, ...props }: any) => <p {...props} className="mb-3 last:mb-0 leading-relaxed text-slate-700" />,
-                    
+
                     // [기존 유지] 리스트
                     ul: ({ node, ...props }: any) => <ul {...props} className="list-disc pl-5 mb-4 space-y-1 text-sm" />,
                     li: ({ node, ...props }: any) => <li {...props} className="pl-1" />,
-                    
+
                     // [★디자인 수정] 인용구 (노트 설명, 코멘트 강조용)
                     // 회색 박스 대신 깔끔한 핑크색 라인 스타일 적용
                     blockquote: ({ node, ...props }: any) => (
-                        <blockquote 
-                            {...props} 
-                            className="my-3 pl-4 border-l-[3px] border-pink-300 text-sm text-slate-600 italic bg-transparent" 
+                        <blockquote
+                            {...props}
+                            className="my-3 pl-4 border-l-[3px] border-pink-300 text-sm text-slate-600 italic bg-transparent"
                         />
                     ),
 
@@ -217,9 +217,12 @@ const MessageItem = ({ message }: { message: Message }) => {
 
     return (
         <div className={`flex w-full ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`max-w-[85%] md:max-w-[75%] rounded-2xl px-5 py-4 text-sm leading-relaxed shadow-sm ${
-                message.role === "user" 
-                ? "bg-[#E5E4DE] text-[#393939]" 
+            {/* [수정 가이드] 말풍선 너비 조절
+                - max-w-[90%]: 모바일에서 화면의 90%까지 시원하게 차지
+                - md:max-w-[80%]: 데스크탑에서는 너무 길어지지 않게 80% 정도로 제한 (가독성 최적화)
+            */}
+            <div className={`max-w-[90%] md:max-w-[80%] rounded-2xl px-5 py-4 text-sm leading-relaxed shadow-sm ${message.role === "user"
+                ? "bg-[#E5E4DE] text-[#393939]"
                 : "bg-white text-[#393939] border border-[#E5E4DE]"
                 }`}>
                 <div className="mb-1 font-semibold uppercase tracking-[0.2em] text-[0.6rem] text-[#8E8E8E]">

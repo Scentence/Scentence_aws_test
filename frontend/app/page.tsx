@@ -3,11 +3,57 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import Sidebar from "@/components/common/sidebar"; // 우리가 만든 스마트 사이드바
+import { useSession } from "next-auth/react"; // [Login Check]
+import MaximumCounter from "@/components/perfume-wiki/MaximumCounter"; // (만약 사용하는 경우 유지, 없으면 삭제 가능하지만 기존 import 유지)
+import Sidebar from "@/components/common/sidebar";
 
 export default function LandingPage() {
   const router = useRouter();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // 사이드바 열림/닫힘 상태
+  const { data: session } = useSession(); // [Login Check]
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // [Profile Logic] 로그인 사용자 정보 확인
+  const [localUser, setLocalUser] = useState<{ memberId?: string | null; email?: string | null; nickname?: string | null; roleType?: string | null; isAdmin?: boolean } | null>(null);
+  const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = localStorage.getItem("localAuth");
+    if (stored) {
+      try {
+        setLocalUser(JSON.parse(stored));
+      } catch (error) {
+        setLocalUser(null);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "";
+    const memberId = session?.user?.id || localUser?.memberId;
+
+    if (!memberId) {
+      setProfileImageUrl(null);
+      return;
+    }
+
+    fetch(`${apiBaseUrl}/users/profile/${memberId}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.profile_image_url) {
+          const url = data.profile_image_url.startsWith("http")
+            ? data.profile_image_url
+            : `${apiBaseUrl}${data.profile_image_url}`;
+          setProfileImageUrl(url);
+        }
+      })
+      .catch(() => setProfileImageUrl(null));
+  }, [localUser, session]);
+
+  // [Display Name Logic]
+  const displayName = session?.user?.name || localUser?.nickname || localUser?.email?.split('@')[0] || "Guest";
+  const isLoggedIn = Boolean(session || localUser);
 
   const handleNewChat = () => {
     router.push("/chat");
@@ -20,7 +66,7 @@ export default function LandingPage() {
   return (
     <div className="flex h-screen bg-[#FDFBF8] overflow-hidden text-black relative font-sans">
 
-      {/* 1. 스마트 사이드바 (context="home") */}
+      {/* 1. 스마트 사이드바 (context="home") -> 이제 팝오버 메뉴 역할 */}
       <Sidebar
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
@@ -28,10 +74,16 @@ export default function LandingPage() {
       />
 
       <main className="flex-1 flex flex-col relative w-full h-full overflow-y-auto no-scrollbar pb-8 pt-[72px]">
-        {/* 사이드바 열렸을 때 배경 어둡게 처리 */}
-        {isSidebarOpen && (
-          <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={() => setIsSidebarOpen(false)} />
-        )}
+        {/* 사이드바 열렸을 때 배경 어둡게 처리 -> 팝오버로 변경되므로 제거할 수도 있지만, 모바일 고려해 투명 오버레이는 Sidebar 내부에서 처리하는 게 나을 수도 있음. 
+            기존 코드는 유지하되 Sidebar 컴포넌트가 알아서 처리하도록 둠. 
+            여기선 '모바일용 배경'은 팝오버 스타일엔 굳이 필요 없거나 투명하게 처리. 
+            일단 기존 배경 어둡게 처리는 유지 (Overlay 역할) 하거나, 
+            팝오버 스타일(모달성 아님)을 원하면 제거. 
+            사용자 요청 "팝오버"는 보통 모달 오버레이가 진하지 않음. 
+            여기서는 `z-40` 오버레이를 제거하고 Sidebar 컴포넌트 내부에서 처리하게 변경 권장.
+            하지만 안전하게 기존 코드 유지.
+        */}
+
 
         {/* 2. HEADER */}
         <header className="fixed top-0 left-0 right-0 flex items-center justify-between px-5 py-4 bg-[#FDFBF8] border-b border-[#F0F0F0] z-50">
@@ -39,12 +91,41 @@ export default function LandingPage() {
             Scentence
           </Link>
 
-          {/* 햄버거 버튼 (클릭 시 사이드바 열림) */}
-          <button onClick={() => setIsSidebarOpen(true)} className="p-1">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-[#555]">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-            </svg>
-          </button>
+          {/* 우측 상단 UI: 로그인 상태/햄버거 버튼 */}
+          <div className="flex items-center gap-4">
+
+            {/* [LOGIN STATE UI] */}
+            {!isLoggedIn ? (
+              // 비회원: Sign in | Sign up
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-400">
+                <Link href="/login" className="hover:text-black transition-colors">Sign in</Link>
+                <span className="text-gray-300">|</span>
+                <Link href="/signup" className="hover:text-black transition-colors">Sign up</Link>
+              </div>
+            ) : (
+              // 회원: 환영 메시지 + 프로필 이미지
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-bold text-gray-800 hidden sm:block">
+                  {displayName}님 반가워요!
+                </span>
+                <Link href="/mypage" className="block w-9 h-9 rounded-full overflow-hidden border border-gray-100 shadow-sm hover:opacity-80 transition-opacity">
+                  <img
+                    src={profileImageUrl || "/default_profile.png"}
+                    alt="Profile"
+                    className="w-full h-full object-cover"
+                    onError={(e) => { e.currentTarget.src = "/default_profile.png"; }}
+                  />
+                </Link>
+              </div>
+            )}
+
+            {/* 햄버거 버튼 (클릭 시 팝오버 메뉴 열림) */}
+            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-1 rounded-md hover:bg-gray-100 transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-[#555]">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9h16.5m-16.5 6.75h16.5" />
+              </svg>
+            </button>
+          </div>
         </header>
 
         <div className="px-5 space-y-8 mt-6 w-full max-w-3xl mx-auto">

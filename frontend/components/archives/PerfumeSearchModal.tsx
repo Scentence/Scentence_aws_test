@@ -25,14 +25,22 @@ interface Props {
     onAdd: (perfume: SearchResult, status: string) => void;
     isKorean: boolean;
     onToggleLanguage: () => void;
+    existingIds?: number[]; // <--- 추가: 이미 등록된 ID 목록
 }
 
-export default function PerfumeSearchModal({ memberId, onClose, onAdd, isKorean, onToggleLanguage }: Props) {
+export default function PerfumeSearchModal({ memberId, onClose, onAdd, isKorean, onToggleLanguage, existingIds = [] }: Props) {
     const [query, setQuery] = useState("");
     const [results, setResults] = useState<SearchResult[]>([]);
     const [loading, setLoading] = useState(false);
-    // [추가] 등록된 향수 ID들을 추적하는 상태
-    const [addedIds, setAddedIds] = useState<Set<number>>(new Set());
+    // [수정] 초기값으로 existingIds를 사용하도록 변경
+    const [addedIds, setAddedIds] = useState<Set<number>>(new Set(existingIds));
+
+    // [추가] 부모로부터 받은 existingIds가 변경되면 동기화 (만약 모달 열린 채로 추가될 경우 대비)
+    useEffect(() => {
+        if (existingIds.length > 0) {
+            setAddedIds(new Set(existingIds));
+        }
+    }, [existingIds]);
     // Autocomplete States
     const [suggestions, setSuggestions] = useState<AutocompleteResult>({ brands: [], keywords: [] });
     const [showSuggestions, setShowSuggestions] = useState(false);

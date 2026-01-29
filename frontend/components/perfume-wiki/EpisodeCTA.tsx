@@ -24,7 +24,7 @@ export default function EpisodeCTA() {
     {
       title: "향수맵 바로가기",
       description: "향수의 세계를 시각적으로 탐색해보세요",
-      href: "/perfume-network",
+      href: "/perfume-network/nmap",
       bgColor: "bg-[#F0FFF4]",
       hoverColor: "hover:bg-[#E0FFE9]",
     },

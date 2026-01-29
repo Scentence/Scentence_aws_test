@@ -14,28 +14,45 @@ interface ChatRoom {
 
 interface SidebarProps {
     isOpen: boolean;
-    activeThreadId?: string;       // ✅ 현재 활성화된 방 ID 추가
+    activeThreadId?: string;
     onToggle: () => void;
     onNewChat: () => void;
-    onSelectThread: (id: string) => void; // ✅ 방 선택 함수 추가
+    onSelectThread: (id: string) => void;
     loading: boolean;
     showToggleButton?: boolean;
+    currentMemberId?: number | null; // ✅ [수정] 부모(Page)로부터 전달받는 유저 ID
 }
 
-const Sidebar = ({ isOpen, activeThreadId, onToggle, onNewChat, onSelectThread, loading, showToggleButton = false }: SidebarProps) => {
+const Sidebar = ({ isOpen, activeThreadId, onToggle, onNewChat, onSelectThread, loading, showToggleButton = false, currentMemberId }: SidebarProps) => {
     const { data: session } = useSession(); // 카카오 로그인 세션
     const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
     const [userNickname, setUserNickname] = useState("Guest");
 
-    // [1] 사이드바가 열릴 때 목록 불러오기 (카카오 세션 또는 로컬 로그인)
+    // [1] 사이드바가 열리거나 유저 ID가 변경될 때 목록 불러오기
     useEffect(() => {
-        // 카카오 로그인 세션 확인
-        console.log("[Sidebar] session:", session); // 디버깅
-        console.log("[Sidebar] session.user.id:", session?.user?.id); // 디버깅
-        if (session?.user) {
+        console.log("[Sidebar Debug] Current Props:", { isOpen, currentMemberId, sessionUserId: session?.user?.id });
+
+        // 1. Props로 전달받은 ID가 있으면 최우선 사용
+        if (currentMemberId) {
+            console.log("[Sidebar] Fetching rooms for member_id (Prop):", currentMemberId);
+            fetch(`${BACKEND_URL}/chat/rooms/${currentMemberId}`)
+                .then(res => {
+                    console.log("[Sidebar] API Response Status:", res.status);
+                    return res.json();
+                })
+                .then(data => {
+                    console.log("[Sidebar] Loaded Rooms:", data);
+                    setChatRooms(data.rooms || []);
+                })
+                .catch(err => console.error("History Load Error:", err));
+            return;
+        }
+
+        // 2. Props가 없으면 기존 로직(세션/로컬) 시도 (하위 호환)
+        if (session?.user?.id) {
             setUserNickname(session.user.name || "User");
-            if (isOpen && session.user.id) {
-                console.log("[Sidebar] Fetching rooms for member_id:", session.user.id); // 디버깅
+            if (isOpen) {
+                console.log("[Sidebar] Fetching rooms for member_id (Session):", session.user.id);
                 fetch(`${BACKEND_URL}/chat/rooms/${session.user.id}`)
                     .then(res => res.json())
                     .then(data => setChatRooms(data.rooms || []))
@@ -43,14 +60,17 @@ const Sidebar = ({ isOpen, activeThreadId, onToggle, onNewChat, onSelectThread, 
             }
             return;
         }
-        // 로컬 로그인 확인
+
         const localAuth = localStorage.getItem("localAuth");
+        console.log("[Sidebar Debug] LocalAuth:", localAuth);
+
         if (localAuth) {
             try {
                 const auth = JSON.parse(localAuth);
                 setUserNickname(auth.nickname || "User");
 
                 if (isOpen && auth.memberId) {
+                    console.log("[Sidebar] Fetching rooms for member_id (Local):", auth.memberId);
                     fetch(`${BACKEND_URL}/chat/rooms/${auth.memberId}`)
                         .then(res => res.json())
                         .then(data => setChatRooms(data.rooms || []))
@@ -60,7 +80,7 @@ const Sidebar = ({ isOpen, activeThreadId, onToggle, onNewChat, onSelectThread, 
                 console.error("Auth parsing failed", e);
             }
         }
-    }, [isOpen, session]);
+    }, [isOpen, session, currentMemberId]);
 
     return (
         <>
@@ -72,13 +92,14 @@ const Sidebar = ({ isOpen, activeThreadId, onToggle, onNewChat, onSelectThread, 
                 </button>
             )}
 
-            <div className={`fixed inset-y-0 right-0 z-50 w-64 bg-white border-l border-[#E5E4DE] transition-transform duration-300 transform ${isOpen ? "translate-x-0" : "translate-x-full"}`}>
+            {/* [SIDEBAR CONTAINER] md:relative로 변경하여 Flex 밀어내기 지원 */}
+            <div className={`fixed inset-y-0 left-0 z-[60] w-64 bg-white border-r border-[#E5E4DE] transition-transform duration-300 transform 
+                ${isOpen ? "translate-x-0" : "-translate-x-full"} 
+                md:relative md:translate-x-0 md:z-0 md:h-full`}>
                 <div className="flex h-full flex-col p-4 pt-4">
                     <div className="flex justify-between items-center mb-6 px-2">
                         <span className="text-[10px] font-bold tracking-widest text-[#8E8E8E]">RECENT HISTORY</span>
-                        <button onClick={onToggle} className="p-1 text-[#8E8E8E] hover:text-[#393939] transition-colors">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-                        </button>
+                        {/* [수정] 중복 X 버튼 제거 (비상식적 UI 개선) */}
                     </div>
 
                     <button onClick={onNewChat} disabled={loading} className="group flex items-center justify-center gap-2 rounded-xl border border-[#E5E4DE] bg-[#FAF8F5] py-3 text-sm font-medium text-[#393939] transition-all hover:bg-[#F2F1EE] disabled:opacity-50">
@@ -87,13 +108,14 @@ const Sidebar = ({ isOpen, activeThreadId, onToggle, onNewChat, onSelectThread, 
                     </button>
 
                     {/* ✅ 실제 대화 목록 렌더링 영역 */}
-                    <div className="mt-8 flex-1 overflow-y-auto no-scrollbar space-y-1">
+                    <div className="mt-8 flex-1 overflow-y-auto custom-scrollbar space-y-1">
                         {chatRooms.length > 0 ? (
                             chatRooms.map((room) => (
                                 <button
                                     key={room.thread_id}
                                     onClick={() => onSelectThread(room.thread_id)}
-                                    className={`w-full text-left px-3 py-3 rounded-xl transition-colors ${activeThreadId === room.thread_id ? "bg-[#F2F1EE] font-semibold" : "hover:bg-[#FAF8F5]"}`}
+                                    // [수정] 클릭 후 회색 음영 남지 않도록 active active highlight 제거. 호버 시에만 반응.
+                                    className={`w-full text-left px-3 py-3 rounded-xl transition-colors hover:bg-[#FAF8F5] ${activeThreadId === room.thread_id ? "font-semibold text-[#393939]" : ""}`}
                                 >
                                     <p className="text-sm text-[#393939] truncate">{room.title || "이전 대화"}</p>
                                     <p className="text-[10px] text-[#BCBCBC] mt-1">{new Date(room.last_chat_dt).toLocaleDateString()}</p>
@@ -102,11 +124,6 @@ const Sidebar = ({ isOpen, activeThreadId, onToggle, onNewChat, onSelectThread, 
                         ) : (
                             <p className="px-2 text-xs text-[#BCBCBC]">이전 대화가 없습니다.</p>
                         )}
-                    </div>
-
-                    <div className="mt-auto border-t border-[#E5E4DE] pt-4 flex items-center gap-3 px-2">
-                        <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-pink-400 to-purple-400" />
-                        <div className="text-sm font-medium text-[#393939]">{userNickname}</div>
                     </div>
                 </div>
             </div>

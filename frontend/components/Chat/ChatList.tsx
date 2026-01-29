@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, RefObject } from "react";
+import { useEffect, useState, RefObject } from "react";
 import MessageItem, { Message } from "./MessageItem";
 
 interface ChatListProps {
@@ -9,29 +9,73 @@ interface ChatListProps {
     messagesEndRef: RefObject<HTMLDivElement>;
     scrollToBottom: () => void;
     statusLog?: string;
+    userName?: string; // 사용자 이름 추가
 }
 
-const ChatList = ({ messages, loading, messagesEndRef, scrollToBottom, statusLog }: ChatListProps) => {
+const GREETINGS = [
+    "어서오세요.",
+    "만나서 반가워요!",
+    "좋은 하루에요!",
+    "무엇을 도와드릴까요?"
+];
+
+const ChatList = ({ messages, loading, messagesEndRef, scrollToBottom, statusLog, userName = "Guest" }: ChatListProps) => {
     // 메시지나 로딩 상태, 로그 문구가 변할 때마다 바닥으로 자동 스크롤합니다.
     useEffect(() => {
         scrollToBottom();
     }, [messages, loading, statusLog, scrollToBottom]);
 
-    // 대화 시작 전 초기 화면
+    // 인사말 회전 로직
+    const [greetingIndex, setGreetingIndex] = useState(0);
+
+    useEffect(() => {
+        if (messages.length === 0) {
+            const interval = setInterval(() => {
+                setGreetingIndex((prev) => (prev + 1) % GREETINGS.length);
+            }, 5000); // 5초마다 변경 (요청사항 반영)
+            return () => clearInterval(interval);
+        }
+    }, [messages.length]);
+
+    // 대화 시작 전 초기 화면 (Hero Section Style Greeting)
     if (messages.length === 0) {
         return (
-            <section className="flex-1 h-full overflow-hidden relative flex flex-col items-center justify-center text-center">
-                <div className="flex flex-col items-center gap-4 opacity-100">
-                    <div className="w-24 h-24 mb-2">
+            <section className="flex-1 h-full overflow-hidden relative flex flex-col items-center justify-center text-center p-6 pb-15">
+                {/* Animation Styles */}
+                <style>
+                    {`
+                        @keyframes fadeInUp {
+                            from { opacity: 0; transform: translateY(20px); filter: blur(4px); }
+                            to { opacity: 1; transform: translateY(0); filter: blur(0); }
+                        }
+                        .animate-greeting {
+                            animation: fadeInUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+                        }
+                    `}
+                </style>
+                <div className="flex flex-col items-center gap-8 opacity-100 max-w-5xl">
+                    <div className="w-40 h-40 mb-2 drop-shadow-xl transition-transform hover:scale-105 duration-500">
                         <img
                             src="/perfumes/chatlist_icon1.png"
                             alt="Chat Icon"
-                            className="w-full h-full object-contain drop-shadow-sm"
+                            className="w-full h-full object-contain"
                         />
                     </div>
-                    <p className="text-sm md:text-base font-medium text-[#393939]/80">
-                        질문을 입력하면 AI가 분석 및 조사를 시작합니다.
-                    </p>
+                    <div className="flex flex-col items-center gap-12">
+                        <h1 className="text-2xl md:text-5xl font-bold text-[#2A2A2A] tracking-tight -mt-4">
+                            {userName}님,
+                        </h1>
+                        {/* 텍스트 높이 확보를 위한 Wrapper */}
+                        <div className="h-[1.3em] relative flex items-center justify-center overflow-visible w-full min-w-[300px]">
+                            <span
+                                className="absolute animate-greeting text-3xl md:text-6xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#D97757] via-[#FF8F8F] to-[#D97757] bg-[length:200%_auto] bg-center"
+                                key={greetingIndex}
+                                style={{ whiteSpace: 'nowrap' }}
+                            >
+                                {GREETINGS[greetingIndex]}
+                            </span>
+                        </div>
+                    </div>
                 </div>
             </section>
         );

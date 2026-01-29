@@ -89,7 +89,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-white text-black flex flex-col">
+    <div className="min-h-screen bg-[#FDFBF8] text-black flex flex-col font-sans">
       <Sidebar
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
@@ -98,23 +98,36 @@ export default function LoginPage() {
 
       {isSidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          className="fixed inset-0 bg-transparent z-40 md:hidden"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
 
-      <header className="fixed top-0 left-0 right-0 flex items-center justify-between px-5 py-4 bg-[#E5E5E5] z-50">
+      {/* [STANDARD HEADER] 메인 페이지(app/page.tsx)와 100% 동일한 구조 및 디자인 적용 */}
+      <header className="fixed top-0 left-0 right-0 flex items-center justify-between px-5 py-4 bg-[#FDFBF8] border-b border-[#F0F0F0] z-50">
+        {/* 로고 영역: font-bold, text-black, tracking-tight (표준) */}
         <Link href="/" className="text-xl font-bold text-black tracking-tight">
           Scentence
         </Link>
-        <button onClick={() => setIsSidebarOpen(true)} className="p-1">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-[#555]">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-          </svg>
-        </button>
+
+        {/* 우측 상단 UI: 로그인 상태 및 사이드바 토글 버튼 (표준) */}
+        <div className="flex items-center gap-4">
+          {/* 비로그인 상태 UI (메인과 동일) */}
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-400">
+            <Link href="/login" className="hover:text-black transition-colors">Sign in</Link>
+            <span className="text-gray-300">|</span>
+            <Link href="/signup" className="hover:text-black transition-colors">Sign up</Link>
+          </div>
+          {/* 글로벌 내비게이션 토글 버튼 (px-5 py-4 패딩 및 w-8 h-8 규격 준수) */}
+          <button onClick={() => setIsSidebarOpen(true)} className="p-1 rounded-md hover:bg-gray-100 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-[#555]">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9h16.5m-16.5 6.75h16.5" />
+            </svg>
+          </button>
+        </div>
       </header>
 
-      <main className="flex-1 px-5 py-8 w-full max-w-md mx-auto pt-[72px]">
+      <main className="flex-1 px-5 py-8 w-full max-w-md mx-auto pt-[120px]">
         <div className="space-y-2 mb-8">
           <h2 className="text-2xl font-bold">통합 로그인</h2>
           <p className="text-sm text-[#666]">아이디와 비밀번호로 로그인하세요.</p>

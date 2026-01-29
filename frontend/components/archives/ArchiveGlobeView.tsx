@@ -3,7 +3,7 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree, extend } from "@react-three/fiber";
-import { OrbitControls, Html, useCursor, Sparkles, Float, Billboard, shaderMaterial } from "@react-three/drei";
+import { OrbitControls, Html, useCursor, Sparkles, Stars, Float, Billboard, shaderMaterial } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
 
 interface MyPerfume {
@@ -39,6 +39,9 @@ const MOCK_IMAGES = [
     "https://images.unsplash.com/photo-1523293182086-7651a899d60f?auto=format&fit=crop&w=400&q=80",
 ];
 
+// [수학 로직] 피보나치 구체(Fibonacci Sphere) 알고리즘
+// N개의 아이템을 구체 표면에 거의 균등한 간격으로 배치하기 위해 사용합니다.
+// i: 인덱스, N: 전체 개수, radius: 구의 반지름
 function getPositionOnSphere(i: number, N: number, radius: number) {
     const phi = Math.acos(1 - (2 * (i + 0.5)) / N);
     const theta = Math.PI * (1 + 5 ** 0.5) * i;
@@ -48,7 +51,9 @@ function getPositionOnSphere(i: number, N: number, radius: number) {
     return new THREE.Vector3(x, y, z);
 }
 
-// [CAMERA LOGIC]
+// [CAMERA LOGIC] 카메라 포커싱 매니저
+// 선택된 카드가 있으면 그 위치로 카메라를 부드럽게 이동(Swoosh)시키고, 
+// 선택이 해제되면 다시 중앙을 바라보게 합니다.
 function FocusManager({ focusedPosition, controlsRef }: { focusedPosition: THREE.Vector3 | null, controlsRef: any }) {
     const { camera } = useThree();
 
@@ -58,11 +63,12 @@ function FocusManager({ focusedPosition, controlsRef }: { focusedPosition: THREE
 
         if (focusedPosition) {
             // [SWOOSH] 타겟으로 부드럽게 이동
+            // lerp(목표지점, 속도): 현재 위치에서 목표 지점으로 점진적 이동
             controls.target.lerp(focusedPosition, delta * 4); // Target 이동 속도
 
-            // [ZOOM] 카메라가 타겟 앞으로 이동
+            // [ZOOM] 카메라가 타겟 '앞'으로 이동하여 클로즈업
+            // 카메라 위치 = 타겟 위치 + (타겟 방향 벡터 * 거리 8)
             const direction = new THREE.Vector3().subVectors(camera.position, focusedPosition).normalize();
-            // 타겟에서 8만큼 떨어진 지점
             const targetCamPos = focusedPosition.clone().add(direction.multiplyScalar(8));
 
             // Camera 이동 Speed Up (Swoosh 느낌 강화)
@@ -78,6 +84,7 @@ function FocusManager({ focusedPosition, controlsRef }: { focusedPosition: THREE
     return null;
 }
 
+// 개별 향수 카드 컴포넌트
 function PerfumeCard({
     info,
     position,
@@ -93,25 +100,25 @@ function PerfumeCard({
     focusedId: number | null;
     setFocusedId: (id: number | null) => void;
 }) {
-    const ref = useRef<THREE.Group>(null);
+    // [FIX] 히트박스와 비주얼 분리: visualRef는 '보이는 부분'만 제어
+    const visualRef = useRef<THREE.Group>(null);
     const [hovered, setHover] = useState(false);
 
-    // Focus Logic
     const isFocused = focusedId === info.my_perfume_id;
     const isDimmed = focusedId !== null && !isFocused;
 
     useCursor(hovered && !isDimmed);
 
+    // [ANIMATION] 비주얼 그룹 스케일링 (히트박스는 영향받지 않음 -> 떨림 방지)
     useFrame((state, delta) => {
-        if (ref.current) {
-            // Smooth Scale Transition
+        if (visualRef.current) {
             const targetScale = isFocused ? FOCUS_SCALE : (hovered && !isDimmed ? HOVER_SCALE : 1);
-            ref.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), delta * 15);
+            visualRef.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), delta * 15);
         }
     });
 
     const handlePointerDown = (e: any) => {
-        e.stopPropagation(); // Prevent background click
+        e.stopPropagation();
         setFocusedId(isFocused ? null : info.my_perfume_id);
     };
 
@@ -121,15 +128,14 @@ function PerfumeCard({
 
     return (
         <Float
-            speed={(hovered || isFocused) ? 0 : 1} // Stop motion on hover/focus
+            speed={(hovered || isFocused) ? 0 : 1}
             rotationIntensity={0}
             floatIntensity={0.5}
             floatingRange={isFocused ? [0, 0] : [-0.2, 0.2]}
         >
             <Billboard position={position} follow={true} lockX={false} lockY={false} lockZ={false}>
-                <group ref={ref}>
-
-                    {/* [HITBOX] Transparent, Large, clickable */}
+                <group>
+                    {/* [HITBOX] 정적 히트박스 (크기 변함 없음 = 안정적) */}
                     <mesh
                         position={[0, 0, CARD_THICKNESS + 0.2]}
                         onPointerDown={handlePointerDown}
@@ -140,99 +146,101 @@ function PerfumeCard({
                         <meshBasicMaterial transparent opacity={0} depthWrite={false} color="red" />
                     </mesh>
 
-                    <AnimatedCardContent isDimmed={isDimmed} isFocused={isFocused}>
+                    {/* [VISUALS] 스케일 애니메이션 적용 대상 */}
+                    <group ref={visualRef}>
+                        <AnimatedCardContent isDimmed={isDimmed} isFocused={isFocused}>
 
-                        {/* [GOLD GLOW BACKING]
-                            meshStandardMaterial with emissive for bloom effect
-                            Show only on Hover/Focus
-                        */}
-                        <mesh position={[0, 0, -0.06]}>
-                            <boxGeometry args={[CARD_WIDTH + 0.15, CARD_HEIGHT + 0.15, 0.01]} />
-                            <meshStandardMaterial
-                                color="#C5A55D"
-                                emissive="#C5A55D"
-                                emissiveIntensity={(hovered || isFocused) && !isDimmed ? 2 : 0}
-                                transparent
-                                opacity={(hovered || isFocused) && !isDimmed ? 1 : 0}
-                                toneMapped={false}
-                            />
-                        </mesh>
+                            {/* [FIX] GOLD RIM (액자 프레임) 
+                                카드보다 약간 크게 뒤에 배치하여 테두리처럼 보이게 함
+                            */}
+                            <mesh position={[0, 0, -0.01]}>
+                                <boxGeometry args={[CARD_WIDTH + 0.12, CARD_HEIGHT + 0.12, CARD_THICKNESS - 0.02]} />
+                                <meshStandardMaterial
+                                    color="#FFD700"      // 리얼 골드
+                                    metalness={0.6}      // 우주에서도 보이게 메탈 조금 낮춤
+                                    roughness={0.2}
+                                    emissive="#000000"   // 발광 제거
+                                    emissiveIntensity={0}
+                                />
+                            </mesh>
 
-                        {/* MAIN DARK FRAME */}
-                        <mesh castShadow receiveShadow>
-                            <boxGeometry args={[CARD_WIDTH, CARD_HEIGHT, CARD_THICKNESS]} />
-                            <meshStandardMaterial
-                                color="#1a1a1a"
-                                roughness={0.7}
-                                metalness={0.1}
-                                transparent={true}
-                                opacity={isDimmed ? 0.2 : 1}
-                            />
-                        </mesh>
+                            {/* MAIN DARK BODY (카드 본체) */}
+                            <mesh castShadow receiveShadow position={[0, 0, 0.01]}>
+                                <boxGeometry args={[CARD_WIDTH, CARD_HEIGHT, CARD_THICKNESS]} />
+                                <meshStandardMaterial
+                                    color="#1a1a1a"
+                                    roughness={0.7}
+                                    metalness={0.1}
+                                    transparent={true}
+                                    opacity={isDimmed ? 0.2 : 1}
+                                />
+                            </mesh>
 
-                        {/* IMAGE PANEL */}
-                        <mesh position={[0, 0.2, CARD_THICKNESS / 2 + 0.02]}>
-                            <planeGeometry args={[CARD_WIDTH - 0.1, CARD_HEIGHT - 0.8]} />
-                            <meshBasicMaterial
-                                color="#000"
-                                transparent={true}
-                                opacity={isDimmed ? 0.2 : 1}
-                            />
-                        </mesh>
+                            {/* IMAGE PANEL */}
+                            <mesh position={[0, 0.2, CARD_THICKNESS / 2 + 0.03]}>
+                                <planeGeometry args={[CARD_WIDTH - 0.1, CARD_HEIGHT - 0.8]} />
+                                <meshBasicMaterial
+                                    color="#000"
+                                    transparent={true}
+                                    opacity={isDimmed ? 0.2 : 1}
+                                />
+                            </mesh>
 
-                        {/* HTML OVERLAY */}
-                        {!isDimmed && (
-                            <Html
-                                transform
-                                occlude="blending"
-                                position={[0, 0, CARD_THICKNESS / 2 + 0.03]}
-                                style={{
-                                    width: '150px',
-                                    height: '210px',
-                                    pointerEvents: 'none',
-                                    userSelect: 'none',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    alignItems: 'center',
-                                    transition: 'opacity 0.2s',
-                                }}
-                            >
-                                <div className="w-full h-full flex flex-col p-2 font-sans antialiased text-left select-none">
-                                    <div className="w-full h-[130px] bg-gray-900 rounded-sm overflow-hidden mb-3 shadow-inner relative">
-                                        {displayImage && (
-                                            <img
-                                                src={displayImage}
-                                                alt={displayName}
-                                                className="w-full h-full object-cover transition-transform duration-300 ease-out"
-                                                style={{
-                                                    transform: (hovered || isFocused) ? `scale(${IMAGE_HOVER_SCALE})` : 'scale(1)',
-                                                }}
-                                            />
-                                        )}
+                            {/* HTML OVERLAY */}
+                            {!isDimmed && (
+                                <Html
+                                    transform
+                                    occlude="blending"
+                                    position={[0, 0, CARD_THICKNESS / 2 + 0.04]}
+                                    style={{
+                                        width: '150px',
+                                        height: '210px',
+                                        pointerEvents: 'none',
+                                        userSelect: 'none',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        alignItems: 'center',
+                                        transition: 'opacity 0.2s',
+                                    }}
+                                >
+                                    <div className="w-full h-full flex flex-col p-2 font-sans antialiased text-left select-none">
+                                        <div className="w-full h-[130px] bg-gray-900 rounded-sm overflow-hidden mb-3 shadow-inner relative">
+                                            {displayImage && (
+                                                <img
+                                                    src={displayImage}
+                                                    alt={displayName}
+                                                    className="w-full h-full object-cover transition-transform duration-300 ease-out"
+                                                    style={{
+                                                        transform: (hovered || isFocused) ? `scale(${IMAGE_HOVER_SCALE})` : 'scale(1)',
+                                                    }}
+                                                />
+                                            )}
+                                        </div>
+                                        <div className="flex-1 w-full flex flex-col justify-start px-1">
+                                            <span className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mb-1 truncate block" style={{ color: (hovered || isFocused) ? '#FFD700' : '#9CA3AF' }}>
+                                                {displayBrand}
+                                            </span>
+                                            <span className="text-[11px] text-white font-medium leading-snug line-clamp-2 break-keep block">
+                                                {displayName}
+                                            </span>
+                                        </div>
                                     </div>
-                                    <div className="flex-1 w-full flex flex-col justify-start px-1">
-                                        <span className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mb-1 truncate block" style={{ color: (hovered || isFocused) ? '#FFD700' : '#9CA3AF' }}>
-                                            {displayBrand}
-                                        </span>
-                                        <span className="text-[11px] text-white font-medium leading-snug line-clamp-2 break-keep block">
-                                            {displayName}
-                                        </span>
-                                    </div>
-                                </div>
-                            </Html>
-                        )}
-                    </AnimatedCardContent>
+                                </Html>
+                            )}
+                        </AnimatedCardContent>
+                    </group>
                 </group>
             </Billboard>
         </Float>
     );
 }
 
+// 카드의 내용물을 감싸는 래퍼 (Dim 처리 시 뒤로 물러나는 애니메이션 담당)
 function AnimatedCardContent({ isDimmed, isFocused, children }: { isDimmed: boolean, isFocused: boolean, children: React.ReactNode }) {
     const groupRef = useRef<THREE.Group>(null);
     useFrame((state, delta) => {
         if (groupRef.current) {
-            // Dimmed -> Move Back (-15)
+            // Dimmed -> Move Back (z: -15) 화면 뒤로 멀어짐
             const targetZ = isDimmed ? -15 : 0;
             groupRef.current.position.z = THREE.MathUtils.lerp(groupRef.current.position.z, targetZ, delta * 3);
         }
@@ -240,6 +248,7 @@ function AnimatedCardContent({ isDimmed, isFocused, children }: { isDimmed: bool
     return <group ref={groupRef}>{children}</group>;
 }
 
+// 배경 클릭 시 포커스 해제를 위한 투명 메쉬
 function Background({ onReset }: { onReset: () => void }) {
     return (
         <mesh onPointerDown={(e) => { e.stopPropagation(); onReset(); }} position={[0, 0, -30]} scale={[100, 100, 1]}>
@@ -249,10 +258,12 @@ function Background({ onReset }: { onReset: () => void }) {
     );
 }
 
+// [MAIN COMPONENT] 3D 갤럭시 뷰 메인
 export default function ArchiveGlobeView({ collection = [], isKorean = true }: GlobeViewProps) {
     const [focusedId, setFocusedId] = useState<number | null>(null);
     const controlsRef = useRef<any>(null);
 
+    // 컬렉션 데이터가 없을 경우 보여줄 더미 데이터 생성
     const displayConfig = useMemo(() => {
         if (collection.length > 0) return collection;
         return Array.from({ length: 30 }).map((_, i) => ({
@@ -282,9 +293,11 @@ export default function ArchiveGlobeView({ collection = [], isKorean = true }: G
             {/* Camera Setup: Far Clip 1000 for visibility */}
             <Canvas shadows camera={{ position: [0, 0, 38], fov: 38, near: 0.1, far: 1000 }} dpr={[1, 2]}>
 
-                {/* Visuals: Sparkles */}
-                <Sparkles count={3000} scale={120} size={4} speed={0.4} opacity={0.5} color="#88ccff" />
-                <Sparkles count={500} scale={80} size={6} speed={0.6} opacity={0.8} color="#ffd700" noise={1} />
+                {/* [Visuals: Background Universe] */}
+                <Stars radius={100} depth={50} count={5000} factor={2} saturation={0} fade speed={1} />
+
+                {/* [Visuals: Foreground Space Dust] - 눈공격 방지 위해 더 축소 */}
+                <Sparkles count={100} scale={50} size={0.4} speed={0.4} opacity={0.3} color="#ffd700" noise={0} />
 
                 <ambientLight intensity={0.6} />
                 <spotLight position={[10, 10, 20]} angle={0.5} penumbra={1} intensity={1} color="#ffffff" />
@@ -315,23 +328,15 @@ export default function ArchiveGlobeView({ collection = [], isKorean = true }: G
                     ref={controlsRef}
                     enableRotate={true}
                     enablePan={false}
-                    enableZoom={true} // Enabled
-                    minDistance={2} // Allow close zoom
-                    maxDistance={100} // Allow far zoom (no sticking)
+                    enableZoom={true}
+                    minDistance={2}
+                    maxDistance={100}
                     autoRotate={!focusedId}
                     autoRotateSpeed={0.05}
                     dampingFactor={0.05}
                 />
 
-                {/* Bloom Effect for Gold Glow */}
-                <EffectComposer>
-                    <Bloom
-                        luminanceThreshold={0.5}
-                        luminanceSmoothing={0.9}
-                        intensity={0.8}
-                        mipmapBlur
-                    />
-                </EffectComposer>
+                {/* Bloom Effect 제거: 눈부심(눈공격) 원천 차단 */}
             </Canvas>
 
             <div className="absolute bottom-6 left-0 w-full text-center pointer-events-none opacity-30 select-none">

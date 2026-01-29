@@ -9,13 +9,19 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.5.0",
+    "@react-three/postprocessing": "^3.0.4",
+    "@types/three": "^0.182.0",
     "framer-motion": "^11.18.2",
     "next": "16.1.1",
     "next-auth": "^4.24.13",
+    "postprocessing": "^6.38.2",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-markdown": "^9.0.1",
     "remark-gfm": "^4.0.0",
+    "three": "^0.173.0",
     "vis-data": "^8.0.3",
     "vis-network": "^10.0.2"
   },

@@ -9,6 +9,7 @@ import CabinetShelf from "@/components/archives/CabinetShelf";
 import PerfumeSearchModal from "@/components/archives/PerfumeSearchModal";
 import PerfumeDetailModal from "@/components/archives/PerfumeDetailModal";
 import HistoryModal from '@/components/archives/HistoryModal'; // <--- [추가]
+import ArchiveGlobeView from "@/components/archives/ArchiveGlobeView"; // <--- [추가]
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 // const MEMBER_ID = 1;
@@ -40,6 +41,7 @@ export default function ArchivesPage() {
     const [isKorean, setIsKorean] = useState(true); // Default: Korean
     const [isHistoryOpen, setIsHistoryOpen] = useState(false); // <--- [추가] 중요!
     const [memberId, setMemberId] = useState<number>(0); // 추가
+    const [viewMode, setViewMode] = useState<'GRID' | 'GLOBE'>('GRID'); // <--- [추가] 뷰 모드 상태 (기본값: GRID)
 
     const fetchPerfumes = async () => {
         if (memberId === 0) return;
@@ -214,7 +216,7 @@ export default function ArchivesPage() {
             <main className="pt-[120px] pb-24 px-6 max-w-7xl mx-auto min-h-[80vh]">
                 <section className="flex flex-col md:flex-row justify-between items-end mb-12 px-2">
                     <div>
-                        <h1 className="text-4xl font-bold text-[#222] mb-3 tracking-tight">My Archive</h1>
+                        <h1 className="text-4xl font-bold text-[#222] mb-3 tracking-tight">My Sent Gallery</h1>
                         <p className="text-[#888] text-sm font-medium">나만의 향기 컬렉션을 기록해보세요.</p>
                     </div>
 
@@ -271,25 +273,51 @@ export default function ArchivesPage() {
                     </div>
                 </section>
 
-                {/* Filtered List */}
-                {filteredCollection.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-20 border border-[#C5A55D]/30 rounded-3xl bg-white/50">
-                        <p className="text-gray-400 font-medium mb-4">해당하는 향수가 없습니다.</p>
-                        <button onClick={() => setIsSearchOpen(true)} className="text-[#C5A55D] font-bold text-sm hover:underline">
-                            + 향수 추가하기
+                {/* View Mode Toggle & Filtered List */}
+                <div className="flex justify-end mb-6 px-2">
+                    <div className="bg-gray-100 p-1 rounded-xl flex gap-1">
+                        <button
+                            onClick={() => setViewMode('GRID')}
+                            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${viewMode === 'GRID' ? 'bg-white text-black shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                        >
+                            GALLERY 🏛️
+                        </button>
+                        <button
+                            onClick={() => setViewMode('GLOBE')}
+                            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${viewMode === 'GLOBE' ? 'bg-black text-white shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                        >
+                            GALAXY 🌌
                         </button>
                     </div>
+                </div>
+
+                {viewMode === 'GLOBE' ? (
+                    <div className="mb-12 animate-fade-in">
+                        {/* TO-BE (데이터 주입) */}
+                        <ArchiveGlobeView collection={filteredCollection} isKorean={isKorean} />
+                    </div>
                 ) : (
-                    <section className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 animate-fade-in-up">
-                        {filteredCollection.map((item) => (
-                            <CabinetShelf
-                                key={item.my_perfume_id}
-                                perfume={item}
-                                onSelect={setSelectedPerfume}
-                                isKorean={isKorean}
-                            />
-                        ))}
-                    </section>
+                    <>
+                        {filteredCollection.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-20 border border-[#C5A55D]/30 rounded-3xl bg-white/50">
+                                <p className="text-gray-400 font-medium mb-4">해당하는 향수가 없습니다.</p>
+                                <button onClick={() => setIsSearchOpen(true)} className="text-[#C5A55D] font-bold text-sm hover:underline">
+                                    + 향수 추가하기
+                                </button>
+                            </div>
+                        ) : (
+                            <section className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 animate-fade-in-up">
+                                {filteredCollection.map((item) => (
+                                    <CabinetShelf
+                                        key={item.my_perfume_id}
+                                        perfume={item}
+                                        onSelect={setSelectedPerfume}
+                                        isKorean={isKorean}
+                                    />
+                                ))}
+                            </section>
+                        )}
+                    </>
                 )}
             </main>
 

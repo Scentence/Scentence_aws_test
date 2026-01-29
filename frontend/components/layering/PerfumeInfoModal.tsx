@@ -19,6 +19,7 @@ type PerfumeInfoModalProps = {
   loading?: boolean;
   errorMessage?: string | null;
   perfume: PerfumeInfo | null;
+  label?: string;
   onClose: () => void;
 };
 
@@ -36,11 +37,13 @@ export default function PerfumeInfoModal({
   loading = false,
   errorMessage,
   perfume,
+  label,
   onClose,
 }: PerfumeInfoModalProps) {
   if (!open) return null;
 
   const sections = perfume ? buildSections(perfume) : [];
+  const badgeLabel = label ?? "향수";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
@@ -95,7 +98,7 @@ export default function PerfumeInfoModal({
                   </div>
                 )}
                 <div>
-                  <p className="text-xs font-semibold text-[#7A6B57]">추천 향수</p>
+                  <p className="text-xs font-semibold text-[#7A6B57]">{badgeLabel}</p>
                   <h3 className="text-lg font-bold text-[#2E2B28] leading-tight">
                     {perfume.perfume_name}
                   </h3>

@@ -173,6 +173,7 @@ class UserQueryAnalysis(BaseModel):
     brand_best_perfume: Optional[PerfumeBasic] = None
     brand_best_score: Optional[float] = None
     brand_best_reason: Optional[str] = None
+    similar_perfumes: List[PerfumeBasic] = Field(default_factory=list)
 
 
 class UserQueryResponse(BaseModel):
@@ -188,6 +189,7 @@ class UserQueryResponse(BaseModel):
     brand_best_perfume: Optional[PerfumeBasic] = None
     brand_best_score: Optional[float] = None
     brand_best_reason: Optional[str] = None
+    similar_perfumes: List[PerfumeBasic] = Field(default_factory=list)
     clarification_prompt: Optional[str] = None
     clarification_options: List[str] = Field(default_factory=list)
     note: Optional[str] = None

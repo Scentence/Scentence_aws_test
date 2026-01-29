@@ -75,6 +75,7 @@ type UserQueryResponse = {
   brand_best_perfume?: PerfumeSummary | null;
   brand_best_score?: number | null;
   brand_best_reason?: string | null;
+  similar_perfumes?: PerfumeSummary[];
   clarification_prompt?: string | null;       // 명확화 요청 메시지
   clarification_options?: string[];           // 명확화 옵션 목록
   note?: string | null;                       // 추가 노트
@@ -316,6 +317,7 @@ type ChatMessage = {
   content: string;               // 메시지 내용
   timestamp: Date;               // 전송 시간
   isRecommendation?: boolean;    // 추천 결과 메시지 여부
+  similarPerfumes?: PerfumeSummary[]; // 비슷한 향수 카드 목록
 };
 
 export default function LayeringPage() {
@@ -359,9 +361,13 @@ export default function LayeringPage() {
   const [infoModalLoading, setInfoModalLoading] = useState(false);
   const [infoModalError, setInfoModalError] = useState<string | null>(null);
   const [infoModalData, setInfoModalData] = useState<PerfumeInfo | null>(null);
+  const [infoModalLabel, setInfoModalLabel] = useState<string | null>(null);
 
   /** 렌더 시 안전한 memberId 상태 */
   const [memberId, setMemberId] = useState(0);
+
+  /** 마지막 추천 향수 ID (대화 맥락 유지용) */
+  const [lastRecommendationId, setLastRecommendationId] = useState<string | null>(null);
 
   /** 채팅 메시지 영역 자동 스크롤을 위한 ref */
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -405,7 +411,7 @@ export default function LayeringPage() {
       return;
     }
 
-    const contextRecommendedId = result?.recommendation?.perfume_id ?? null;
+    const contextRecommendedId = lastRecommendationId ?? result?.recommendation?.perfume_id ?? null;
 
     // 사용자 메시지 추가
     const userMessage: ChatMessage = {
@@ -463,6 +469,17 @@ export default function LayeringPage() {
         recommendation,
       });
 
+      if (recommendation) {
+        setLastRecommendationId(recommendation.perfume_id);
+      } else if (payload.brand_best_perfume) {
+        setLastRecommendationId(payload.brand_best_perfume.perfume_id);
+      } else if (
+        (payload.similar_perfumes && payload.similar_perfumes.length > 0)
+        || payload.recommended_perfume_info
+      ) {
+        setLastRecommendationId(null);
+      }
+
       // 추천 성공 메시지 추가
       if (recommendation) {
         setChatMessages((prev) => [
@@ -479,6 +496,20 @@ export default function LayeringPage() {
             type: "assistant",
             content: "추천 결과가 마음에 드시나요? 아래에서 만족도를 알려주세요!",
             timestamp: new Date(),
+          },
+        ]);
+      } else if (payload.similar_perfumes && payload.similar_perfumes.length > 0) {
+        const similarList = payload.similar_perfumes
+          .map((item) => `${item.perfume_name} (${item.perfume_brand})`)
+          .join("\n");
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            id: `similar-${Date.now()}`,
+            type: "assistant",
+            content: `비슷한 느낌의 향수 후보를 골라봤어요.\n\n${similarList}`,
+            timestamp: new Date(),
+            similarPerfumes: payload.similar_perfumes,
           },
         ]);
       } else if (payload.brand_best_perfume) {
@@ -727,26 +758,27 @@ export default function LayeringPage() {
     ].filter((section) => section.items && section.items.length > 0);
   }, [perfumeInfo]);
 
-  const handleOpenPerfumeInfo = async () => {
-    if (!candidate) return;
+  const handleOpenPerfumeInfo = async (perfumeId?: string | null, label?: string) => {
+    if (!perfumeId) return;
     setInfoModalOpen(true);
     setInfoModalLoading(true);
     setInfoModalError(null);
     setInfoModalData(null);
+    setInfoModalLabel(label ?? "향수");
 
     try {
       const currentMemberId = getMemberId(session?.user?.id);
-      const response = await fetch(`${apiBase}/analyze`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_text: "향수 정보",
-          member_id: currentMemberId,
-          context_recommended_perfume_id: candidate.perfume_id,
-          save_recommendations: false,
-          save_my_perfume: false,
-        }),
-      });
+        const response = await fetch(`${apiBase}/analyze`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_text: "향수 정보",
+            member_id: currentMemberId,
+            context_recommended_perfume_id: perfumeId,
+            save_recommendations: false,
+            save_my_perfume: false,
+          }),
+        });
 
       if (!response.ok) {
         const errorMessage = await parseErrorResponse(response);
@@ -812,16 +844,28 @@ export default function LayeringPage() {
                 <div className="w-full rounded-2xl border border-[#E6DDCF] bg-white/80 p-4 shadow-sm">
                   <div className="flex items-center gap-4">
                     {basePerfume.image_url ? (
-                      <img
-                        src={basePerfume.image_url}
-                        alt={`${basePerfume.perfume_name} 이미지`}
-                        className="h-16 w-16 rounded-xl object-cover border border-[#E6DDCF]"
-                        loading="lazy"
-                      />
+                      <button
+                        type="button"
+                        onClick={() => handleOpenPerfumeInfo(basePerfume.perfume_id, "기존 향수")}
+                        className="h-16 w-16 rounded-xl overflow-hidden border border-[#E6DDCF] bg-white/80 shadow-sm hover:shadow-md transition"
+                        aria-label="기존 향수 상세 정보 보기"
+                      >
+                        <img
+                          src={basePerfume.image_url}
+                          alt={`${basePerfume.perfume_name} 이미지`}
+                          className="h-full w-full object-cover transition-transform duration-200 hover:scale-105"
+                          loading="lazy"
+                        />
+                      </button>
                     ) : (
-                      <div className="h-16 w-16 rounded-xl bg-gradient-to-br from-[#F4EBDD] to-[#E8D9C4] flex items-center justify-center text-[10px] text-[#7A6B57] border border-[#E6DDCF]">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenPerfumeInfo(basePerfume.perfume_id, "기존 향수")}
+                        className="h-16 w-16 rounded-xl bg-gradient-to-br from-[#F4EBDD] to-[#E8D9C4] flex items-center justify-center text-[10px] text-[#7A6B57] border border-[#E6DDCF] hover:shadow-md transition"
+                        aria-label="기존 향수 상세 정보 보기"
+                      >
                         No Image
-                      </div>
+                      </button>
                     )}
                     <div>
                       <p className="text-[11px] font-semibold text-[#7A6B57]">기존 향수</p>
@@ -914,7 +958,7 @@ export default function LayeringPage() {
                     <div className="flex items-center gap-4">
                       <button
                         type="button"
-                        onClick={handleOpenPerfumeInfo}
+                        onClick={() => handleOpenPerfumeInfo(candidate.perfume_id, "추천 향수")}
                         className="group h-16 w-16 rounded-xl border border-[#E6DDCF] bg-white/80 overflow-hidden shadow-sm hover:shadow-md transition"
                         aria-label="추천 향수 상세 정보 보기"
                       >
@@ -1117,6 +1161,39 @@ export default function LayeringPage() {
                     <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
                       {message.content}
                     </p>
+                    {message.similarPerfumes && message.similarPerfumes.length > 0 && (
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        {message.similarPerfumes.map((perfume) => (
+                          <button
+                            key={`similar-${message.id}-${perfume.perfume_id}`}
+                            type="button"
+                            onClick={() => handleOpenPerfumeInfo(perfume.perfume_id, "비슷한 향수")}
+                            className="flex items-center gap-3 rounded-xl border border-[#E6DDCF] bg-white/80 px-3 py-2 text-left shadow-sm hover:shadow-md transition"
+                          >
+                            {perfume.image_url ? (
+                              <img
+                                src={perfume.image_url}
+                                alt={`${perfume.perfume_name} 이미지`}
+                                className="h-12 w-12 rounded-lg object-cover border border-[#E6DDCF]"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-[#F4EBDD] to-[#E8D9C4] flex items-center justify-center text-[10px] text-[#7A6B57] border border-[#E6DDCF]">
+                                No Image
+                              </div>
+                            )}
+                            <div className="flex-1">
+                              <p className="text-sm font-semibold text-[#2E2B28] leading-tight">
+                                {perfume.perfume_name}
+                              </p>
+                              <p className="text-[11px] text-[#7A6B57]">
+                                {perfume.perfume_brand}
+                              </p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <p className={`text-[10px] mt-1.5 ${message.type === "user" ? "text-white/60" : "text-[#8A7F73]"
                       }`}>
                       {message.timestamp.toLocaleTimeString("ko-KR", {
@@ -1240,6 +1317,7 @@ export default function LayeringPage() {
         loading={infoModalLoading}
         errorMessage={infoModalError}
         perfume={infoModalData}
+        label={infoModalLabel ?? undefined}
         onClose={() => setInfoModalOpen(false)}
       />
     </div>

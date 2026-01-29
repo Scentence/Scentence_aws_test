@@ -9,6 +9,7 @@ from agent.tools import (
     get_target_vector,
     rank_brand_universal_perfume,
     rank_recommendations,
+    rank_similar_perfumes,
 )
 
 
@@ -136,3 +137,18 @@ def test_rank_recommendations_excludes_base_name_brand():
         )
         for rec in recommendations
     )
+
+
+def test_rank_similar_perfumes_excludes_base():
+    repo = PerfumeRepository()
+    base = next(iter(repo.all_candidates()))
+    similars = rank_similar_perfumes(base.perfume_id, repo, limit=3)
+
+    assert all(similar.perfume_id != base.perfume_id for similar in similars)
+
+
+def test_rank_similar_perfumes_handles_unknown_base():
+    repo = PerfumeRepository()
+    similars = rank_similar_perfumes("UNKNOWN", repo)
+
+    assert similars == []

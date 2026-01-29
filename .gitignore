@@ -56,3 +56,20 @@ ngrok.yml
 .backup
 .backup/
 /backend/uploads
+
+.claude
+.claude/
+
+docs/
+
+.sisyphus
+.sisyphus/
+
+.pytest_cache
+.pytest_cache/
+
+docs/
+
+# [.md 파일 관리]
+**/*.md
+!README.md

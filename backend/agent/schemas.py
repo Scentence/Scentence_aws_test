@@ -11,6 +11,7 @@ class ChatRequest(BaseModel):
     user_query: str = Field(description="사용자가 입력한 질문 텍스트")
     thread_id: Optional[str] = Field(None, description="세션 관리를 위한 스레드 ID")
     member_id: int = Field(0, description="로그인한 사용자 ID")
+    user_mode: Optional[str] = Field("BEGINNER", description="사용자 모드 (BEGINNER 또는 EXPERT)")
 
 
 class AgentState(Dict):
@@ -26,6 +27,7 @@ class AgentState(Dict):
     user_preferences: Optional[Dict]
     research_results: Optional[List]
     member_id: Optional[int]
+    user_mode: Optional[str]
     status: Optional[str]
     
     # [★추가] 정보 검색(Info Graph) 에이전트와 상태를 공유하기 위한 필드

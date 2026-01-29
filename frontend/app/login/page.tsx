@@ -52,10 +52,10 @@ export default function LoginPage() {
         return;
       }
       const data = await response.json().catch(() => null);
-        if (data?.withdraw_pending && data?.member_id) {
-          window.location.href = `/recover?memberId=${data.member_id}`;
-          return;
-        }
+      if (data?.withdraw_pending && data?.member_id) {
+        window.location.href = `/recover?memberId=${data.member_id}`;
+        return;
+      }
       let nickname = null;
       let roleType = data?.role_type ?? null;
       if (data?.member_id) {
@@ -67,6 +67,7 @@ export default function LoginPage() {
         }
       }
       if (typeof window !== "undefined") {
+        const userMode = data?.user_mode || "BEGINNER"; // [추가]
         localStorage.setItem(
           "localAuth",
           JSON.stringify({
@@ -74,6 +75,7 @@ export default function LoginPage() {
             email: loginId.trim(),
             nickname,
             roleType: roleType,
+            user_mode: userMode, // [추가]
             loggedInAt: new Date().toISOString(),
           })
         );
@@ -159,11 +161,10 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className={`w-full py-3 rounded-xl font-bold transition ${
-              isSubmitting
-                ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                : "bg-black text-white hover:opacity-90"
-            }`}
+            className={`w-full py-3 rounded-xl font-bold transition ${isSubmitting
+              ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+              : "bg-black text-white hover:opacity-90"
+              }`}
           >
             계속
           </button>

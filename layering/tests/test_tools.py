@@ -3,9 +3,11 @@ from agent.database import PerfumeRepository
 from agent.tools import (
     _clash_penalty,
     _harmony_score,
+    calculate_compatibility_score,
     calculate_advanced_layering,
     evaluate_pair,
     get_target_vector,
+    rank_brand_universal_perfume,
     rank_recommendations,
 )
 
@@ -17,10 +19,18 @@ def _sample_pair(repo: PerfumeRepository):
 
 
 def test_get_target_vector_applies_keyword_boost():
-    vector = get_target_vector(["citrus", "amber"])
+    vector = get_target_vector(["citrus", "amber", "floral"])
     assert vector[ACCORD_INDEX["Citrus"]] == 30.0
     assert vector[ACCORD_INDEX["Fresh"]] == 30.0
     assert vector[ACCORD_INDEX["Resinous"]] == 30.0
+    assert vector[ACCORD_INDEX["Floral"]] == 30.0
+
+
+def test_get_target_vector_korean_cool_keywords():
+    vector = get_target_vector(["차가운"])
+    assert vector[ACCORD_INDEX["Aquatic"]] == 30.0
+    assert vector[ACCORD_INDEX["Fresh"]] == 30.0
+    assert vector[ACCORD_INDEX["Green"]] == 30.0
 
 
 def test_calculate_advanced_layering_returns_scores():
@@ -73,3 +83,56 @@ def test_evaluate_pair_returns_candidate():
 
     assert result.perfume_id == "9300"
     assert result.total_score > 0
+
+
+def test_calculate_compatibility_score_returns_value():
+    repo = PerfumeRepository()
+    base, candidate = _sample_pair(repo)
+    score, feasible = calculate_compatibility_score(base, candidate)
+
+    assert isinstance(score, float)
+    assert isinstance(feasible, bool)
+
+
+def test_rank_brand_universal_perfume_returns_top_pick():
+    repo = PerfumeRepository()
+    sample = next(iter(repo.all_candidates()))
+    brand_perfumes = repo.get_brand_perfumes(sample.perfume_brand)
+
+    best_perfume, avg_score, count, reason = rank_brand_universal_perfume(brand_perfumes, repo)
+
+    assert best_perfume is not None
+    assert isinstance(avg_score, float)
+    assert isinstance(count, int)
+    assert isinstance(reason, str)
+
+
+def test_rank_brand_universal_perfume_handles_empty_list():
+    repo = PerfumeRepository()
+    best_perfume, avg_score, count, reason = rank_brand_universal_perfume([], repo)
+
+    assert best_perfume is None
+    assert avg_score == 0.0
+    assert count == 0
+    assert reason is None
+
+
+def test_get_target_vector_spicy_keyword():
+    vector = get_target_vector(["spicy"])
+    assert vector[ACCORD_INDEX["Spicy"]] == 30.0
+
+
+def test_rank_recommendations_excludes_base_name_brand():
+    repo = PerfumeRepository()
+    base = next(iter(repo.all_candidates()))
+    recommendations, _ = rank_recommendations(base.perfume_id, [], repo)
+
+    base_name = base.perfume_name.lower()
+    base_brand = base.perfume_brand.lower()
+    assert all(
+        not (
+            rec.perfume_name.lower() == base_name
+            and rec.perfume_brand.lower() == base_brand
+        )
+        for rec in recommendations
+    )

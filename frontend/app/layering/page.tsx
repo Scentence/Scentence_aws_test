@@ -1,9 +1,12 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect } from "react";
+import { useSession } from "next-auth/react"; // 카카오 로그인 세션
 import Link from "next/link";
 import AccordWheel from "@/components/layering/AccordWheel";
 import { BACKEND_ACCORDS, ACCORD_LABELS } from "@/lib/accords";
+import LayeringPerfumePicker from "@/components/layering/LayeringPerfumePicker"; // 내 향수 불러오기
+import PerfumeInfoModal from "@/components/layering/PerfumeInfoModal";
 
 // ==================== 타입 정의 ====================
 
@@ -14,6 +17,7 @@ type LayeringCandidate = {
   perfume_id: string;        // 향수 고유 ID
   perfume_name: string;       // 향수 이름
   perfume_brand: string;      // 브랜드명
+  image_url?: string | null;  // 이미지 URL
   total_score: number;        // 추천 점수
   spray_order: string[];      // 분사 순서 (향수 이름 배열)
   analysis: string;           // 추천 이유 분석
@@ -24,11 +28,33 @@ type LayeringCandidate = {
  * 레이어링 추천 응답 (다중 추천)
  */
 type LayeringResponse = {
+  base_perfume?: PerfumeSummary | null;
   base_perfume_id: string;              // 베이스 향수 ID
   keywords: string[];                    // 추출된 키워드
   total_available: number;               // 사용 가능한 추천 개수
   recommendations: LayeringCandidate[];  // 추천 향수 목록
   note?: string | null;                  // 추가 노트
+};
+
+type PerfumeSummary = {
+  perfume_id: string;
+  perfume_name: string;
+  perfume_brand: string;
+  image_url?: string | null;
+};
+
+type PerfumeInfo = {
+  perfume_id: string;
+  perfume_name: string;
+  perfume_brand: string;
+  image_url?: string | null;
+  gender?: string | null;
+  accords: string[];
+  seasons: string[];
+  occasions: string[];
+  top_notes: string[];
+  middle_notes: string[];
+  base_notes: string[];
 };
 
 /**
@@ -38,11 +64,17 @@ type UserQueryResponse = {
   raw_text: string;                      // 원본 질문 텍스트
   keywords: string[];                    // 추출된 키워드
   base_perfume_id?: string | null;       // 베이스 향수 ID
+  base_perfume?: PerfumeSummary | null;
   detected_pair?: {                      // 감지된 향수 쌍
     base_perfume_id?: string | null;
     candidate_perfume_id?: string | null;
   } | null;
   recommendation?: LayeringCandidate | null;  // 추천 결과 (단일)
+  recommended_perfume_info?: PerfumeInfo | null;
+  brand_name?: string | null;
+  brand_best_perfume?: PerfumeSummary | null;
+  brand_best_score?: number | null;
+  brand_best_reason?: string | null;
   clarification_prompt?: string | null;       // 명확화 요청 메시지
   clarification_options?: string[];           // 명확화 옵션 목록
   note?: string | null;                       // 추가 노트
@@ -96,12 +128,12 @@ type LayeringErrorResponse = {
 const getApiBase = () => {
   const apiHost = process.env.NEXT_PUBLIC_LAYERING_API_URL;
   if (!apiHost) return "/api/layering";
-  
+
   const normalized = apiHost.replace(/\/+$/, "");
   const withoutLayering = normalized.endsWith("/layering")
     ? normalized.slice(0, -9)
     : normalized;
-  
+
   return `${withoutLayering}/layering`;
 };
 
@@ -111,13 +143,22 @@ const apiBase = getApiBase();
 
 /**
  * 로컬 스토리지에서 현재 회원 ID 추출
+ * @param sessionUserId - 카카오 세션의 user.id (있으면 우선 사용)
  * @returns 회원 ID (로그인하지 않은 경우 0)
  */
-const getMemberId = (): number => {
+const getMemberId = (sessionUserId?: string | number | null): number => {
+  // 카카오 로그인 세션 우선
+  if (sessionUserId) {
+    return typeof sessionUserId === 'number' ? sessionUserId : parseInt(sessionUserId, 10);
+  }
+  if (typeof window === "undefined") {
+    return 0;
+  }
+  // 로컬 로그인 확인
   try {
     const localAuth = localStorage.getItem("localAuth");
     if (!localAuth) return 0;
-    
+
     const parsed = JSON.parse(localAuth);
     return parsed?.memberId ? parseInt(parsed.memberId, 10) : 0;
   } catch (error) {
@@ -239,28 +280,28 @@ const buildErrorMessage = (error?: LayeringError) => {
 const parseErrorResponse = async (response: Response) => {
   // Content-Type 확인
   const contentType = response.headers.get("content-type") ?? "";
-  
+
   // JSON이 아닌 경우 텍스트로 처리
   if (!contentType.includes("application/json")) {
     const text = await response.text().catch(() => "");
     return text || defaultErrorMessage;
   }
-  
+
   // JSON 파싱
   const payload = (await response.json().catch(() => null)) as
     | LayeringErrorResponse
     | null;
-  
+
   // 단순 문자열 detail
   if (typeof payload?.detail === "string") {
     return payload.detail;
   }
-  
+
   // 유효성 검사 오류 (배열 형태)
   if (Array.isArray(payload?.detail)) {
     return "입력값을 확인해주세요.";
   }
-  
+
   // 구조화된 오류 객체
   const error = payload?.error ?? payload?.detail?.error;
   return buildErrorMessage(error);
@@ -278,11 +319,13 @@ type ChatMessage = {
 };
 
 export default function LayeringPage() {
+  const { data: session } = useSession(); // 카카오 로그인 세션
+
   // ==================== 상태 관리 ====================
-  
+
   /** 사용자가 입력한 자연어 질문 텍스트 */
   const [queryText, setQueryText] = useState("");
-  
+
   /** 채팅 메시지 기록 */
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
@@ -292,27 +335,39 @@ export default function LayeringPage() {
       timestamp: new Date(),
     },
   ]);
-  
+
   /** API 호출 중 로딩 상태 */
   const [loading, setLoading] = useState(false);
-  
+
   /** API 호출 오류 메시지 */
   const [error, setError] = useState<string | null>(null);
-  
+
   /** API로부터 받은 추천 결과 */
   const [result, setResult] = useState<UserQueryResponse | null>(null);
-  
+
   /** 피드백 저장 상태 메시지 */
   const [feedbackStatus, setFeedbackStatus] = useState<string | null>(null);
-  
+
   /** 피드백 저장 중 여부 */
   const [feedbackSaving, setFeedbackSaving] = useState(false);
-  
+
   /** 피드백 저장 완료 후 잠금 상태 (수정 불가) */
   const [feedbackLocked, setFeedbackLocked] = useState(false);
 
+  /** 향수 정보 모달 상태 */
+  const [infoModalOpen, setInfoModalOpen] = useState(false);
+  const [infoModalLoading, setInfoModalLoading] = useState(false);
+  const [infoModalError, setInfoModalError] = useState<string | null>(null);
+  const [infoModalData, setInfoModalData] = useState<PerfumeInfo | null>(null);
+
+  /** 렌더 시 안전한 memberId 상태 */
+  const [memberId, setMemberId] = useState(0);
+
   /** 채팅 메시지 영역 자동 스크롤을 위한 ref */
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  /** 채팅 입력 입력창 포커스를 위한 ref */
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   /**
    * 채팅 메시지가 업데이트될 때마다 자동으로 스크롤
@@ -320,6 +375,10 @@ export default function LayeringPage() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages, loading]);
+
+  useEffect(() => {
+    setMemberId(getMemberId(session?.user?.id));
+  }, [session?.user?.id]);
 
   /**
    * 자연어 질문 분석 및 레이어링 추천 요청
@@ -346,6 +405,8 @@ export default function LayeringPage() {
       return;
     }
 
+    const contextRecommendedId = result?.recommendation?.perfume_id ?? null;
+
     // 사용자 메시지 추가
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
@@ -354,7 +415,7 @@ export default function LayeringPage() {
       timestamp: new Date(),
     };
     setChatMessages((prev) => [...prev, userMessage]);
-    
+
     // 입력창 초기화 및 상태 초기화
     setQueryText("");
     setLoading(true);
@@ -366,7 +427,7 @@ export default function LayeringPage() {
 
     try {
       // 로컬 스토리지에서 회원 ID 추출
-      const currentMemberId = getMemberId();
+      const currentMemberId = getMemberId(session?.user?.id);
 
       // 레이어링 분석 API 호출
       const response = await fetch(`${apiBase}/analyze`, {
@@ -375,6 +436,7 @@ export default function LayeringPage() {
         body: JSON.stringify({
           user_text: trimmedQuery,
           member_id: currentMemberId,
+          context_recommended_perfume_id: contextRecommendedId,
           save_recommendations: true,  // 추천 결과 저장 여부
           save_my_perfume: false,      // 내 향수로 저장 여부
         }),
@@ -393,7 +455,7 @@ export default function LayeringPage() {
       } catch (parseError) {
         throw new Error(defaultErrorMessage);
       }
-      
+
       // 추천 결과 상태 업데이트
       const recommendation = payload.recommendation ?? null;
       setResult({
@@ -416,6 +478,17 @@ export default function LayeringPage() {
             id: `feedback-${Date.now()}`,
             type: "assistant",
             content: "추천 결과가 마음에 드시나요? 아래에서 만족도를 알려주세요!",
+            timestamp: new Date(),
+          },
+        ]);
+      } else if (payload.brand_best_perfume) {
+        const brandName = payload.brand_name ?? payload.brand_best_perfume.perfume_brand;
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            id: `brand-${Date.now()}`,
+            type: "assistant",
+            content: `${brandName} 브랜드에서 어디에나 레이어링하기 좋은 향수를 골라드렸어요. 👈 왼쪽 카드에서 "${payload.brand_best_perfume.perfume_name}"을 확인해보세요.`,
             timestamp: new Date(),
           },
         ]);
@@ -467,7 +540,7 @@ export default function LayeringPage() {
 
   /**
    * 추천 결과에 대한 만족도 피드백 전송
-   * @param preference - 만족도 (GOOD, NEUTRAL, BAD)
+   * @param preference - 만족도 (GOOD, BAD)
    * 
    * 처리 흐름:
    * 1. 추천 결과 및 상태 검증
@@ -475,20 +548,20 @@ export default function LayeringPage() {
    * 3. 피드백 API 호출
    * 4. 결과 저장 및 채팅 메시지 업데이트
    */
-  const sendFeedback = async (preference: "GOOD" | "BAD" | "NEUTRAL") => {
+  const sendFeedback = async (preference: "GOOD" | "BAD") => {
     // 추천 결과 존재 확인
     const candidate = result?.recommendation;
     if (!candidate) {
       return;
     }
-    
+
     // 중복 저장 방지
     if (feedbackLocked || feedbackSaving) {
       return;
     }
-    
+
     // 로컬 스토리지에서 회원 ID 추출 및 로그인 상태 확인
-    const currentMemberId = getMemberId();
+    const currentMemberId = getMemberId(session?.user?.id);
     if (!currentMemberId) {
       const loginMessage = TEXT_MESSAGES.FEEDBACK_LOGIN_REQUIRED;
       setFeedbackStatus(loginMessage);
@@ -508,7 +581,7 @@ export default function LayeringPage() {
       // 저장 중 상태 표시
       setFeedbackSaving(true);
       setFeedbackStatus(TEXT_MESSAGES.FEEDBACK_SAVING);
-      
+
       // 피드백 API 호출
       const response = await fetch(`${apiBase}/recommendation/feedback`, {
         method: "POST",
@@ -520,20 +593,20 @@ export default function LayeringPage() {
           preference,
         }),
       });
-      
+
       // 응답 오류 처리
       if (!response.ok) {
         const errorMessage = await parseErrorResponse(response);
         throw new Error(errorMessage);
       }
-      
+
       // 응답 데이터 파싱 및 결과 처리
       const payload = (await response.json()) as FeedbackResponse;
       if (payload.save_result?.saved) {
         const successMessage = "만족도가 저장되었습니다. 소중한 의견 감사합니다! 😊";
         setFeedbackStatus(TEXT_MESSAGES.FEEDBACK_SAVED);
         setFeedbackLocked(true);  // 저장 완료 후 잠금 처리
-        
+
         // 성공 메시지를 채팅에 추가
         setChatMessages((prev) => [
           ...prev,
@@ -541,6 +614,19 @@ export default function LayeringPage() {
             id: `feedback-success-${Date.now()}`,
             type: "assistant",
             content: successMessage,
+            timestamp: new Date(),
+          },
+        ]);
+      } else if (preference === "BAD") {
+        const ackMessage = "불만족 의견을 남겨주셔서 감사합니다. 다음 추천에 반영할게요.";
+        setFeedbackStatus(ackMessage);
+        setFeedbackLocked(true);
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            id: `feedback-bad-${Date.now()}`,
+            type: "assistant",
+            content: ackMessage,
             timestamp: new Date(),
           },
         ]);
@@ -577,44 +663,49 @@ export default function LayeringPage() {
   };
 
   // ==================== 렌더링 데이터 준비 ====================
-  
+
   /** 추천된 향수 후보 */
   const candidate = result?.recommendation ?? null;
-  
+  const basePerfume = result?.base_perfume ?? null;
+  const perfumeInfo = result?.recommended_perfume_info ?? null;
+  const brandBestPerfume = result?.brand_best_perfume ?? null;
+  const brandBestScore = result?.brand_best_score ?? null;
+  const brandBestReason = result?.brand_best_reason ?? null;
+
   /** 
    * 레이어링 결과의 어코드 벡터 및 유효성 검증
    * 메모이제이션을 통해 불필요한 재계산 방지
    */
   const { vector, vectorReady } = useMemo(() => {
     const vec = candidate?.layered_vector ?? [];
-    const ready = 
+    const ready =
       vec.length === BACKEND_ACCORDS.length &&
       vec.every((value) => Number.isFinite(value));
-    
+
     return { vector: vec, vectorReady: ready };
   }, [candidate]);
-  
+
   /** 
    * 분사 순서 배열 유효성 검증
    */
-  const hasSprayOrder = useMemo(() => 
-    candidate?.spray_order && 
-    Array.isArray(candidate.spray_order) && 
+  const hasSprayOrder = useMemo(() =>
+    candidate?.spray_order &&
+    Array.isArray(candidate.spray_order) &&
     candidate.spray_order.length > 0,
     [candidate]
   );
-  
+
   /** 
    * 추천 점수 포맷팅 (소수점 3자리)
    * 유효하지 않은 경우 "-" 표시
    */
-  const totalScore = useMemo(() => 
+  const totalScore = useMemo(() =>
     Number.isFinite(candidate?.total_score)
       ? candidate?.total_score.toFixed(3)
       : "-",
     [candidate]
   );
-  
+
   /**
    * 점수 평가 정보 메모이제이션
    * JSX 내부에서 반복 계산되는 것을 방지
@@ -623,6 +714,57 @@ export default function LayeringPage() {
     if (!candidate) return null;
     return getScoreEvaluation(candidate.total_score);
   }, [candidate]);
+
+  const infoSections = useMemo(() => {
+    if (!perfumeInfo) return [];
+    return [
+      { label: "어코드", items: perfumeInfo.accords },
+      { label: "탑 노트", items: perfumeInfo.top_notes },
+      { label: "미들 노트", items: perfumeInfo.middle_notes },
+      { label: "베이스 노트", items: perfumeInfo.base_notes },
+      { label: "계절", items: perfumeInfo.seasons },
+      { label: "상황", items: perfumeInfo.occasions },
+    ].filter((section) => section.items && section.items.length > 0);
+  }, [perfumeInfo]);
+
+  const handleOpenPerfumeInfo = async () => {
+    if (!candidate) return;
+    setInfoModalOpen(true);
+    setInfoModalLoading(true);
+    setInfoModalError(null);
+    setInfoModalData(null);
+
+    try {
+      const currentMemberId = getMemberId(session?.user?.id);
+      const response = await fetch(`${apiBase}/analyze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_text: "향수 정보",
+          member_id: currentMemberId,
+          context_recommended_perfume_id: candidate.perfume_id,
+          save_recommendations: false,
+          save_my_perfume: false,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorMessage = await parseErrorResponse(response);
+        throw new Error(errorMessage);
+      }
+
+      const payload = (await response.json()) as UserQueryResponse;
+      if (!payload.recommended_perfume_info) {
+        throw new Error("향수 정보를 불러오지 못했어요.");
+      }
+      setInfoModalData(payload.recommended_perfume_info);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "향수 정보를 불러오지 못했어요.";
+      setInfoModalError(errorMessage);
+    } finally {
+      setInfoModalLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#F5F2EA] text-[#1F1F1F]">
@@ -634,22 +776,22 @@ export default function LayeringPage() {
             <p className="text-xs uppercase tracking-[0.3em] text-[#7A6B57] font-medium">
               Layering Visualization
             </p>
-            
+
             {/* 메인 타이틀 */}
             <h1 className="text-3xl font-semibold text-[#2E2B28]">
               레이어링 어코드 원판
             </h1>
-            
+
             {/* 설명 텍스트 */}
             <p className="text-sm text-[#5C5448] leading-relaxed">
               자연어 질문으로 향수 레이어링을 추천받고,<br />
               21개 어코드의 강도를 원형 그래픽으로 확인하세요.
             </p>
           </div>
-          
+
           {/* 홈 버튼 */}
-          <Link 
-            href="/" 
+          <Link
+            href="/"
             className="p-3 bg-white/70 hover:bg-white rounded-full transition-all shadow-sm hover:shadow-md text-[#7A6B57] hover:text-[#5C5448]"
             aria-label="홈으로 이동"
           >
@@ -662,62 +804,133 @@ export default function LayeringPage() {
         {/* ==================== 메인 콘텐츠 그리드 ==================== */}
         <section className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
           <div className="rounded-3xl bg-white/90 border border-[#E2D7C5] p-6 shadow-sm">
-              {/* 시각화 섹션 헤더 */}
-              <h2 className="text-sm font-semibold text-[#7A6B57]">레이어링 시각화</h2>
-              
-              <div className="mt-4 flex flex-col items-center gap-6">
-                {/* 어코드 원판 표시 영역 */}
-                {vectorReady ? (
-                  <AccordWheel vector={vector} />
-                ) : (
-                  <div className="h-[360px] w-[360px] flex flex-col items-center justify-center rounded-full border-2 border-dashed border-[#D7CDBD] text-xs text-[#7A6B57] gap-2 bg-[#FDFBF9]">
-                    <svg className="w-12 h-12 text-[#D7CDBD]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                    <p className="text-center px-6">
-                      데이터를 불러오면<br />원판이 표시됩니다.
-                    </p>
-                  </div>
-                )}
-                
-                {/* 추천 향수 정보 카드 */}
-                {candidate && (
-                  <div className="w-full rounded-2xl bg-white border-2 border-[#E6DDCF] overflow-hidden shadow-md hover:shadow-xl transition-all">
-                    {/* 헤더: 추천 라벨과 점수 뱃지 */}
-                    <div className="bg-gradient-to-r from-[#F8F4EC] to-[#F0EAE0] px-5 py-3 flex items-center justify-between border-b border-[#E6DDCF]">
-                      <div className="flex items-center gap-2">
-                        <svg className="w-4 h-4 text-[#C8A24D]" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                        </svg>
-                        <span className="text-xs font-bold text-[#C8A24D] uppercase tracking-wide">
-                          추천 향수
-                        </span>
+            {/* 시각화 섹션 헤더 */}
+            <h2 className="text-sm font-semibold text-[#7A6B57]">레이어링 시각화</h2>
+
+            <div className="mt-4 flex flex-col items-center gap-6">
+              {basePerfume && (
+                <div className="w-full rounded-2xl border border-[#E6DDCF] bg-white/80 p-4 shadow-sm">
+                  <div className="flex items-center gap-4">
+                    {basePerfume.image_url ? (
+                      <img
+                        src={basePerfume.image_url}
+                        alt={`${basePerfume.perfume_name} 이미지`}
+                        className="h-16 w-16 rounded-xl object-cover border border-[#E6DDCF]"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="h-16 w-16 rounded-xl bg-gradient-to-br from-[#F4EBDD] to-[#E8D9C4] flex items-center justify-center text-[10px] text-[#7A6B57] border border-[#E6DDCF]">
+                        No Image
                       </div>
-                      <div className="relative group">
-                        <div className="flex items-center gap-1.5 bg-[#C8A24D]/10 px-3 py-1.5 rounded-full border border-[#C8A24D]/30 cursor-help">
-                          <span className="text-[10px] font-medium text-[#7A6B57]">매칭도</span>
-                          <span className="text-sm font-bold text-[#C8A24D]">{totalScore}</span>
-                        </div>
-                        {/* 툴팁 */}
-                        <div className="absolute right-0 top-full mt-2 w-72 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
-                          <div className="bg-[#2E2B28] text-white text-xs rounded-lg p-3 shadow-xl">
-                            <p className="font-semibold mb-2 text-[#C8A24D]">💡 매칭도 점수 계산 방식</p>
-                            <p className="leading-relaxed">
-                              이 점수는 <span className="font-semibold text-[#E8D7A8]">베이스 향수의 기본 점수</span>, 
-                              <span className="font-semibold text-[#D4C5A0]"> 두 향수의 조화도</span>, 
-                              <span className="font-semibold text-[#C4B58E]"> 원하는 어코드와의 연결성</span> 등을 
-                              종합적으로 고려하여 계산됩니다. 숫자가 높을수록 레이어링 조합으로 더 적합합니다.
-                            </p>
-                            {/* 화살표 */}
-                            <div className="absolute -top-2 right-4 w-3 h-3 bg-[#2E2B28] transform rotate-45"></div>
-                          </div>
-                        </div>
-                      </div>
+                    )}
+                    <div>
+                      <p className="text-[11px] font-semibold text-[#7A6B57]">기존 향수</p>
+                      <p className="text-sm font-bold text-[#2E2B28]">
+                        {basePerfume.perfume_name}
+                      </p>
+                      <p className="text-xs text-[#7A6B57]">
+                        {basePerfume.perfume_brand}
+                      </p>
                     </div>
-                    
-                    {/* 메인 콘텐츠 */}
-                    <div className="p-5 space-y-4">
-                      {/* 향수 이름과 브랜드 */}
+                  </div>
+                </div>
+              )}
+              {brandBestPerfume && (
+                <div className="w-full rounded-2xl border border-[#E6DDCF] bg-white/80 p-4 shadow-sm">
+                  <div className="flex items-center gap-4">
+                    {brandBestPerfume.image_url ? (
+                      <img
+                        src={brandBestPerfume.image_url}
+                        alt={`${brandBestPerfume.perfume_name} 이미지`}
+                        className="h-16 w-16 rounded-xl object-cover border border-[#E6DDCF]"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="h-16 w-16 rounded-xl bg-gradient-to-br from-[#F4EBDD] to-[#E8D9C4] flex items-center justify-center text-[10px] text-[#7A6B57] border border-[#E6DDCF]">
+                        No Image
+                      </div>
+                    )}
+                      <div className="flex-1">
+                        <p className="text-[11px] font-semibold text-[#7A6B57]">브랜드 추천</p>
+                        <p className="text-sm font-bold text-[#2E2B28]">
+                          {brandBestPerfume.perfume_name}
+                        </p>
+                        <p className="text-xs text-[#7A6B57]">
+                          {brandBestPerfume.perfume_brand}
+                        </p>
+                        {brandBestReason && (
+                          <p className="text-[11px] text-[#5C5448] mt-2 leading-relaxed">
+                            {brandBestReason}
+                          </p>
+                        )}
+                      </div>
+                    {Number.isFinite(brandBestScore) && (
+                      <div className="rounded-full border border-[#C8A24D]/30 bg-[#C8A24D]/10 px-3 py-1.5">
+                        <p className="text-[10px] font-semibold text-[#7A6B57]">평균 점수</p>
+                        <p className="text-sm font-bold text-[#C8A24D]">
+                          {brandBestScore?.toFixed(3)}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              {/* 어코드 원판 표시 영역 */}
+              {vectorReady ? (
+                <AccordWheel vector={vector} />
+              ) : (
+                <div className="h-[360px] w-[360px] flex flex-col items-center justify-center rounded-full border-2 border-dashed border-[#D7CDBD] text-xs text-[#7A6B57] gap-2 bg-[#FDFBF9]">
+                  <svg className="w-12 h-12 text-[#D7CDBD]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                  <p className="text-center px-6">
+                    데이터를 불러오면<br />원판이 표시됩니다.
+                  </p>
+                </div>
+              )}
+
+              {/* 추천 향수 정보 카드 */}
+              {candidate && (
+                <div className="w-full rounded-2xl bg-white border-2 border-[#E6DDCF] overflow-hidden shadow-md hover:shadow-xl transition-all">
+                  {/* 헤더: 추천 라벨과 점수 뱃지 */}
+                  <div className="bg-gradient-to-r from-[#F8F4EC] to-[#F0EAE0] px-5 py-3 flex items-center justify-between border-b border-[#E6DDCF]">
+                    <div className="flex items-center gap-2">
+                      <svg className="w-4 h-4 text-[#C8A24D]" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                      </svg>
+                      <span className="text-xs font-bold text-[#C8A24D] uppercase tracking-wide">
+                        추천 향수
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 bg-[#C8A24D]/10 px-3 py-1.5 rounded-full border border-[#C8A24D]/30">
+                      <span className="text-[10px] font-medium text-[#7A6B57]">매칭도</span>
+                      <span className="text-sm font-bold text-[#C8A24D]">{totalScore}</span>
+                    </div>
+                  </div>
+
+                  {/* 메인 콘텐츠 */}
+                  <div className="p-5 space-y-4 max-h-[360px] overflow-y-auto">
+                    {/* 향수 이름과 브랜드 */}
+                    <div className="flex items-center gap-4">
+                      <button
+                        type="button"
+                        onClick={handleOpenPerfumeInfo}
+                        className="group h-16 w-16 rounded-xl border border-[#E6DDCF] bg-white/80 overflow-hidden shadow-sm hover:shadow-md transition"
+                        aria-label="추천 향수 상세 정보 보기"
+                      >
+                        {candidate.image_url ? (
+                          <img
+                            src={candidate.image_url}
+                            alt={`${candidate.perfume_name} 이미지`}
+                            className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="h-full w-full bg-gradient-to-br from-[#F4EBDD] to-[#E8D9C4] flex items-center justify-center text-[10px] text-[#7A6B57]">
+                            No Image
+                          </div>
+                        )}
+                      </button>
                       <div>
                         <h3 className="text-lg font-bold text-[#2E2B28] leading-tight mb-1">
                           {candidate.perfume_name}
@@ -726,70 +939,166 @@ export default function LayeringPage() {
                           {candidate.perfume_brand}
                         </p>
                       </div>
-                      
-                      {/* 추천 이유 */}
-                      {candidate.analysis && (
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-1.5">
-                            <svg className="w-3.5 h-3.5 text-[#C8A24D]" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                            </svg>
-                            <p className="text-xs font-semibold text-[#5C5448]">추천 이유</p>
-                          </div>
-                          <p className="text-sm text-[#2E2B28] leading-relaxed pl-5">
-                            {scoreEvaluation && (
-                              <>
-                                {scoreEvaluation.scoreEmoji} <span className="font-bold text-[#C8A24D]">{candidate.perfume_name}</span>
-                                은(는) 매칭도 점수 <span className="font-bold text-[#C8A24D]">{totalScore}</span>로{" "}
-                                <span className="font-semibold text-[#5C5448]">{scoreEvaluation.scoreEval}</span>를 보여줍니다. {candidate.analysis}
-                              </>
-                            )}
-                          </p>
+                    </div>
+
+                    {/* 추천 이유 */}
+                    {candidate.analysis && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1.5">
+                          <svg className="w-3.5 h-3.5 text-[#C8A24D]" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                          </svg>
+                          <p className="text-xs font-semibold text-[#5C5448]">추천 이유</p>
                         </div>
-                      )}
-                      
-                      {/* 분사 순서 */}
+                        <p className="text-sm text-[#2E2B28] leading-relaxed pl-5">
+                          {scoreEvaluation && (
+                            <>
+                              {scoreEvaluation.scoreEmoji} <span className="font-bold text-[#C8A24D]">{candidate.perfume_name}</span>
+                              은(는) 매칭도 {totalScore}로{" "}
+                              <span className="font-semibold text-[#5C5448]">{scoreEvaluation.scoreEval}</span>입니다. {candidate.analysis}
+                            </>
+                          )}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* 분사 순서 */}
+                    <div className="pt-3 border-t border-[#E6DDCF]">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1.5">
+                          <svg className="w-3.5 h-3.5 text-[#C8A24D]" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
+                          </svg>
+                          <p className="text-xs font-semibold text-[#5C5448]">분사 순서</p>
+                        </div>
+                        <p className="text-sm text-[#2E2B28] leading-relaxed pl-5">
+                          {hasSprayOrder ? (
+                            <>
+                              {candidate.spray_order.map((perfume, idx) => (
+                                <span key={idx}>
+                                  <span className="font-semibold text-[#5C5448]">{perfume}</span>
+                                  {idx < candidate.spray_order.length - 1 && (
+                                    <span className="text-[#C8A24D] mx-1">→</span>
+                                  )}
+                                </span>
+                              ))}
+                              {" "}{TEXT_MESSAGES.SPRAY_ORDER_SUFFIX}
+                            </>
+                          ) : (
+                            <span className="text-[#7A6B57] italic">{TEXT_MESSAGES.NO_SPRAY_ORDER}</span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+
+                    {perfumeInfo && (
                       <div className="pt-3 border-t border-[#E6DDCF]">
                         <div className="space-y-2">
                           <div className="flex items-center gap-1.5">
                             <svg className="w-3.5 h-3.5 text-[#C8A24D]" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm-1-11a1 1 0 112 0v3a1 1 0 01-2 0V7zm1 6a1.25 1.25 0 100 2.5A1.25 1.25 0 0010 13z" clipRule="evenodd" />
                             </svg>
-                            <p className="text-xs font-semibold text-[#5C5448]">분사 순서</p>
+                            <p className="text-xs font-semibold text-[#5C5448]">향수 정보</p>
                           </div>
-                          <p className="text-sm text-[#2E2B28] leading-relaxed pl-5">
-                            {hasSprayOrder ? (
-                              <>
-                                {candidate.spray_order.map((perfume, idx) => (
-                                  <span key={idx}>
-                                    <span className="font-semibold text-[#5C5448]">{perfume}</span>
-                                    {idx < candidate.spray_order.length - 1 && (
-                                      <span className="text-[#C8A24D] mx-1">→</span>
-                                    )}
-                                  </span>
-                                ))}
-                                {" "}{TEXT_MESSAGES.SPRAY_ORDER_SUFFIX}
-                              </>
-                            ) : (
-                              <span className="text-[#7A6B57] italic">{TEXT_MESSAGES.NO_SPRAY_ORDER}</span>
-                            )}
-                          </p>
+                          {perfumeInfo.gender && (
+                            <p className="text-xs text-[#7A6B57] pl-5">성별: {perfumeInfo.gender}</p>
+                          )}
+                          <div className="pl-5 space-y-2">
+                            {infoSections.map((section) => (
+                              <div key={section.label}>
+                                <p className="text-[11px] font-semibold text-[#7A6B57]">
+                                  {section.label}
+                                </p>
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {section.items.map((item) => (
+                                    <span
+                                      key={`${section.label}-${item}`}
+                                      className="text-[11px] px-2 py-0.5 rounded-full bg-[#F8F4EC] text-[#5C5448] border border-[#E6DDCF]"
+                                    >
+                                      {item}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              {!candidate && perfumeInfo && (
+                <div className="w-full rounded-2xl bg-white border-2 border-[#E6DDCF] overflow-hidden shadow-md">
+                  <div className="bg-gradient-to-r from-[#F8F4EC] to-[#F0EAE0] px-5 py-3 flex items-center justify-between border-b border-[#E6DDCF]">
+                    <div className="flex items-center gap-2">
+                      <svg className="w-4 h-4 text-[#C8A24D]" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                      </svg>
+                      <span className="text-xs font-bold text-[#C8A24D] uppercase tracking-wide">
+                        추천 향수 정보
+                      </span>
                     </div>
                   </div>
-                )}
-              </div>
+                  <div className="p-5 space-y-4 max-h-[360px] overflow-y-auto">
+                    <div className="flex items-center gap-4">
+                      {perfumeInfo.image_url ? (
+                        <img
+                          src={perfumeInfo.image_url}
+                          alt={`${perfumeInfo.perfume_name} 이미지`}
+                          className="h-16 w-16 rounded-xl object-cover border border-[#E6DDCF]"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="h-16 w-16 rounded-xl bg-gradient-to-br from-[#F4EBDD] to-[#E8D9C4] flex items-center justify-center text-[10px] text-[#7A6B57] border border-[#E6DDCF]">
+                          No Image
+                        </div>
+                      )}
+                      <div>
+                        <h3 className="text-lg font-bold text-[#2E2B28] leading-tight mb-1">
+                          {perfumeInfo.perfume_name}
+                        </h3>
+                        <p className="text-sm font-medium text-[#7A6B57]">
+                          {perfumeInfo.perfume_brand}
+                        </p>
+                      </div>
+                    </div>
+                    {perfumeInfo.gender && (
+                      <p className="text-xs text-[#7A6B57]">성별: {perfumeInfo.gender}</p>
+                    )}
+                    <div className="space-y-2">
+                      {infoSections.map((section) => (
+                        <div key={`solo-${section.label}`}>
+                          <p className="text-[11px] font-semibold text-[#7A6B57]">
+                            {section.label}
+                          </p>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {section.items.map((item) => (
+                              <span
+                                key={`solo-${section.label}-${item}`}
+                                className="text-[11px] px-2 py-0.5 rounded-full bg-[#F8F4EC] text-[#5C5448] border border-[#E6DDCF]"
+                              >
+                                {item}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
+          </div>
 
           {/* ==================== 채팅 영역 ==================== */}
-          <div className="rounded-3xl bg-white/80 border border-[#E2D7C5] shadow-sm flex flex-col overflow-hidden" style={{ height: "700px" }}>
+          <div className="min-h-[700px] h-full rounded-3xl bg-white/80 border border-[#E2D7C5] shadow-sm flex flex-col overflow-hidden">
             {/* 채팅 헤더 */}
             <div className="bg-gradient-to-r from-[#F8F4EC] to-[#F0EAE0] px-6 py-4 border-b border-[#E2D7C5]">
               <h2 className="text-sm font-semibold text-[#7A6B57]">레이어링 어시스턴트</h2>
               <p className="text-xs text-[#8A7F73] mt-1">원하는 향수 레이어링을 설명해주세요</p>
             </div>
-            
+
             {/* 채팅 메시지 영역 - 스크롤 가능 */}
             <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
               {chatMessages.map((message) => (
@@ -798,20 +1107,18 @@ export default function LayeringPage() {
                   className={`flex ${message.type === "user" ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`max-w-[85%] rounded-2xl px-4 py-3 ${
-                      message.type === "user"
-                        ? "bg-[#2E2B28] text-white rounded-br-sm"
-                        : message.isRecommendation
+                    className={`max-w-[85%] rounded-2xl px-4 py-3 ${message.type === "user"
+                      ? "bg-[#2E2B28] text-white rounded-br-sm"
+                      : message.isRecommendation
                         ? "bg-gradient-to-r from-[#C8A24D]/20 to-[#D4B570]/20 text-[#2E2B28] border-2 border-[#C8A24D]/40 rounded-bl-sm"
                         : "bg-[#F8F4EC] text-[#2E2B28] border border-[#E6DDCF] rounded-bl-sm"
-                    }`}
+                      }`}
                   >
                     <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
                       {message.content}
                     </p>
-                    <p className={`text-[10px] mt-1.5 ${
-                      message.type === "user" ? "text-white/60" : "text-[#8A7F73]"
-                    }`}>
+                    <p className={`text-[10px] mt-1.5 ${message.type === "user" ? "text-white/60" : "text-[#8A7F73]"
+                      }`}>
                       {message.timestamp.toLocaleTimeString("ko-KR", {
                         hour: "2-digit",
                         minute: "2-digit",
@@ -820,7 +1127,7 @@ export default function LayeringPage() {
                   </div>
                 </div>
               ))}
-              
+
               {/* 로딩 중 표시 */}
               {loading && (
                 <div className="flex justify-start">
@@ -835,7 +1142,7 @@ export default function LayeringPage() {
                   </div>
                 </div>
               )}
-              
+
               {/* 자동 스크롤을 위한 더미 요소 */}
               <div ref={chatEndRef} />
             </div>
@@ -858,18 +1165,6 @@ export default function LayeringPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => sendFeedback("NEUTRAL")}
-                    className="flex-1 rounded-lg border-2 border-[#E6DDCF] bg-[#F8F4EC] px-3 py-2 text-xs font-semibold text-[#5C5448] transition-all hover:bg-[#EFE6D8] hover:border-[#D7CDBD] disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={feedbackSaving}
-                    aria-label="보통인 추천"
-                  >
-                    <span className="flex items-center justify-center gap-1">
-                      <span className="text-sm">😐</span>
-                      보통
-                    </span>
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => sendFeedback("BAD")}
                     className="flex-1 rounded-lg border-2 border-[#F5D4D4] bg-[#FDF0F0] px-3 py-2 text-xs font-semibold text-[#6B3D3D] transition-all hover:bg-[#FCE1E1] hover:border-[#EBB8B8] disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={feedbackSaving}
@@ -883,44 +1178,70 @@ export default function LayeringPage() {
                 </div>
               </div>
             )}
-            
+
             {/* 입력창 영역 - 하단 고정 */}
             <div className="px-6 py-4 bg-white border-t border-[#E2D7C5]">
-              <div className="flex gap-2 items-end">
-                <textarea
-                  value={queryText}
-                  onChange={(event) => setQueryText(event.target.value)}
-                  onKeyDown={(event) => {
-                    // Enter 키로 전송 (Shift+Enter는 줄바꿈)
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault();
-                      handleAnalyze();
-                    }
-                  }}
-                  spellCheck={false}
-                  className="flex-1 rounded-xl border border-[#E1D7C8] bg-white px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#7A6B57]/30 focus:border-[#7A6B57] transition-all h-[72px]"
-                  placeholder="예: CK One이 있는데 더 시트러스하고 시원한 느낌이 나게 하려면?"
-                  disabled={loading}
-                  aria-label="레이어링 질문 입력"
-                />
-                <button
-                  onClick={handleAnalyze}
-                  className="rounded-xl bg-[#2E2B28] px-3 text-sm font-semibold text-white transition-all hover:bg-[#1E1C1A] disabled:opacity-50 disabled:cursor-not-allowed h-[72px] w-[72px] flex items-center justify-center flex-shrink-0"
-                  disabled={loading || !queryText.trim()}
-                  aria-label="메시지 전송"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                  </svg>
-                </button>
+              <div className="flex flex-col gap-2">
+                <div className="flex gap-2 items-center w-full">
+                  {/* [추가] 내 향수 선택 팝오버 */}
+                  <LayeringPerfumePicker
+                    memberId={memberId}
+                    onSelect={(name) => {
+                      const newText = queryText + (queryText ? " " : "") + name;
+                      setQueryText(newText);
+                      // 향수 선택 후 입력창에 자동 포커스 및 커서를 맨 뒤로 이동
+                      setTimeout(() => {
+                        if (textareaRef.current) {
+                          textareaRef.current.focus();
+                          textareaRef.current.setSelectionRange(newText.length, newText.length);
+                        }
+                      }, 0);
+                    }}
+                  />
+
+                  <textarea
+                    ref={textareaRef}
+                    value={queryText}
+                    onChange={(event) => setQueryText(event.target.value)}
+                    onKeyDown={(event) => {
+                      // Enter 키로 전송 (Shift+Enter는 줄바꿈)
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        handleAnalyze();
+                      }
+                    }}
+                    spellCheck={false}
+                    className="flex-1 rounded-xl border border-[#E1D7C8] bg-white px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#7A6B57]/30 focus:border-[#7A6B57] transition-all h-[72px]"
+                    placeholder="예: CK One이 있는데 더 시트러스하고 시원한 느낌이 나게 하려면?"
+                    disabled={loading}
+                    aria-label="레이어링 질문 입력"
+                  />
+                  <button
+                    onClick={handleAnalyze}
+                    className="rounded-xl bg-[#2E2B28] px-3 text-sm font-semibold text-white transition-all hover:bg-[#1E1C1A] disabled:opacity-50 disabled:cursor-not-allowed h-[72px] w-[72px] flex items-center justify-center flex-shrink-0"
+                    disabled={loading || !queryText.trim()}
+                    aria-label="메시지 전송"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                  </button>
+                </div>
+                <p className="text-[10px] text-[#8A7F73]">
+                  Enter로 전송, Shift+Enter로 줄바꿈
+                </p>
               </div>
-              <p className="text-[10px] text-[#8A7F73] mt-2">
-                Enter로 전송, Shift+Enter로 줄바꿈
-              </p>
             </div>
           </div>
         </section>
       </div>
+      <PerfumeInfoModal
+        open={infoModalOpen}
+        loading={infoModalLoading}
+        errorMessage={infoModalError}
+        perfume={infoModalData}
+        onClose={() => setInfoModalOpen(false)}
+      />
     </div>
   );
 }

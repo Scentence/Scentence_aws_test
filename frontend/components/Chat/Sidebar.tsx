@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 
 // 백엔드 주소 (기존 설정과 동일하게 맞추세요)
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -22,24 +23,44 @@ interface SidebarProps {
 }
 
 const Sidebar = ({ isOpen, activeThreadId, onToggle, onNewChat, onSelectThread, loading, showToggleButton = false }: SidebarProps) => {
+    const { data: session } = useSession(); // 카카오 로그인 세션
     const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
     const [userNickname, setUserNickname] = useState("Guest");
 
-    // [1] 사이드바가 열릴 때 목록 불러오기
+    // [1] 사이드바가 열릴 때 목록 불러오기 (카카오 세션 또는 로컬 로그인)
     useEffect(() => {
-        const localAuth = localStorage.getItem("localAuth");
-        if (localAuth) {
-            const auth = JSON.parse(localAuth);
-            setUserNickname(auth.nickname || "User");
-
-            if (isOpen && auth.memberId) {
-                fetch(`${BACKEND_URL}/chat/rooms/${auth.memberId}`)
+        // 카카오 로그인 세션 확인
+        console.log("[Sidebar] session:", session); // 디버깅
+        console.log("[Sidebar] session.user.id:", session?.user?.id); // 디버깅
+        if (session?.user) {
+            setUserNickname(session.user.name || "User");
+            if (isOpen && session.user.id) {
+                console.log("[Sidebar] Fetching rooms for member_id:", session.user.id); // 디버깅
+                fetch(`${BACKEND_URL}/chat/rooms/${session.user.id}`)
                     .then(res => res.json())
                     .then(data => setChatRooms(data.rooms || []))
                     .catch(err => console.error("History Load Error:", err));
             }
+            return;
         }
-    }, [isOpen]);
+        // 로컬 로그인 확인
+        const localAuth = localStorage.getItem("localAuth");
+        if (localAuth) {
+            try {
+                const auth = JSON.parse(localAuth);
+                setUserNickname(auth.nickname || "User");
+
+                if (isOpen && auth.memberId) {
+                    fetch(`${BACKEND_URL}/chat/rooms/${auth.memberId}`)
+                        .then(res => res.json())
+                        .then(data => setChatRooms(data.rooms || []))
+                        .catch(err => console.error("History Load Error:", err));
+                }
+            } catch (e) {
+                console.error("Auth parsing failed", e);
+            }
+        }
+    }, [isOpen, session]);
 
     return (
         <>

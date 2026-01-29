@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useSavedPerfumes } from "../../contexts/SavedPerfumesContext";
 
 export type Message = {
     role: "user" | "assistant";
@@ -12,23 +14,38 @@ export type Message = {
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-// ✅ 1. 저장 버튼 컴포넌트 (기존 유지)
+// ✅ 1. 저장 버튼 컴포넌트 (카카오 세션 지원)
 const SaveButton = ({ id, name }: { id: string; name: string }) => {
+    const { data: session } = useSession(); // 카카오 로그인 세션
+    const { isSaved: checkSaved, addSavedPerfume } = useSavedPerfumes();
+    const perfumeId = parseInt(id);
     const [isSaved, setIsSaved] = useState(false);
     const [loading, setLoading] = useState(false);
 
+    // Check if perfume is already saved on mount
+    useEffect(() => {
+        setIsSaved(checkSaved(perfumeId));
+    }, [perfumeId, checkSaved]);
+
     const handleSave = async () => {
         let memberId = 0;
-        try {
-            const localAuth = localStorage.getItem("localAuth");
-            if (localAuth) {
-                const parsed = JSON.parse(localAuth);
-                if (parsed && parsed.memberId) {
-                    memberId = parseInt(parsed.memberId, 10);
+
+        // 카카오 로그인 세션 확인
+        if (session?.user?.id) {
+            memberId = parseInt(session.user.id, 10);
+        } else {
+            // 로컬 로그인 확인
+            try {
+                const localAuth = localStorage.getItem("localAuth");
+                if (localAuth) {
+                    const parsed = JSON.parse(localAuth);
+                    if (parsed && parsed.memberId) {
+                        memberId = parseInt(parsed.memberId, 10);
+                    }
                 }
+            } catch (e) {
+                console.error("로그인 정보 파싱 실패:", e);
             }
-        } catch (e) {
-            console.error("로그인 정보 파싱 실패:", e);
         }
 
         if (memberId === 0) {
@@ -54,9 +71,11 @@ const SaveButton = ({ id, name }: { id: string; name: string }) => {
             if (data.status === "already_exists") {
                 alert("이미 내 향수에 저장되어 있어요! 😉");
                 setIsSaved(true);
+                addSavedPerfume(perfumeId);
             } else {
                 alert(`'${name}'이(가) 내 향수로 저장되었습니다! 💖`);
                 setIsSaved(true);
+                addSavedPerfume(perfumeId);
             }
         } catch (e: any) {
             console.error(e);
@@ -102,7 +121,13 @@ const parseMessageContent = (text: string) => {
             return <SaveButton key={index} id={match[1]} name={match[2]} />;
         }
 
-        if (!part.trim()) return null;
+        if (!part.trim()) {
+            return (
+                <span key={index} className="whitespace-pre-wrap">
+                    {part}
+                </span>
+            );
+        }
 
         return (
             <ReactMarkdown
@@ -116,16 +141,11 @@ const parseMessageContent = (text: string) => {
                     
                     // [기존 유지] 이미지 (Rounded-2xl 사각형 유지)
                     img: ({ node, ...props }: any) => {
-                        const imageUrl = props.src || "";
-                        const isSquare = imageUrl.includes("aspect_ratio=1:1");
                         return (
                             <span className="mx-auto my-6 block h-40 w-40 md:h-[250px] md:w-[250px] overflow-hidden rounded-2xl shadow-lg border border-slate-200 relative bg-white">
                                 <img
                                     {...props}
-                                    className={`h-full w-full transition-all duration-300 ${isSquare
-                                            ? "object-contain p-2"
-                                            : "object-cover object-center scale-125"
-                                        }`}
+                                    className="h-full w-full object-contain p-2 transition-all duration-300"
                                     alt={props.alt || "Perfume Image"}
                                 />
                             </span>

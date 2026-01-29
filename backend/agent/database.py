@@ -41,6 +41,16 @@ RECOM_DB_CONFIG = {
 }
 recom_db_pool = pool.ThreadedConnectionPool(1, 20, **RECOM_DB_CONFIG)
 
+# ============ 추가 ============
+MEMBER_DB_CONFIG = {
+    **DB_CONFIG,
+    "dbname": "member_db",
+}
+# ============ 추가 ============
+
+# [최적화] 회원 DB 풀 추가 (로그인/프로필 병목 해결)
+member_db_pool = pool.ThreadedConnectionPool(1, 20, **MEMBER_DB_CONFIG)
+
 # [최적화] 동기/비동기 OpenAI 클라이언트 이원화
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 async_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -64,6 +74,14 @@ def get_recom_db_connection():
 def release_recom_db_connection(conn):
     recom_db_pool.putconn(conn)
 
+# [추가] Member DB 풀 관리 함수 ============
+def get_member_db_connection():
+    return member_db_pool.getconn()
+
+
+def release_member_db_connection(conn):
+    member_db_pool.putconn(conn)
+# ======================================
 
 # [최적화] 비동기 임베딩 생성 (API 블로킹 방지)
 async def get_embedding_async(text: str) -> List[float]:
@@ -378,13 +396,30 @@ def save_chat_message(
     try:
         cur = conn.cursor()
         title_snippet = message[:30] + "..." if len(message) > 30 else message
+        # ================================================================
+        # [수정] 스레드가 이미 존재할 때, 로그인한 사용자라면(member_id > 0) 소유권을 가져오도록 수정
+        # ================================================================
         cur.execute(
             """
-            INSERT INTO TB_CHAT_THREAD_T (THREAD_ID, MEMBER_ID, TITLE, LAST_CHAT_DT) VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
-            ON CONFLICT (THREAD_ID) DO UPDATE SET LAST_CHAT_DT = CURRENT_TIMESTAMP, TITLE = CASE WHEN TB_CHAT_THREAD_T.TITLE IS NULL OR TB_CHAT_THREAD_T.TITLE = '' THEN EXCLUDED.TITLE ELSE TB_CHAT_THREAD_T.TITLE END
-        """,
+            INSERT INTO TB_CHAT_THREAD_T (THREAD_ID, MEMBER_ID, TITLE, LAST_CHAT_DT) 
+            VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (THREAD_ID) DO UPDATE SET 
+                LAST_CHAT_DT = CURRENT_TIMESTAMP,
+                TITLE = CASE 
+                    WHEN TB_CHAT_THREAD_T.TITLE IS NULL OR TB_CHAT_THREAD_T.TITLE = '' 
+                    THEN EXCLUDED.TITLE 
+                    ELSE TB_CHAT_THREAD_T.TITLE 
+                END,
+                MEMBER_ID = CASE 
+                    WHEN EXCLUDED.MEMBER_ID > 0 THEN EXCLUDED.MEMBER_ID 
+                    ELSE TB_CHAT_THREAD_T.MEMBER_ID 
+                END
+            """,
             (thread_id, member_id, title_snippet),
         )
+        # ================================================================
+        # [수정 종료]
+        # ================================================================
         cur.execute(
             "INSERT INTO TB_CHAT_MESSAGE_T (THREAD_ID, MEMBER_ID, ROLE, MESSAGE, META_DATA) VALUES (%s, %s, %s, %s, %s)",
             (

@@ -25,6 +25,7 @@ class PerfumeBasic(BaseModel):
     perfume_id: str
     perfume_name: str
     perfume_brand: str
+    image_url: Optional[str] = None
 
 
 class PerfumeRecord(BaseModel):
@@ -39,6 +40,7 @@ class PerfumeVector(BaseModel):
     perfume_id: str
     perfume_name: str
     perfume_brand: str
+    image_url: Optional[str] = None
     vector: List[float]
     total_intensity: float
     persistence_score: float
@@ -77,6 +79,10 @@ class UserQueryRequest(BaseModel):
     member_id: Optional[int] = Field(
         default=None, description="Member identifier for saving results"
     )
+    context_recommended_perfume_id: Optional[str] = Field(
+        default=None,
+        description="Recommended perfume id from previous response",
+    )
     save_recommendations: bool = Field(
         default=True, description="Persist recommendations when member_id is set"
     )
@@ -97,6 +103,7 @@ class LayeringCandidate(BaseModel):
     perfume_id: str
     perfume_name: str
     perfume_brand: str
+    image_url: Optional[str] = None
     total_score: float
     feasible: bool = True
     feasibility_reason: Optional[str]
@@ -118,7 +125,7 @@ class RecommendationFeedbackRequest(BaseModel):
     member_id: int = Field(..., description="Member identifier")
     perfume_id: str = Field(..., description="Recommended perfume identifier")
     perfume_name: str = Field(..., description="Recommended perfume name")
-    preference: Literal["GOOD", "BAD", "NEUTRAL"] = Field(
+    preference: Literal["GOOD", "BAD"] = Field(
         ..., description="Satisfaction value for the recommendation"
     )
 
@@ -128,6 +135,7 @@ class RecommendationFeedbackResponse(BaseModel):
 
 
 class LayeringResponse(BaseModel):
+    base_perfume: Optional[PerfumeBasic] = None
     base_perfume_id: str
     keywords: List[str]
     total_available: int
@@ -160,15 +168,26 @@ class UserQueryAnalysis(BaseModel):
     detected_perfumes: List[DetectedPerfume]
     detected_pair: Optional[DetectedPair] = None
     pairing_analysis: Optional[PairingAnalysis] = None
+    recommended_perfume_info: Optional["PerfumeInfo"] = None
+    brand_name: Optional[str] = None
+    brand_best_perfume: Optional[PerfumeBasic] = None
+    brand_best_score: Optional[float] = None
+    brand_best_reason: Optional[str] = None
 
 
 class UserQueryResponse(BaseModel):
     raw_text: str
     keywords: List[str]
     base_perfume_id: Optional[str] = None
+    base_perfume: Optional[PerfumeBasic] = None
     detected_perfumes: List[DetectedPerfume]
     detected_pair: Optional[DetectedPair] = None
     recommendation: Optional[LayeringCandidate] = None
+    recommended_perfume_info: Optional["PerfumeInfo"] = None
+    brand_name: Optional[str] = None
+    brand_best_perfume: Optional[PerfumeBasic] = None
+    brand_best_score: Optional[float] = None
+    brand_best_reason: Optional[str] = None
     clarification_prompt: Optional[str] = None
     clarification_options: List[str] = Field(default_factory=list)
     note: Optional[str] = None
@@ -185,3 +204,17 @@ class LayeringError(BaseModel):
 
 class LayeringErrorResponse(BaseModel):
     error: LayeringError
+
+
+class PerfumeInfo(BaseModel):
+    perfume_id: str
+    perfume_name: str
+    perfume_brand: str
+    image_url: Optional[str] = None
+    gender: Optional[str] = None
+    accords: List[str] = Field(default_factory=list)
+    seasons: List[str] = Field(default_factory=list)
+    occasions: List[str] = Field(default_factory=list)
+    top_notes: List[str] = Field(default_factory=list)
+    middle_notes: List[str] = Field(default_factory=list)
+    base_notes: List[str] = Field(default_factory=list)

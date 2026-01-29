@@ -73,9 +73,13 @@ def rank_recommendations(
     repository: PerfumeRepository,
 ) -> Tuple[List[LayeringCandidate], int]:
     base = repository.get_perfume(base_perfume_id)
+    base_key = _normalize_identity(base.perfume_name, base.perfume_brand)
     target_vector = get_target_vector(keywords)
     candidates: List[LayeringCandidate] = []
     for candidate in repository.all_candidates(exclude_id=base_perfume_id):
+        candidate_key = _normalize_identity(candidate.perfume_name, candidate.perfume_brand)
+        if candidate_key == base_key:
+            continue
         result = calculate_advanced_layering(base, candidate, target_vector)
         if not result.feasible:
             continue
@@ -83,6 +87,19 @@ def rank_recommendations(
     candidates.sort(key=lambda item: item.total_score, reverse=True)
     total_available = len(candidates)
     return candidates[:3], total_available
+
+
+def _normalize_identity(name: str, brand: str) -> str:
+    return f"{brand.strip().lower()}::{name.strip().lower()}"
+
+
+def _build_brand_reason(avg_score: float, feasible_count: int) -> str:
+    if feasible_count <= 0:
+        return "브랜드 내 레이어링 후보가 제한적이라 가장 안정적인 향을 골랐습니다."
+    return (
+        f"브랜드 내 {feasible_count}개 조합에서 평균 궁합 점수 {avg_score:.2f}로 안정적인 편이라, "
+        "레이어링 범용성이 높습니다."
+    )
 
 
 def evaluate_pair(
@@ -96,6 +113,50 @@ def evaluate_pair(
     target_vector = get_target_vector(keywords)
     result = calculate_advanced_layering(base, candidate, target_vector)
     return _result_to_candidate(result)
+
+
+def calculate_compatibility_score(
+    base: PerfumeVector,
+    candidate: PerfumeVector,
+) -> Tuple[float, bool]:
+    neutral_target = [0.0] * len(base.vector)
+    result = calculate_advanced_layering(base, candidate, neutral_target)
+    score = result.total_score - result.score_breakdown.target
+    return score, result.feasible
+
+
+def rank_brand_universal_perfume(
+    brand_perfumes: Sequence[PerfumeVector],
+    repository: PerfumeRepository,
+) -> Tuple[PerfumeVector | None, float, int, str | None]:
+    all_candidates = list(repository.all_candidates())
+    best_perfume: PerfumeVector | None = None
+    best_score = float("-inf")
+    best_count = 0
+
+    for base in brand_perfumes:
+        total_score = 0.0
+        count = 0
+        for candidate in all_candidates:
+            if candidate.perfume_id == base.perfume_id:
+                continue
+            score, feasible = calculate_compatibility_score(base, candidate)
+            if not feasible:
+                continue
+            total_score += score
+            count += 1
+        average_score = total_score / count if count else 0.0
+        if best_perfume is None or average_score > best_score:
+            best_perfume = base
+            best_score = average_score
+            best_count = count
+
+    if best_perfume is None:
+        return None, 0.0, 0, None
+    reason = _build_brand_reason(best_score, best_count)
+    return best_perfume, best_score, best_count, reason
+
+
 
 
 def _clash_penalty(
@@ -208,8 +269,8 @@ def _spray_order(base: PerfumeVector, candidate: PerfumeVector) -> List[str]:
     else:
         first, second = candidate, base
     return [
-        f"{first.perfume_name} ({first.perfume_id})",
-        f"{second.perfume_name} ({second.perfume_id})",
+        f"{first.perfume_name}",
+        f"{second.perfume_name}",
     ]
 
 
@@ -221,6 +282,7 @@ def _result_to_candidate(result: LayeringComputationResult) -> LayeringCandidate
         perfume_id=candidate.perfume_id,
         perfume_name=candidate.perfume_name,
         perfume_brand=candidate.perfume_brand,
+        image_url=candidate.image_url,
         total_score=round(result.total_score, 3),
         feasible=result.feasible,
         feasibility_reason=result.feasibility_reason,
@@ -242,14 +304,23 @@ def _cosine_similarity(vector_a: Sequence[float], vector_b: Sequence[float]) -> 
 
 
 def _build_analysis_string(breakdown: ScoreBreakdown) -> str:
-    return (
-        " + ".join(
-            [
-                f"Base {breakdown.base:.2f}",
-                f"Harmony {breakdown.harmony:.2f}",
-                f"Bridge {breakdown.bridge:.2f}",
-                f"Penalty {breakdown.penalty:.2f}",
-                f"Target {breakdown.target:.2f}",
-            ]
-        )
-    )
+    reasons: list[str] = []
+    if breakdown.target >= 1.1:
+        reasons.append("요청한 무드와 잘 맞는 어코드가 또렷하게 살아납니다.")
+    elif breakdown.target >= 0.8:
+        reasons.append("원하는 분위기에 자연스럽게 가까워지는 조합입니다.")
+    else:
+        reasons.append("기존 향을 해치지 않으면서 분위기를 부드럽게 바꿔줍니다.")
+
+    if breakdown.harmony >= 1.0:
+        reasons.append("공통 노트가 있어 잔향이 자연스럽게 이어집니다.")
+    elif breakdown.bridge >= 0.8:
+        reasons.append("어코드 흐름이 매끄러워 전체 톤이 안정적으로 이어집니다.")
+
+    if breakdown.penalty < 0:
+        reasons.append("대비되는 포인트가 더해져 개성이 살아나는 레이어링입니다.")
+
+    if not reasons:
+        reasons.append("균형감 있게 어우러지는 레이어링입니다.")
+
+    return " ".join(reasons[:2])

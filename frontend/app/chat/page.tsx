@@ -2,10 +2,12 @@
 
 import { FormEvent, useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import ChatList from "../../components/Chat/ChatList";
 import { Message } from "../../components/Chat/MessageItem";
 import Sidebar from "../../components/Chat/Sidebar";
+import { SavedPerfumesProvider } from "../../contexts/SavedPerfumesContext";
 
 // [수정] AWS와 로컬 모두 대응하기 위한 환경 변수 처리
 // .env에 NEXT_PUBLIC_API_URL이 있으면 그걸 쓰고, 없으면 로컬(localhost:8000)을 씁니다.
@@ -13,6 +15,7 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const API_URL = `${BACKEND_URL}/chat`;
 
 export default function ChatPage() {
+    const { data: session } = useSession(); // 카카오 로그인 세션
     const router = useRouter();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false); // 온오프 토글 (기본은 닫힘 상태)
     const [messages, setMessages] = useState<Message[]>([]);
@@ -23,6 +26,7 @@ export default function ChatPage() {
     const [statusLog, setStatusLog] = useState("");
     const [isMounted, setIsMounted] = useState(false);
     const [threadId, setThreadId] = useState("");
+    const [memberId, setMemberId] = useState<number | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     const scrollToBottom = useCallback(() => {
@@ -46,7 +50,43 @@ export default function ChatPage() {
             localStorage.setItem("chat_thread_id", newId);
             setThreadId(newId);
         }
+
+        try {
+            const localAuth = localStorage.getItem("localAuth");
+            if (localAuth) {
+                const parsed = JSON.parse(localAuth);
+                if (parsed && parsed.memberId && !parsed.user_mode) {
+                    parsed.user_mode = "BEGINNER";
+                    localStorage.setItem("localAuth", JSON.stringify(parsed));
+                }
+            }
+        } catch (e) {
+            console.error("LocalAuth backfill error:", e);
+        }
     }, []);
+
+    // Extract memberId from session or localStorage
+    useEffect(() => {
+        let currentMemberId = 0;
+
+        if (session?.user?.id) {
+            currentMemberId = parseInt(session.user.id, 10);
+        } else {
+            try {
+                const localAuth = localStorage.getItem("localAuth");
+                if (localAuth) {
+                    const parsed = JSON.parse(localAuth);
+                    if (parsed && parsed.memberId) {
+                        currentMemberId = parseInt(parsed.memberId, 10);
+                    }
+                }
+            } catch (e) {
+                console.error("Member ID extraction error:", e);
+            }
+        }
+
+        setMemberId(currentMemberId > 0 ? currentMemberId : null);
+    }, [session]);
 
     if (!isMounted) return <div className="min-h-screen bg-[#FAF8F5]" />;
 
@@ -62,15 +102,15 @@ export default function ChatPage() {
 
     const handleSelectThread = async (id: string) => {
         if (loading) return;
-        
+
         setLoading(true);
         setThreadId(id);
         localStorage.setItem("chat_thread_id", id); // 로컬 스토리지 갱신
-        
+
         try {
             const response = await fetch(`${BACKEND_URL}/chat/history/${id}`);
             if (!response.ok) throw new Error("내역 로드 실패");
-            
+
             const data = await response.json();
             // 백엔드 필드명(text)을 프론트엔드 필드명(text)에 맞춰 매핑
             const formattedMessages = data.messages.map((m: any) => ({
@@ -78,7 +118,7 @@ export default function ChatPage() {
                 text: m.text,
                 isStreaming: false
             }));
-            
+
             setMessages(formattedMessages);
             setIsSidebarOpen(false); // 모바일 편의를 위해 선택 후 사이드바 닫기
         } catch (err) {
@@ -94,20 +134,40 @@ export default function ChatPage() {
         const trimmed = inputValue.trim();
         if (!trimmed || !threadId) return;
 
-        // [★추가] 로그인 정보(MemberID) 가져오기
+        // [★추가] 로그인 정보(MemberID) 가져오기 (카카오 세션 또는 로컬 로그인)
         let currentMemberId = 0;
+        let currentUserMode = "BEGINNER";
+        
+        // 1. 멤버 ID 결정 (카카오 세션 우선, 없으면 로컬)
+        if (session?.user?.id) {
+            currentMemberId = parseInt(session.user.id, 10);
+        } else {
+            // 로컬 로그인 확인
+            try {
+                const localAuth = localStorage.getItem("localAuth");
+                if (localAuth) {
+                    const parsed = JSON.parse(localAuth);
+                    if (parsed && parsed.memberId) {
+                        currentMemberId = parseInt(parsed.memberId, 10);
+                    }
+                }
+            } catch (e) {
+                console.error("Member ID Parsing Error:", e);
+            }
+        }
+
+        // 2. 유저 모드 결정 (항상 localAuth 확인)
         try {
             const localAuth = localStorage.getItem("localAuth");
             if (localAuth) {
                 const parsed = JSON.parse(localAuth);
-                if (parsed && parsed.memberId) {
-                    currentMemberId = parseInt(parsed.memberId, 10);
+                if (parsed && parsed.user_mode) {
+                    currentUserMode = parsed.user_mode;
                 }
             }
         } catch (e) {
-            console.error("Member ID Parsing Error:", e);
+            console.error("User Mode Parsing Error:", e);
         }
-
         setMessages((prev) => prev.map(m => ({ ...m, isStreaming: false })));
         setMessages((prev) => [...prev, { role: "user", text: trimmed, isStreaming: false }]);
         setInputValue("");
@@ -122,7 +182,8 @@ export default function ChatPage() {
                 body: JSON.stringify({
                     user_query: trimmed,
                     thread_id: threadId,
-                    member_id: currentMemberId  // [★추가] 백엔드로 내 ID 전송!
+                    member_id: currentMemberId,
+                    user_mode: currentUserMode
                 }),
             });
 
@@ -156,9 +217,20 @@ export default function ChatPage() {
                                     const lastMsg = updated[lastIndex];
 
                                     if (lastMsg.role === "assistant") {
+                                        let nextChunk = data.content;
+                                        const prevText = lastMsg.text;
+                                        const prevTrimmed = prevText.trimEnd();
+                                        if (
+                                            prevTrimmed.endsWith("---") &&
+                                            !prevText.endsWith("\n") &&
+                                            typeof nextChunk === "string" &&
+                                            nextChunk.startsWith("##")
+                                        ) {
+                                            nextChunk = `\n${nextChunk}`;
+                                        }
                                         updated[lastIndex] = {
                                             ...lastMsg,
-                                            text: lastMsg.text + data.content
+                                            text: prevText + nextChunk
                                         };
                                     }
                                     return updated;
@@ -183,9 +255,10 @@ export default function ChatPage() {
     };
 
     return (
-        <div className="flex h-[100dvh] bg-[#FDFBF8] overflow-hidden text-[#393939]">
-            {/* ✅ 사이드바에 스위치 상태와 끄기 기능을 전달합니다. */}
-            <Sidebar
+        <SavedPerfumesProvider memberId={memberId}>
+            <div className="flex h-[100dvh] bg-[#FDFBF8] overflow-hidden text-[#393939]">
+                {/* ✅ 사이드바에 스위치 상태와 끄기 기능을 전달합니다. */}
+                <Sidebar
                 isOpen={isSidebarOpen}
                 activeThreadId={threadId}           // ✅ 추가
                 onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -245,8 +318,8 @@ export default function ChatPage() {
                         {error && <div className="text-sm text-rose-500">{error}</div>}
                     </form>
                 </div>
-            </main >
-
-        </div >
+            </main>
+        </div>
+        </SavedPerfumesProvider>
     );
 }

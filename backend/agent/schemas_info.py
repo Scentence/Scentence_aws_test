@@ -13,10 +13,17 @@ class InfoState(Dict):
     info_type: Literal["perfume", "note", "accord", "brand", "similarity", "unknown"] 
     
     target_name: str                 # 검색할 대상 이름
+    target_id: Optional[int]         # 검색할 대상 perfume_id (순번/대명사 해석 시 사용)
     
     # 검색 결과 데이터
     search_result: Optional[Dict]    # DB에서 찾은 Raw Data
     final_answer: Optional[str]      # 사용자에게 나갈 최종 답변 텍스트
+    
+    # 실패 메시지 (fallback_handler로 전달)
+    fail_msg: Optional[str]          # 실패/범위 밖/추천 없음 시 사용자에게 전달할 메시지
+    
+    # 사용자 모드 (메인 그래프에서 전달)
+    user_mode: Optional[str]         # BEGINNER 또는 EXPERT
     
     # 메시지 기록
     messages: List[Any] 

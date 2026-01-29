@@ -32,8 +32,7 @@ def log_activity(session_id: str, request: ActivityLogRequest):
             accord_selected=request.accord_selected,
             selected_accords=request.selected_accords,
             perfume_id=request.perfume_id,
-            dwell_time=request.dwell_time,
-            interaction_count=request.interaction_count
+            dwell_time=request.dwell_time
         )
         trigger = check_card_trigger(session_id)
         return ActivityLogResponse(logged=True, card_trigger_ready=trigger["ready"], trigger_message=trigger.get("message"))

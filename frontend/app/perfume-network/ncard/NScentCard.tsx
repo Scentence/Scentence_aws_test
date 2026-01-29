@@ -10,12 +10,16 @@ interface NScentCardProps {
   userName?: string; // 회원 이름 (미구현)
   onClose?: () => void; // 패널 닫기 콜백
   onAccordClick?: (accordName: string) => void; // 어코드 클릭 콜백
+  onSave?: () => void; // 카드 저장 콜백
+  isSaving?: boolean; // 저장 중 상태
 }
 
-export const NScentCard: React.FC<NScentCardProps> = ({ card, userName, onClose, onAccordClick }) => {
+export const NScentCard: React.FC<NScentCardProps> = ({ card, userName, onClose, onAccordClick, onSave, isSaving = false }) => {
   const [currentPage, setCurrentPage] = useState(0);
   const [isOpen, setIsOpen] = useState(true); // 패널 열림 상태
+  const [isLiked, setIsLiked] = useState(false); // 하트 상태
   const scrollRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   // 메인 컬러 테마
   const theme = {
@@ -69,22 +73,68 @@ export const NScentCard: React.FC<NScentCardProps> = ({ card, userName, onClose,
     }
   };
 
+  // 하트 버튼 클릭 - 카드 저장 (saved=true)
+  const handleLike = async () => {
+    if (!onSave || isSaving || isLiked) return;
+    setIsLiked(true);
+    await onSave();
+  };
+
+  // 이미지 다운로드 핸들러
+  const handleDownload = async () => {
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      if (cardRef.current) {
+        const canvas = await html2canvas(cardRef.current, {
+          scale: 2,
+          backgroundColor: '#ffffff',
+          logging: false,
+          useCORS: true
+        });
+        const link = document.createElement('a');
+        link.download = `scentcard_${card.mbti}_${Date.now()}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      }
+    } catch (error) {
+      console.error('이미지 다운로드 실패:', error);
+      alert('이미지 다운로드에 실패했습니다.');
+    }
+  };
+
   return (
-    <div 
-      className={`fixed right-0 top-0 h-full transition-transform duration-500 ease-in-out z-50 ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
-      style={{ 
-        width: '100%',
-        maxWidth: '440px',
-        backgroundColor: theme.bg,
-        boxShadow: '-10px 0 40px rgba(0,0,0,0.15)',
-        overflow: 'hidden',
-        fontFamily: 'inherit',
-        color: theme.text,
-        display: 'flex',
-        flexDirection: 'column',
-        borderLeft: '1px solid #efefef',
-      }}
-    >
+    <>
+      <style>{`
+        .ncard-panel::-webkit-scrollbar {
+          width: 8px;
+        }
+        .ncard-panel::-webkit-scrollbar-track {
+          background: #f1f1f1;
+        }
+        .ncard-panel::-webkit-scrollbar-thumb {
+          background: #C8A24D;
+          border-radius: 4px;
+        }
+        .ncard-panel::-webkit-scrollbar-thumb:hover {
+          background: #B69140;
+        }
+      `}</style>
+      <div
+        className={`ncard-panel fixed right-0 top-0 h-full transition-transform duration-500 ease-in-out z-50 ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
+        style={{
+          width: '100%',
+          maxWidth: '440px',
+          backgroundColor: theme.bg,
+          boxShadow: '-10px 0 40px rgba(0,0,0,0.15)',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          fontFamily: 'inherit',
+          color: theme.text,
+          display: 'flex',
+          flexDirection: 'column',
+          borderLeft: '1px solid #efefef',
+        }}
+      >
       {/* ------------------------------ 패널 토글 버튼 ------------------------------ */}
       <button 
         onClick={() => setIsOpen(!isOpen)}
@@ -154,7 +204,7 @@ export const NScentCard: React.FC<NScentCardProps> = ({ card, userName, onClose,
       </header>
 
       {/* ------------------------------ 메인 비주얼 카드 (이미지 슬라이드 영역) ------------------------------ */}
-      <div style={{ position: 'relative', width: '100%', aspectRatio: '1/1' }}>
+      <div ref={cardRef} style={{ position: 'relative', width: '100%', minHeight: '400px', flexShrink: 0 }}>
         
         {/* 네비게이션 화살표 */}
         {currentPage > 0 && (
@@ -184,17 +234,17 @@ export const NScentCard: React.FC<NScentCardProps> = ({ card, userName, onClose,
           </button>
         )}
 
-        <div 
+        <div
           ref={scrollRef}
           onScroll={handleScroll}
-          style={{ 
+          style={{
             display: 'flex',
             overflowX: 'auto',
             scrollSnapType: 'x mandatory',
             scrollbarWidth: 'none',
             msOverflowStyle: 'none',
             WebkitOverflowScrolling: 'touch',
-            height: '100%'
+            minHeight: '400px'
           }}
         >
           <style>{`div::-webkit-scrollbar { display: none; }`}</style>
@@ -207,18 +257,18 @@ export const NScentCard: React.FC<NScentCardProps> = ({ card, userName, onClose,
           }}>
             <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.25)', backdropFilter: 'blur(2px)', zIndex: 1 }} />
             <div style={{ position: 'relative', zIndex: 2 }}>
-              <div style={{ fontSize: '40px', marginBottom: '10px', opacity: 0.8 }}>“</div>
-              <h2 style={{ fontSize: '20px', fontWeight: 700, margin: '0 0 5px', opacity: 0.9 }}>{card.persona_title}</h2>
+              <div style={{ fontSize: '40px', marginBottom: '10px', opacity: 0.8 }}>"</div>
+              <h2 style={{ fontSize: '20px', fontWeight: 700, margin: '0 0 5px', opacity: 0.9, wordBreak: 'break-word', overflowWrap: 'break-word', padding: '0 10px' }}>{card.persona_title}</h2>
               <h1 style={{ fontSize: '48px', fontWeight: 900, margin: '0 0 10px', letterSpacing: '-0.03em', textShadow: '0 2px 10px rgba(0,0,0,0.3)' }}>{card.mbti}</h1>
-              <p style={{ fontSize: '15px', lineHeight: '1.6', margin: '0 auto 20px', maxWidth: '280px', wordBreak: 'keep-all', opacity: 0.95, fontWeight: 500 }}>{card.story}</p>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center', marginBottom: '15px' }}>
+              <p style={{ fontSize: '15px', lineHeight: '1.6', margin: '0 auto 20px', maxWidth: '280px', wordBreak: 'break-word', overflowWrap: 'break-word', opacity: 0.95, fontWeight: 500 }}>{card.story}</p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center', marginBottom: '15px', padding: '0 10px' }}>
                 {card.keywords.map((kw, idx) => (
-                  <span key={idx} style={{ fontSize: '12px', color: 'rgba(255,255,255,0.8)' }}>#{kw}</span>
+                  <span key={idx} style={{ fontSize: '12px', color: 'rgba(255,255,255,0.8)', wordBreak: 'break-word' }}>#{kw}</span>
                 ))}
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center', padding: '0 10px' }}>
                 {card.components.map((item, idx) => (
-                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 12px', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: '100px', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.2)', fontSize: '12px', fontWeight: 600 }}>
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 12px', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: '100px', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.2)', fontSize: '12px', fontWeight: 600, wordBreak: 'keep-all', whiteSpace: 'nowrap' }}>
                     <span style={{ color: theme.primary }}>{item.code}</span>
                     <span>{item.axis}</span>
                   </div>
@@ -228,17 +278,17 @@ export const NScentCard: React.FC<NScentCardProps> = ({ card, userName, onClose,
           </div>
 
           {/* [PAGE 2] 성향 분석 상세 */}
-          <div style={{ 
-            flex: '0 0 100%', scrollSnapAlign: 'start', position: 'relative', 
-            backgroundColor: '#fff', display: 'flex', flexDirection: 'column', padding: '30px'
+          <div style={{
+            flex: '0 0 100%', scrollSnapAlign: 'start', position: 'relative',
+            backgroundColor: '#fff', display: 'flex', flexDirection: 'column', padding: '30px', minHeight: '400px'
           }}>
-            <div style={{ position: 'relative', zIndex: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ position: 'relative', zIndex: 2, minHeight: '340px', display: 'flex', flexDirection: 'column' }}>
               <h3 style={{ flexShrink: 0, fontSize: '16px', fontWeight: 800, marginBottom: '15px', textAlign: 'center', color: theme.text, borderBottom: `1px solid ${theme.accentBg}`, paddingBottom: '10px' }}>성향 분석 리포트</h3>
-              <div style={{ flex: 1, display: 'grid', gridTemplateRows: 'repeat(4, 1fr)', gap: '10px', minHeight: 0 }}>
+              <div style={{ flex: 1, display: 'grid', gridTemplateRows: 'repeat(4, auto)', gap: '10px' }}>
                 {card.components.map((item, idx) => (
                   <div key={idx} style={{ backgroundColor: theme.accentBg, padding: '10px 16px', borderRadius: '12px', border: '1px solid #efefef', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                     <div style={{ fontSize: '11px', fontWeight: 700, color: theme.primary, marginBottom: '2px', textTransform: 'uppercase' }}>{item.axis} ({item.code})</div>
-                    <div style={{ fontSize: '12px', lineHeight: '1.4', color: theme.text, wordBreak: 'keep-all' }}>{item.desc}</div>
+                    <div style={{ fontSize: '12px', lineHeight: '1.4', color: theme.text, wordBreak: 'break-word', overflowWrap: 'break-word' }}>{item.desc}</div>
                   </div>
                 ))}
               </div>
@@ -246,22 +296,22 @@ export const NScentCard: React.FC<NScentCardProps> = ({ card, userName, onClose,
           </div>
 
           {/* [PAGE 3] 추천 어코드 & 노트 */}
-          <div style={{ 
-            flex: '0 0 100%', scrollSnapAlign: 'start', position: 'relative', 
-            backgroundColor: '#fff', display: 'flex', flexDirection: 'column', padding: '30px'
+          <div style={{
+            flex: '0 0 100%', scrollSnapAlign: 'start', position: 'relative',
+            backgroundColor: '#fff', display: 'flex', flexDirection: 'column', padding: '30px', minHeight: '400px'
           }}>
-            <div style={{ position: 'relative', zIndex: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ position: 'relative', zIndex: 2, minHeight: '340px', display: 'flex', flexDirection: 'column' }}>
               <h3 style={{ flexShrink: 0, fontSize: '16px', fontWeight: 800, marginBottom: '15px', textAlign: 'center', color: theme.text, borderBottom: `1px solid ${theme.accentBg}`, paddingBottom: '10px' }}>추천 어코드 & 노트</h3>
-              <div style={{ flex: 1, display: 'grid', gridTemplateRows: 'repeat(3, 1fr)', gap: '10px', minHeight: 0 }}>
+              <div style={{ flex: 1, display: 'grid', gridTemplateRows: 'repeat(3, auto)', gap: '10px' }}>
                 {card.recommends.slice(0, 3).map((acc, idx) => {
                   const info = getAccordInfo(acc.name);
                   return (
                     <div key={idx} style={{ backgroundColor: hexToRgba(info.color, 0.05), padding: '12px 15px', borderRadius: '15px', border: `1px solid ${hexToRgba(info.color, 0.2)}`, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                        <span style={{ width: '28px', height: '28px', backgroundColor: info.color, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>{info.icon}</span>
+                        <span style={{ width: '28px', height: '28px', backgroundColor: info.color, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', flexShrink: 0 }}>{info.icon}</span>
                         <span style={{ fontWeight: 800, fontSize: '15px', color: theme.text }}>{acc.name}</span>
                       </div>
-                      <p style={{ fontSize: '12px', lineHeight: '1.4', color: theme.subText, marginBottom: '8px', wordBreak: 'keep-all' }}>{acc.reason}</p>
+                      <p style={{ fontSize: '12px', lineHeight: '1.4', color: theme.subText, marginBottom: '8px', wordBreak: 'break-word', overflowWrap: 'break-word' }}>{acc.reason}</p>
                       {acc.notes && (
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                           {acc.notes.map((note, nIdx) => (
@@ -277,22 +327,22 @@ export const NScentCard: React.FC<NScentCardProps> = ({ card, userName, onClose,
           </div>
 
           {/* [PAGE 4] 비추천 어코드 */}
-          <div style={{ 
-            flex: '0 0 100%', scrollSnapAlign: 'start', position: 'relative', 
-            backgroundColor: '#fff', display: 'flex', flexDirection: 'column', padding: '30px'
+          <div style={{
+            flex: '0 0 100%', scrollSnapAlign: 'start', position: 'relative',
+            backgroundColor: '#fff', display: 'flex', flexDirection: 'column', padding: '30px', minHeight: '400px'
           }}>
-            <div style={{ position: 'relative', zIndex: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ position: 'relative', zIndex: 2, minHeight: '340px', display: 'flex', flexDirection: 'column' }}>
               <h3 style={{ flexShrink: 0, fontSize: '16px', fontWeight: 800, marginBottom: '15px', textAlign: 'center', color: theme.text, borderBottom: `1px solid ${theme.accentBg}`, paddingBottom: '10px' }}>기피해야 할 어코드</h3>
-              <div style={{ flex: 1, display: 'grid', gridTemplateRows: 'repeat(3, 1fr)', gap: '10px', minHeight: 0 }}>
+              <div style={{ flex: 1, display: 'grid', gridTemplateRows: 'repeat(3, auto)', gap: '10px' }}>
                 {card.avoids.slice(0, 3).map((acc, idx) => {
                   const info = getAccordInfo(acc.name);
                   return (
                     <div key={idx} style={{ backgroundColor: hexToRgba(info.color, 0.05), padding: '12px 15px', borderRadius: '15px', border: `1px dashed ${hexToRgba(info.color, 0.3)}`, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                       <div style={{ fontWeight: 800, fontSize: '15px', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px', color: theme.text }}>
-                        <span style={{ width: '28px', height: '28px', backgroundColor: info.color, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>{info.icon}</span>
+                        <span style={{ width: '28px', height: '28px', backgroundColor: info.color, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', flexShrink: 0 }}>{info.icon}</span>
                         {acc.name}
                       </div>
-                      <p style={{ fontSize: '12px', lineHeight: '1.4', color: theme.subText, wordBreak: 'keep-all' }}>{acc.reason}</p>
+                      <p style={{ fontSize: '12px', lineHeight: '1.4', color: theme.subText, wordBreak: 'break-word', overflowWrap: 'break-word' }}>{acc.reason}</p>
                     </div>
                   );
                 })}
@@ -314,13 +364,25 @@ export const NScentCard: React.FC<NScentCardProps> = ({ card, userName, onClose,
       </div>
 
       {/* ------------------------------ 액션 바 (아이콘 버튼) ------------------------------ */}
-      <div style={{ 
+      <div style={{
         padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '16px', flexShrink: 0, backgroundColor: '#fff'
       }}>
-        {/* 하트 (만족도) */}
-        <button style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex' }} title="만족도">
-          <svg aria-label="좋아요" color="#262626" fill="#262626" height="24" role="img" viewBox="0 0 24 24" width="24">
-            <path d="M16.792 3.904A4.989 4.989 0 0121.5 9.122c0 3.072-2.652 4.959-5.197 7.222-2.512 2.243-3.865 3.469-4.303 3.752-.477-.309-2.143-1.823-4.303-3.752C5.141 14.072 2.5 12.194 2.5 9.122a4.989 4.989 0 014.708-5.218 4.21 4.21 0 013.675 1.941c.325.487.544.98.617 1.215h1.412a3.012 3.012 0 01.623-1.222 4.198 4.198 0 013.597-1.934z"></path>
+        {/* 하트 (카드 저장) */}
+        <button
+          onClick={handleLike}
+          disabled={!onSave || isSaving || isLiked}
+          style={{
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            cursor: (onSave && !isSaving && !isLiked) ? 'pointer' : 'default',
+            display: 'flex',
+            opacity: !onSave ? 0.3 : 1
+          }}
+          title={isLiked ? "저장됨" : isSaving ? "저장 중..." : "내 보관함에 저장"}
+        >
+          <svg aria-label="저장" color={isLiked ? "#C8A24D" : "#262626"} fill={isLiked ? "#C8A24D" : "none"} height="24" role="img" viewBox="0 0 24 24" width="24">
+            <path d="M16.792 3.904A4.989 4.989 0 0121.5 9.122c0 3.072-2.652 4.959-5.197 7.222-2.512 2.243-3.865 3.469-4.303 3.752-.477-.309-2.143-1.823-4.303-3.752C5.141 14.072 2.5 12.194 2.5 9.122a4.989 4.989 0 014.708-5.218 4.21 4.21 0 013.675 1.941c.325.487.544.98.617 1.215h1.412a3.012 3.012 0 01.623-1.222 4.198 4.198 0 013.597-1.934z" stroke="currentColor" strokeWidth={isLiked ? "0" : "2"}></path>
           </svg>
         </button>
 
@@ -333,10 +395,20 @@ export const NScentCard: React.FC<NScentCardProps> = ({ card, userName, onClose,
         </button>
         <div style={{ flex: 1 }} />
 
-        {/* 저장 (북마크) */}
-        <button style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex' }} title="저장하기">
-          <svg aria-label="저장" color="#262626" fill="#262626" height="24" role="img" viewBox="0 0 24 24" width="24">
-            <polygon fill="none" points="20 21 12 13.44 4 21 4 3 20 3 20 21" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></polygon>
+        {/* 이미지 다운로드 (북마크) */}
+        <button
+          onClick={handleDownload}
+          style={{
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            cursor: 'pointer',
+            display: 'flex'
+          }}
+          title="이미지로 저장"
+        >
+          <svg aria-label="이미지 저장" color="#262626" fill="none" height="24" role="img" viewBox="0 0 24 24" width="24">
+            <polygon points="20 21 12 13.44 4 21 4 3 20 3 20 21" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></polygon>
           </svg>
         </button>
       </div>
@@ -344,17 +416,17 @@ export const NScentCard: React.FC<NScentCardProps> = ({ card, userName, onClose,
       {/* ------------------------------ 캡션 영역 (Summary & Tags & CTA) ------------------------------ */}
       <div style={{ padding: '0 16px 20px', flexShrink: 0, backgroundColor: '#fff' }}>
         <div style={{ marginBottom: '12px' }}>
-          <span style={{ fontSize: '14px', lineHeight: '1.5', color: '#262626' }}>
+          <span style={{ fontSize: '14px', lineHeight: '1.5', color: '#262626', wordBreak: 'break-word', overflowWrap: 'break-word', display: 'block' }}>
             {card.summary}
             <br />어울리는 향이 마음에 들었나요? 이제 나만의 향수를 추천받아보세요!
           </span>
         </div>
-        <div style={{ fontSize: '12px', lineHeight: '1.6', marginBottom: '12px' }}>
+        <div style={{ fontSize: '12px', lineHeight: '1.6', marginBottom: '12px', wordBreak: 'break-word', overflowWrap: 'break-word' }}>
           {card.recommends.length > 0 && (
             <div style={{ color: theme.primary, fontWeight: 500, display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
               #추천어코드 {card.recommends.map(acc => (
-                <span 
-                  key={acc.name} 
+                <span
+                  key={acc.name}
                   onClick={() => onAccordClick?.(acc.name)}
                   style={{ cursor: onAccordClick ? 'pointer' : 'default', textDecoration: onAccordClick ? 'underline' : 'none' }}
                 >
@@ -364,18 +436,33 @@ export const NScentCard: React.FC<NScentCardProps> = ({ card, userName, onClose,
             </div>
           )}
           {card.avoids.length > 0 && (
-            <div style={{ color: theme.secondary, fontWeight: 500, marginTop: '4px' }}>#기피어코드 {card.avoids.map(acc => `#${acc.name}`).join(' ')}</div>
+            <div style={{ color: theme.secondary, fontWeight: 500, marginTop: '4px', wordBreak: 'break-word', overflowWrap: 'break-word' }}>#기피어코드 {card.avoids.map(acc => `#${acc.name}`).join(' ')}</div>
           )}
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button style={{ background: 'none', border: 'none', padding: 0, color: theme.primary, fontSize: '14px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            나만의 향수 추천받기 
+          <button
+            onClick={() => window.location.href = '/chat'}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              color: theme.primary,
+              fontSize: '14px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+          >
+            나만의 향수 추천받기
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: '2px' }}>
               <path d="M5 12h14M12 5l7 7-7 7"/>
             </svg>
           </button>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 };

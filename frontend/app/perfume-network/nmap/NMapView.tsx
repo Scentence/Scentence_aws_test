@@ -39,6 +39,10 @@ export default function NMapView({ sessionUserId }: { sessionUserId?: string | n
     error, setError,
     logActivity,
     handleGenerateCard,
+    handleSaveCard,
+    isSavingCard,
+    saveSuccess,
+    setSaveSuccess,
     myPerfumeIds,
     myPerfumeFilters,
     interactionCount,
@@ -206,7 +210,32 @@ export default function NMapView({ sessionUserId }: { sessionUserId?: string | n
           userName={memberId ? "Member" : "Guest"}
           onClose={() => { setShowCardModal(false); setGeneratedCard(null); setGeneratedCardId(null); }}
           onAccordClick={handleAccordClick}
+          onSave={memberId ? handleSaveCard : undefined}
+          isSaving={isSavingCard}
         />
+      )}
+
+      {/* 카드 저장 성공 메시지 */}
+      {saveSuccess && (
+        <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50 max-w-md w-full mx-6 animate-fade-in">
+          <div className="bg-white border-2 border-green-300 rounded-2xl shadow-2xl p-6">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
+                <span className="text-2xl">✅</span>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-bold text-green-700 mb-1">카드 저장 완료!</h3>
+                <p className="text-sm text-green-600 leading-relaxed">나의 보관함에 성공적으로 저장되었습니다. 새로운 세션이 시작되었어요!</p>
+              </div>
+              <button
+                onClick={() => setSaveSuccess(false)}
+                className="flex-shrink-0 w-8 h-8 rounded-full hover:bg-green-100 flex items-center justify-center transition-colors"
+              >
+                <span className="text-xl">×</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

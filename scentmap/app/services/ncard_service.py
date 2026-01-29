@@ -43,17 +43,20 @@ class NCardService:
 
             [향 MBTI 정의 (4개 축)]
             1. E(외향) / I(내향) : 존재 방식 (확산성 및 발산력)
-               - E: 공간을 채우는 압도적 존재감 및 화려한 오프닝
-               - I: 피부에 밀착되어 은은하게 남는 내밀한 여운
+               - E: 공간을 채우는 압도적 존재감 및 화려한 오프닝 (예: Citrus, Fruity, Floral - 밝고 확산적)
+               - I: 피부에 밀착되어 은은하게 남는 내밀한 여운 (예: Musk, Amber, Woody - 은은하고 깊이감)
+
             2. S(감각) / N(직관) : 인식 방식 (묘사의 구체성)
-               - S: 원료의 생동감이 느껴지는 직관적이고 사실적인 향
-               - N: 장면과 기억을 소환하는 추상적이고 서사적인 향
+               - S: 원료의 생동감이 느껴지는 직관적이고 사실적인 향 (예: Green, Aquatic, Herbal - 자연 그대로)
+               - N: 장면과 기억을 소환하는 추상적이고 서사적인 향 (예: Powdery, Gourmand, Oriental - 상상력 자극)
+
             3. T(사고) / F(감정) : 감정 질감 (향의 온도와 구조)
-               - T: 이성적이고 정돈된 드라이/메탈릭한 구조적 인상
-               - F: 감성을 자극하는 부드럽고 따뜻한 포근한 인상
+               - T: 이성적이고 정돈된 드라이/메탈릭한 구조적 인상 (예: Aromatic, Ozonic, Aldehydic - 차갑고 깔끔)
+               - F: 감성을 자극하는 부드럽고 따뜻한 포근한 인상 (예: Vanilla, Floral, Creamy - 따뜻하고 부드러움)
+
             4. J(판단) / P(인식) : 취향 안정성 (조향의 전형성)
-               - J: 균형 잡힌 밸런스의 대중적이고 클래식한 조화
-               - P: 독특한 킥(Kick)이 있는 실험적이고 개성 있는 감성
+               - J: 균형 잡힌 밸런스의 대중적이고 클래식한 조화 (예: Chypre, Fougère - 전통적 조향 구조)
+               - P: 독특한 킥(Kick)이 있는 실험적이고 개성 있는 감성 (예: Oud, Leather, Spicy - 파격적 개성)
 
             [사용자 데이터]
             - 실제 성격 MBTI: {mbti or '알 수 없음'}
@@ -61,22 +64,72 @@ class NCardService:
             - 어코드 상세 인상:
             {accord_ctx}
 
+            [점수 계산 방법론]
+            각 축의 점수는 0~100점 범위이며, 대립되는 두 성향의 합은 100이어야 합니다.
+            (예: E가 70점이면 I는 30점, S가 55점이면 N은 45점)
+
+            **Step 1: 각 어코드의 기본 성향 파악**
+            - 각 어코드가 4개 축에서 어느 쪽에 가까운지 판단
+            - 예시:
+              * Floral: E(외향적 확산), N(상상력), F(감성적), J(클래식)
+              * Woody: I(은은함), S(자연 그대로), T(구조적), J(전통적)
+              * Spicy: E(강렬함), N(상상력), T(날카로움), P(개성적)
+
+            **Step 2: 어코드별 가중치 계산**
+            - 사용자가 선택한 어코드 개수로 균등 분배
+            - 예: 5개 어코드 선택 시 각 어코드당 20점씩 기여
+
+            **Step 3: 조합 시너지 고려**
+            - 비슷한 성향의 어코드가 많으면 그쪽으로 강화 (+10~20점 보너스)
+            - 대립되는 어코드가 섞이면 중간값으로 조정
+            - 예: Floral + Fruity + Citrus (모두 E 성향) → E 강화
+
+            **Step 4: 사용자 실제 MBTI 반영**
+            - 사용자의 성격 MBTI가 제공된 경우, 향 선택에 반영되었을 가능성 고려
+            - 단, 향 MBTI는 독립적으로 도출하되, 실제 MBTI와의 연관성을 분석 이유에 포함
+            - 가중치: 어코드 조합 70% + 실제 MBTI 영향 30%
+
+            **Step 5: 최종 점수 산출**
+            - 각 축별로 0~100 범위로 정규화
+            - 대립 성향의 합이 100이 되도록 조정
+            - 결과 예시:
+              {{
+                "E": 72, "I": 28,  // E 성향 강함
+                "S": 45, "N": 55,  // N 성향 약간 우세
+                "T": 60, "F": 40,  // T 성향 우세
+                "J": 38, "P": 62   // P 성향 강함
+              }}
+              → 도출 MBTI: "ENTP"
+
             [임무]
-            1. 사용자가 선택한 어코드들의 조합과 실제 MBTI를 분석하여, 가장 적합한 '향 MBTI(4문자)'를 결정하세요.
-            2. 각 축(E/I, S/N, T/F, J/P)에 대한 분석 점수(0~100)를 산출하세요.
-            3. 각 축별로 결정된 성향(예: E 또는 I)에 가장 어울리는 어코드를 사용자가 선택한 어코드들 중에서 3개씩 선정하세요.
-               - E/I 축: 결정된 성향(E 또는 I)에 맞는 어코드 3개
-               - S/N 축: 결정된 성향(S 또는 N)에 맞는 어코드 3개
-               - T/F 축: 결정된 성향(T 또는 F)에 맞는 어코드 3개
-               - J/P 축: 결정된 성향(J 또는 P)에 맞는 어코드 3개
+            1. 위의 점수 계산 방법론을 따라 각 축(E/I, S/N, T/F, J/P)의 점수를 0~100 범위로 산출하세요.
+               - 반드시 대립 성향의 합이 100이 되도록 계산
+               - 계산 근거를 "reason" 필드에 상세히 설명
+
+            2. 점수를 기반으로 향 MBTI 4문자를 결정하세요.
+               - 각 축에서 50점 이상인 성향 선택
+
+            3. 각 축별로 결정된 성향에 가장 어울리는 어코드를 사용자가 선택한 어코드들 중에서 3개씩 선정하세요.
+
             4. 위에서 선정된 총 12개의 어코드 중, 가장 사용자에게 어울릴 것 같은 최종 3가지 향(어코드)을 선정하고 각각의 선정 이유를 작성하세요.
-            5. 제공된 사용자의 MBTI 페르소나 데이터 중 'space', 'moment', 'sensation' 세 가지 테마 중 사용자의 선택 어코드와 가장 잘 어울리는 하나를 '대표 테마'로 선택하세요.
-            6. 선택한 테마를 바탕으로 'persona_title'을 결정하고, "내면의 [성격 특징]이 [향의 특징]과 닮아 있음"을 강조하며 3문장 내외의 감성 스토리텔링을 작성하세요.
+
+            5. 'space', 'moment', 'sensation' 세 가지 테마 중 사용자의 선택 어코드와 가장 잘 어울리는 하나를 '대표 테마'로 선택하세요.
+
+            6. "내면의 [성격 특징]이 [향의 특징]과 닮아 있음"을 강조하며 3문장 내외의 감성 스토리텔링을 작성하세요.
 
             [응답 형식 (JSON)]
             {{
                 "derived_mbti": "결정된 4글자 MBTI",
-                "axis_scores": {{"E": 점수, "I": 점수, "S": 점수, "N": 점수, "T": 점수, "F": 점수, "J": 점수, "P": 점수}},
+                "axis_scores": {{
+                    "E": 0~100 정수,
+                    "I": 0~100 정수 (E + I = 100),
+                    "S": 0~100 정수,
+                    "N": 0~100 정수 (S + N = 100),
+                    "T": 0~100 정수,
+                    "F": 0~100 정수 (T + F = 100),
+                    "J": 0~100 정수,
+                    "P": 0~100 정수 (J + P = 100)
+                }},
                 "axis_accords": {{
                     "E_or_I": {{"selected": "E 또는 I", "accords": ["어코드1", "어코드2", "어코드3"]}},
                     "S_or_N": {{"selected": "S 또는 N", "accords": ["어코드1", "어코드2", "어코드3"]}},
@@ -91,7 +144,7 @@ class NCardService:
                 "selected_theme_type": "space | moment | sensation 중 하나",
                 "persona_title": "선택한 테마의 내용 (예: 무지개가 핀 들판의 산들바람)",
                 "story": "감성 스토리텔링 문구",
-                "reason": "이 MBTI와 테마를 선택한 조향사로서의 분석 이유"
+                "reason": "점수 계산 과정과 MBTI 도출 근거를 상세히 설명 (어떤 어코드가 어떤 축에 어떻게 기여했는지, 조합 시너지는 어떠했는지, 사용자 실제 MBTI와의 연관성 등)"
             }}
             """
             
@@ -110,6 +163,7 @@ class NCardService:
 
     async def generate_card(self, session_id: str, mbti: Optional[str] = None, selected_accords: List[str] = []) -> Dict:
         """세션 데이터를 기반으로 향기 분석 카드 생성 및 DB 저장"""
+        member_id = None
         try:
             # 세션 ID가 adhoc이 아닌 경우 DB에서 최신 데이터 조회
             if session_id != "adhoc":
@@ -118,6 +172,7 @@ class NCardService:
                         cur.execute("SELECT member_id, selected_accords, device_type FROM TB_SCENT_CARD_SESSION_T WHERE session_id = %s", (session_id,))
                         session = cur.fetchone()
                         if session:
+                            member_id = session['member_id']
                             selected_accords = session['selected_accords'] or selected_accords
                             try:
                                 context = json.loads(session['device_type']) if session['device_type'] else {}
@@ -196,10 +251,14 @@ class NCardService:
 
             # 7. DB 저장
             card_id = self._save_card_to_db(session_id, card_data)
-            
+
+            # 8. 카드 생성 후 새 세션 ID 발급
+            from scentmap.app.services.session_service import create_new_session_after_card
+            new_session_id = create_new_session_after_card(member_id)
+
             return {
                 "card": card_data,
-                "session_id": session_id,
+                "session_id": new_session_id,  # 새로 발급된 세션 ID 반환
                 "card_id": str(card_id),
                 "generation_method": "template"
             }
@@ -324,7 +383,17 @@ class NCardService:
             with conn.cursor() as cur:
                 cur.execute("UPDATE TB_SCENT_CARD_RESULT_T SET saved = TRUE, member_id = %s WHERE card_id = %s", (member_id, card_id))
                 conn.commit()
-                return {"success": True, "card_id": card_id}
+
+                # 카드 저장 후 새 세션 ID 발급
+                from scentmap.app.services.session_service import create_new_session_after_card
+                new_session_id = create_new_session_after_card(member_id)
+
+                return {
+                    "success": True,
+                    "message": "카드가 저장되었습니다. 새로운 세션이 시작되었습니다.",
+                    "card_id": card_id,
+                    "new_session_id": new_session_id
+                }
 
     def get_member_cards(self, member_id: int, limit: int = 20, offset: int = 0) -> Dict:
         """회원의 저장된 카드 목록 조회"""

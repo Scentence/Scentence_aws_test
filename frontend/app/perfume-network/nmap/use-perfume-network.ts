@@ -55,6 +55,8 @@ export function usePerfumeNetwork(sessionUserId?: string | number) {
   const [generatedCardId, setGeneratedCardId] = useState<string | null>(null);
   const [cardTriggerReady, setCardTriggerReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isSavingCard, setIsSavingCard] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
       // 1. 로그인 정보 로드
   useEffect(() => {
@@ -149,7 +151,7 @@ export function usePerfumeNetwork(sessionUserId?: string | number) {
     setInteractionCount(prev => prev + 1);
 
     // 시각적 피드백: 클릭 시 콘솔에 로그 출력 (개발 확인용)
-    console.log(`[Activity Log] Interaction #${interactionCount + 1}:`, data);
+    console.log(`[Activity Log] Interaction:`, data);
 
     if (!scentSessionId) return;
 
@@ -163,7 +165,7 @@ export function usePerfumeNetwork(sessionUserId?: string | number) {
             ...data,
             selected_accords: data.selected_accords_override || selectedAccords, // 전달된 배열 우선 사용
             dwell_time: dwellTime,
-            interaction_count: interactionCount + 1
+            // interaction_count는 백엔드에서 자동 증가시킴
           }),
         }
       );
@@ -232,14 +234,21 @@ export function usePerfumeNetwork(sessionUserId?: string | number) {
       if (response.ok) {
         const data = await response.json();
         if (!data.card) throw new Error("카드 데이터가 없습니다.");
-        
+
         const cardId = data.card_id || data.card.card_id;
         if (!cardId) throw new Error("카드 ID가 없습니다.");
 
         setGeneratedCard(data.card);
         setGeneratedCardId(String(cardId));
         setShowCardModal(true);
-        
+
+        // 카드 생성 후 새 세션 ID로 업데이트
+        if (data.session_id) {
+          console.log("✅ 카드 생성 후 새 세션으로 전환:", data.session_id);
+          setScentSessionId(data.session_id);
+          sessionStorage.setItem('scent_session_id', data.session_id);
+        }
+
         // 카드 생성 후 트리거 상태 초기화 (다시 만들기 준비)
         setCardTriggerReady(false);
         setInteractionCount(0); 
@@ -254,7 +263,45 @@ export function usePerfumeNetwork(sessionUserId?: string | number) {
     }
   };
 
-  // 5. 라벨 및 필터 옵션 로드
+  // 5. 카드 저장 처리
+  const handleSaveCard = async () => {
+    if (!scentSessionId || !generatedCardId || !memberId) {
+      setError("저장할 수 없습니다. 로그인이 필요하거나 카드 정보가 없습니다.");
+      return;
+    }
+
+    setIsSavingCard(true);
+    setError(null);
+    setSaveSuccess(false);
+
+    try {
+      const { ncardService } = await import('@/app/perfume-network/ncard/ncard-service');
+      const result = await ncardService.saveCard(scentSessionId, generatedCardId, Number(memberId));
+
+      if (result.success) {
+        setSaveSuccess(true);
+        console.log("✅ 카드 저장 성공");
+
+        // 새 세션 ID로 업데이트
+        if (result.newSessionId) {
+          console.log("✅ 카드 저장 후 새 세션으로 전환:", result.newSessionId);
+          setScentSessionId(result.newSessionId);
+          sessionStorage.setItem('scent_session_id', result.newSessionId);
+        }
+
+        // 3초 후 성공 메시지 숨김
+        setTimeout(() => setSaveSuccess(false), 3000);
+      } else {
+        setError("카드 저장에 실패했습니다.");
+      }
+    } catch (e: any) {
+      setError(e.message || "카드 저장 중 오류가 발생했습니다.");
+    } finally {
+      setIsSavingCard(false);
+    }
+  };
+
+  // 6. 라벨 및 필터 옵션 로드
   useEffect(() => {
     const fetchLabels = async () => {
       try {
@@ -369,6 +416,10 @@ export function usePerfumeNetwork(sessionUserId?: string | number) {
     error, setError,
     logActivity,
     handleGenerateCard,
+    handleSaveCard,
+    isSavingCard,
+    saveSuccess,
+    setSaveSuccess,
     myPerfumeIds,
     myPerfumeFilters,
     interactionCount,

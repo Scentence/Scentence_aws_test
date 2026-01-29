@@ -86,16 +86,19 @@ export const ncardService = {
   },
 
   // 카드 저장 (회원용)
-  saveCard: async (sessionId: string, cardId: string, memberId: number): Promise<boolean> => {
+  saveCard: async (sessionId: string, cardId: string, memberId: number): Promise<{ success: boolean; newSessionId?: string }> => {
     try {
-      await axios.post(`${API_CONFIG.BASE_URL}/session/${sessionId}/save-card`, 
+      const response = await axios.post(`${API_CONFIG.BASE_URL}/session/${sessionId}/save-card`,
         { card_id: cardId },
         { params: { member_id: memberId } }
       );
-      return true;
+      return {
+        success: true,
+        newSessionId: response.data.new_session_id
+      };
     } catch (error) {
       console.error('Failed to save card:', error);
-      return false;
+      return { success: false };
     }
   }
 };

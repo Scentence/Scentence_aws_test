@@ -93,6 +93,27 @@ def rank_recommendations(
     return candidates[:3], total_available
 
 
+def rank_worst_match(
+    base_perfume_id: str,
+    repository: PerfumeRepository,
+) -> LayeringCandidate | None:
+    base = repository.get_perfume(base_perfume_id)
+    target_vector: List[float] = [0.0] * len(base.vector)
+    worst_result: LayeringComputationResult | None = None
+    worst_score: float | None = None
+    for candidate in repository.all_candidates(exclude_id=base_perfume_id):
+        if _is_same_perfume_identity(base, candidate):
+            continue
+        result = calculate_advanced_layering(base, candidate, target_vector)
+        comparison_score = result.total_score - result.score_breakdown.target
+        if worst_score is None or comparison_score < worst_score:
+            worst_result = result
+            worst_score = comparison_score
+    if worst_result is None:
+        return None
+    return _result_to_candidate(worst_result)
+
+
 def _strip_diacritics(text: str) -> str:
     normalized = unicodedata.normalize("NFKD", text)
     return "".join(char for char in normalized if unicodedata.category(char) != "Mn")
@@ -133,11 +154,6 @@ def _normalize_perfume_name(name: str) -> str:
 
 
 def _is_same_perfume_identity(base: PerfumeVector, candidate: PerfumeVector) -> bool:
-    base_brand = _normalize_brand_name(base.perfume_brand)
-    candidate_brand = _normalize_brand_name(candidate.perfume_brand)
-    if base_brand and candidate_brand and base_brand != candidate_brand:
-        return False
-
     base_name = _normalize_perfume_name(base.perfume_name)
     candidate_name = _normalize_perfume_name(candidate.perfume_name)
     if base_name and candidate_name and base_name == candidate_name:
@@ -249,6 +265,7 @@ def rank_similar_perfumes(
             perfume_name=candidate.perfume_name,
             perfume_brand=candidate.perfume_brand,
             image_url=candidate.image_url,
+            concentration=candidate.concentration,
         )
         for candidate, _ in scored[:limit]
     ]
@@ -380,6 +397,7 @@ def _result_to_candidate(result: LayeringComputationResult) -> LayeringCandidate
         perfume_name=candidate.perfume_name,
         perfume_brand=candidate.perfume_brand,
         image_url=candidate.image_url,
+        concentration=candidate.concentration,
         total_score=round(result.total_score, 3),
         feasible=result.feasible,
         feasibility_reason=result.feasibility_reason,
@@ -407,7 +425,7 @@ def _build_analysis_string(breakdown: ScoreBreakdown) -> str:
     elif breakdown.target >= 0.8:
         reasons.append("원하는 분위기에 자연스럽게 가까워지는 조합입니다.")
     else:
-        reasons.append("기존 향을 해치지 않으면서 분위기를 부드럽게 바꿔줍니다.")
+        reasons.append("기존 향의 균형을 크게 흐트러뜨리지 않아 부담 없이 섞기 좋습니다.")
 
     if breakdown.harmony >= 1.0:
         reasons.append("공통 노트가 있어 잔향이 자연스럽게 이어집니다.")
@@ -417,7 +435,7 @@ def _build_analysis_string(breakdown: ScoreBreakdown) -> str:
     if breakdown.penalty < 0:
         reasons.append("대비되는 포인트가 더해져 개성이 살아나는 레이어링입니다.")
 
-    if not reasons:
-        reasons.append("균형감 있게 어우러지는 레이어링입니다.")
+    if len(reasons) < 2:
+        reasons.append("충돌 포인트가 적어 기본 레이어링으로도 안정적인 조합입니다.")
 
     return " ".join(reasons[:2])

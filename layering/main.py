@@ -233,6 +233,7 @@ def layering_recommend(payload: LayeringRequest) -> LayeringResponse:
             perfume_name=base_perfume.perfume_name,
             perfume_brand=base_perfume.perfume_brand,
             image_url=base_perfume.image_url,
+            concentration=base_perfume.concentration,
         ),
         base_perfume_id=payload.base_perfume_id,
         keywords=payload.keywords,
@@ -366,6 +367,7 @@ def layering_analyze(payload: UserQueryRequest) -> UserQueryResponse:
                     perfume_name=base.perfume_name,
                     perfume_brand=base.perfume_brand,
                     image_url=base.image_url,
+                    concentration=base.concentration,
                 )
             except KeyError:
                 base_perfume = None

@@ -26,6 +26,7 @@ class PerfumeBasic(BaseModel):
     perfume_name: str
     perfume_brand: str
     image_url: Optional[str] = None
+    concentration: Optional[str] = None
 
 
 class PerfumeRecord(BaseModel):
@@ -41,6 +42,7 @@ class PerfumeVector(BaseModel):
     perfume_name: str
     perfume_brand: str
     image_url: Optional[str] = None
+    concentration: Optional[str] = None
     vector: List[float]
     total_intensity: float
     persistence_score: float
@@ -104,6 +106,7 @@ class LayeringCandidate(BaseModel):
     perfume_name: str
     perfume_brand: str
     image_url: Optional[str] = None
+    concentration: Optional[str] = None
     total_score: float
     feasible: bool = True
     feasibility_reason: Optional[str]
@@ -213,6 +216,7 @@ class PerfumeInfo(BaseModel):
     perfume_name: str
     perfume_brand: str
     image_url: Optional[str] = None
+    concentration: Optional[str] = None
     gender: Optional[str] = None
     accords: List[str] = Field(default_factory=list)
     seasons: List[str] = Field(default_factory=list)

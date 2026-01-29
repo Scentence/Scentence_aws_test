@@ -260,24 +260,24 @@ class NCardService:
                         f"CASE WHEN a.accord = %s THEN {freq} * a.vote ELSE 0 END"
                         for freq in [accord_frequency[acc] for acc in top_accords]
                     ])
-                    
+
                     # 어코드 일치 개수, 빈도 가중치, vote 점수를 종합한 쿼리
                     query = f"""
                         WITH perfume_matches AS (
-                            SELECT 
-                                b.perfume_id, 
-                                b.perfume_name, 
-                                b.perfume_brand, 
+                            SELECT
+                                b.perfume_id,
+                                b.perfume_name,
+                                b.perfume_brand,
                                 b.img_link,
                                 COUNT(DISTINCT a.accord) as match_count,
                                 SUM(a.vote) as total_vote_score,
-                                ({weight_cases}) as weighted_score
+                                SUM({weight_cases}) as weighted_score
                             FROM TB_PERFUME_BASIC_M b
                             JOIN TB_PERFUME_ACCORD_M a ON b.perfume_id = a.perfume_id
                             WHERE a.accord IN ({placeholders})
                             GROUP BY b.perfume_id, b.perfume_name, b.perfume_brand, b.img_link
                         )
-                        SELECT *, 
+                        SELECT *,
                                (match_count::float / %s * 100) as match_rate
                         FROM perfume_matches
                         ORDER BY weighted_score DESC, match_count DESC, total_vote_score DESC

@@ -19,6 +19,8 @@ class ActivityLogRequest(BaseModel):
     """활동 로그 요청"""
     accord_selected: Optional[str] = None
     filter_changed: Optional[str] = None
+    selected_accords: Optional[List[str]] = None  # 현재 선택된 모든 어코드
+    perfume_id: Optional[int] = None  # 클릭한 향수 ID
     dwell_time: Optional[int] = None
     interaction_count: Optional[int] = None
 

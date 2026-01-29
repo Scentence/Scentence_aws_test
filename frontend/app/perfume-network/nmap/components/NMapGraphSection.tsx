@@ -20,7 +20,7 @@ interface Props {
   selectedGenders: string[];
   showMyPerfumesOnly: boolean;
   myPerfumeIds: Set<string>;
-  logActivity: (data: { perfume_id?: number; accord_selected?: string; filter_changed?: string }) => void;
+  logActivity: (data: { perfume_id?: number; accord_selected?: string; filter_changed?: string; selected_accords_override?: string[] }) => void;
   memberId: string | null;
   setShowLoginPrompt: (show: boolean) => void;
   setShowMyPerfumesOnly: (show: boolean | ((prev: boolean) => boolean)) => void;

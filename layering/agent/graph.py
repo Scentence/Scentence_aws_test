@@ -23,6 +23,7 @@ from .tools import (
     evaluate_pair,
     rank_brand_universal_perfume,
     rank_recommendations,
+    rank_worst_match,
     rank_similar_perfumes,
 )
 
@@ -320,6 +321,8 @@ def _build_detected_perfumes(
 
 def is_info_request(user_text: str) -> bool:
     normalized = user_text.lower()
+    if _is_layering_intent(normalized):
+        return False
     keywords = [
         "정보",
         "알려",
@@ -332,6 +335,19 @@ def is_info_request(user_text: str) -> bool:
         "accord",
     ]
     return any(token in normalized for token in keywords)
+
+
+def _is_layering_intent(normalized_text: str) -> bool:
+    layering_terms = [
+        "레이어링",
+        "궁합",
+        "조합",
+        "섞",
+        "layering",
+        "mix",
+        "pair",
+    ]
+    return any(term in normalized_text for term in layering_terms)
 
 
 def is_application_request(user_text: str) -> bool:
@@ -370,6 +386,24 @@ def is_similarity_request(user_text: str) -> bool:
         return False
     triggers = ["비슷", "같은 느낌", "대체", "유사", "similar", "same vibe", "같은 향"]
     return any(token in normalized for token in triggers)
+
+
+def is_worst_match_request(user_text: str) -> bool:
+    normalized = user_text.lower()
+    triggers = [
+        "최악",
+        "최저",
+        "worst",
+        "안 어울",
+        "안어울",
+        "안맞",
+        "별로",
+        "낮은 점수",
+    ]
+    pairing_terms = ["궁합", "레이어링", "조합", "같이", "섞", "pair"]
+    return any(token in normalized for token in triggers) and any(
+        term in normalized for term in pairing_terms
+    )
 
 
 def is_brand_layering_request(user_text: str) -> bool:
@@ -436,6 +470,43 @@ def analyze_user_query(
             )
         return UserQueryAnalysis(raw_text=user_text, detected_perfumes=[])
 
+    if is_worst_match_request(user_text):
+        if detected_perfumes:
+            base_candidate = detected_perfumes[0]
+            worst = rank_worst_match(base_candidate.perfume_id, repository)
+            if worst:
+                candidate_id = worst.perfume_id
+                return UserQueryAnalysis(
+                    raw_text=user_text,
+                    detected_perfumes=detected_perfumes,
+                    detected_pair=DetectedPair(
+                        base_perfume_id=base_candidate.perfume_id,
+                        candidate_perfume_id=candidate_id,
+                    ),
+                    pairing_analysis=PairingAnalysis(
+                        base_perfume_id=base_candidate.perfume_id,
+                        candidate_perfume_id=candidate_id,
+                        result=worst,
+                    ),
+                )
+        if context_recommended_perfume_id:
+            worst = rank_worst_match(context_recommended_perfume_id, repository)
+            if worst:
+                return UserQueryAnalysis(
+                    raw_text=user_text,
+                    detected_perfumes=[],
+                    detected_pair=DetectedPair(
+                        base_perfume_id=context_recommended_perfume_id,
+                        candidate_perfume_id=worst.perfume_id,
+                    ),
+                    pairing_analysis=PairingAnalysis(
+                        base_perfume_id=context_recommended_perfume_id,
+                        candidate_perfume_id=worst.perfume_id,
+                        result=worst,
+                    ),
+                )
+        return UserQueryAnalysis(raw_text=user_text, detected_perfumes=detected_perfumes)
+
     detected_pair = None
     pairing_analysis = None
     context_pairing_request = _is_context_pairing_request(user_text)
@@ -496,6 +567,7 @@ def analyze_user_query(
                         perfume_name=best_perfume.perfume_name,
                         perfume_brand=best_perfume.perfume_brand,
                         image_url=best_perfume.image_url,
+                        concentration=best_perfume.concentration,
                     ),
                     brand_best_score=round(avg_score, 3),
                     brand_best_reason=reason,

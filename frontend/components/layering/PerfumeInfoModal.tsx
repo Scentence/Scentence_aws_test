@@ -5,6 +5,7 @@ type PerfumeInfo = {
   perfume_name: string;
   perfume_brand: string;
   image_url?: string | null;
+  concentration?: string | null;
   gender?: string | null;
   accords: string[];
   seasons: string[];
@@ -20,6 +21,10 @@ type PerfumeInfoModalProps = {
   errorMessage?: string | null;
   perfume: PerfumeInfo | null;
   label?: string;
+  archiveFeedbackStatus?: string | null;
+  archiveFeedbackSaving?: boolean;
+  archiveFeedbackLocked?: boolean;
+  onArchiveFeedback?: (preference: "GOOD" | "BAD") => void;
   onClose: () => void;
 };
 
@@ -38,6 +43,10 @@ export default function PerfumeInfoModal({
   errorMessage,
   perfume,
   label,
+  archiveFeedbackStatus,
+  archiveFeedbackSaving = false,
+  archiveFeedbackLocked = false,
+  onArchiveFeedback,
   onClose,
 }: PerfumeInfoModalProps) {
   if (!open) return null;
@@ -103,6 +112,9 @@ export default function PerfumeInfoModal({
                     {perfume.perfume_name}
                   </h3>
                   <p className="text-sm text-[#7A6B57]">{perfume.perfume_brand}</p>
+                  {perfume.concentration && (
+                    <p className="text-xs text-[#8A7F73] mt-1">농도: {perfume.concentration}</p>
+                  )}
                   {perfume.gender && (
                     <p className="text-xs text-[#5C5448] mt-1">성별: {perfume.gender}</p>
                   )}
@@ -126,6 +138,38 @@ export default function PerfumeInfoModal({
                   </div>
                 ))}
               </div>
+              {onArchiveFeedback && (
+                <div className="pt-4 border-t border-[#E6DDCF]">
+                  <p className="text-xs font-semibold text-[#7A6B57]">아카이브에 추가</p>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onArchiveFeedback("GOOD")}
+                      className="flex-1 rounded-lg border-2 border-[#D4E5D4] bg-[#F0F8F0] px-3 py-2 text-xs font-semibold text-[#3D5A3D] transition-all hover:bg-[#E1F3E1] hover:border-[#B8D4B8] disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={archiveFeedbackSaving || archiveFeedbackLocked}
+                    >
+                      <span className="flex items-center justify-center gap-1">
+                        <span className="text-sm">😊</span>
+                        만족
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onArchiveFeedback("BAD")}
+                      className="flex-1 rounded-lg border-2 border-[#F5D4D4] bg-[#FDF0F0] px-3 py-2 text-xs font-semibold text-[#6B3D3D] transition-all hover:bg-[#FCE1E1] hover:border-[#EBB8B8] disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={archiveFeedbackSaving || archiveFeedbackLocked}
+                    >
+                      <span className="flex items-center justify-center gap-1">
+                        <span className="text-sm">😞</span>
+                        불만족
+                      </span>
+                    </button>
+                  </div>
+                  {archiveFeedbackStatus && (
+                    <p className="mt-2 text-[11px] text-[#7A6B57]">{archiveFeedbackStatus}</p>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>

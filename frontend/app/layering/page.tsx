@@ -7,6 +7,7 @@ import AccordWheel from "@/components/layering/AccordWheel";
 import { BACKEND_ACCORDS, ACCORD_LABELS } from "@/lib/accords";
 import LayeringPerfumePicker from "@/components/layering/LayeringPerfumePicker"; // 내 향수 불러오기
 import PerfumeInfoModal from "@/components/layering/PerfumeInfoModal";
+import LayeringPerfumeSearchModal from "@/components/layering/LayeringPerfumeSearchModal";
 
 // ==================== 타입 정의 ====================
 
@@ -18,6 +19,7 @@ type LayeringCandidate = {
   perfume_name: string;       // 향수 이름
   perfume_brand: string;      // 브랜드명
   image_url?: string | null;  // 이미지 URL
+  concentration?: string | null; // 농도
   total_score: number;        // 추천 점수
   spray_order: string[];      // 분사 순서 (향수 이름 배열)
   analysis: string;           // 추천 이유 분석
@@ -41,6 +43,7 @@ type PerfumeSummary = {
   perfume_name: string;
   perfume_brand: string;
   image_url?: string | null;
+  concentration?: string | null;
 };
 
 type PerfumeInfo = {
@@ -48,6 +51,7 @@ type PerfumeInfo = {
   perfume_name: string;
   perfume_brand: string;
   image_url?: string | null;
+  concentration?: string | null;
   gender?: string | null;
   accords: string[];
   seasons: string[];
@@ -215,6 +219,11 @@ const TEXT_MESSAGES = {
   FEEDBACK_SAVING: "저장 중...",
   FEEDBACK_SAVED: "만족도 저장 완료",
   FEEDBACK_FAILED: "저장 실패",
+  ARCHIVE_LOGIN_REQUIRED: "로그인이 필요합니다.",
+  ARCHIVE_SAVING: "아카이브 저장 중...",
+  ARCHIVE_SAVED: "아카이브에 저장되었습니다.",
+  ARCHIVE_FAILED: "아카이브 저장 실패",
+  ARCHIVE_ID_ERROR: "향수 정보를 확인할 수 없어요.",
 } as const;
 
 // ==================== 오류 처리 설정 ====================
@@ -323,20 +332,22 @@ type ChatMessage = {
 export default function LayeringPage() {
   const { data: session } = useSession(); // 카카오 로그인 세션
 
+  const createWelcomeMessages = () => ([
+    {
+      id: `welcome-${Date.now()}`,
+      type: "assistant" as const,
+      content: "안녕하세요! 레이어링 추천을 도와드릴게요. 어떤 향수를 가지고 계신가요? 어떤 느낌의 향을 원하시나요?",
+      timestamp: new Date(),
+    },
+  ]);
+
   // ==================== 상태 관리 ====================
 
   /** 사용자가 입력한 자연어 질문 텍스트 */
   const [queryText, setQueryText] = useState("");
 
   /** 채팅 메시지 기록 */
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    {
-      id: "welcome",
-      type: "assistant",
-      content: "안녕하세요! 레이어링 추천을 도와드릴게요. 어떤 향수를 가지고 계신가요? 어떤 느낌의 향을 원하시나요?",
-      timestamp: new Date(),
-    },
-  ]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(createWelcomeMessages());
 
   /** API 호출 중 로딩 상태 */
   const [loading, setLoading] = useState(false);
@@ -362,6 +373,12 @@ export default function LayeringPage() {
   const [infoModalError, setInfoModalError] = useState<string | null>(null);
   const [infoModalData, setInfoModalData] = useState<PerfumeInfo | null>(null);
   const [infoModalLabel, setInfoModalLabel] = useState<string | null>(null);
+  const [archiveFeedbackStatus, setArchiveFeedbackStatus] = useState<string | null>(null);
+  const [archiveFeedbackSaving, setArchiveFeedbackSaving] = useState(false);
+  const [archiveFeedbackLocked, setArchiveFeedbackLocked] = useState(false);
+
+  /** 향수 검색 모달 상태 */
+  const [searchModalOpen, setSearchModalOpen] = useState(false);
 
   /** 렌더 시 안전한 memberId 상태 */
   const [memberId, setMemberId] = useState(0);
@@ -693,6 +710,72 @@ export default function LayeringPage() {
     }
   };
 
+  /**
+   * 향수 정보 모달에서 아카이브 저장 (만족/불만족)
+   */
+  const handleArchiveFeedback = async (preference: "GOOD" | "BAD") => {
+    const perfume = infoModalData;
+    if (!perfume) {
+      return;
+    }
+
+    if (archiveFeedbackLocked || archiveFeedbackSaving) {
+      return;
+    }
+
+    if (!memberId) {
+      setArchiveFeedbackStatus(TEXT_MESSAGES.ARCHIVE_LOGIN_REQUIRED);
+      return;
+    }
+
+    const perfumeId = Number(perfume.perfume_id);
+    if (!Number.isFinite(perfumeId)) {
+      setArchiveFeedbackStatus(TEXT_MESSAGES.ARCHIVE_ID_ERROR);
+      return;
+    }
+
+    try {
+      setArchiveFeedbackSaving(true);
+      setArchiveFeedbackStatus(TEXT_MESSAGES.ARCHIVE_SAVING);
+
+      const response = await fetch(`/api/users/${memberId}/perfumes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          perfume_id: perfumeId,
+          perfume_name: perfume.perfume_name,
+          register_status: "RECOMMENDED",
+          preference,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        throw new Error(errorText || TEXT_MESSAGES.ARCHIVE_FAILED);
+      }
+
+      setArchiveFeedbackLocked(true);
+      setArchiveFeedbackStatus(TEXT_MESSAGES.ARCHIVE_SAVED);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : TEXT_MESSAGES.ARCHIVE_FAILED;
+      setArchiveFeedbackStatus(errorMessage);
+    } finally {
+      setArchiveFeedbackSaving(false);
+    }
+  };
+
+  const resetChat = () => {
+    setChatMessages(createWelcomeMessages());
+    setQueryText("");
+    setResult(null);
+    setError(null);
+    setFeedbackStatus(null);
+    setFeedbackSaving(false);
+    setFeedbackLocked(false);
+    setLastRecommendationId(null);
+    setLoading(false);
+  };
+
   // ==================== 렌더링 데이터 준비 ====================
 
   /** 추천된 향수 후보 */
@@ -765,6 +848,9 @@ export default function LayeringPage() {
     setInfoModalError(null);
     setInfoModalData(null);
     setInfoModalLabel(label ?? "향수");
+    setArchiveFeedbackStatus(null);
+    setArchiveFeedbackSaving(false);
+    setArchiveFeedbackLocked(false);
 
     try {
       const currentMemberId = getMemberId(session?.user?.id);
@@ -875,25 +961,37 @@ export default function LayeringPage() {
                       <p className="text-xs text-[#7A6B57]">
                         {basePerfume.perfume_brand}
                       </p>
+                      {basePerfume.concentration && (
+                        <p className="text-[11px] text-[#8A7F73]">
+                          농도: {basePerfume.concentration}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
               )}
               {brandBestPerfume && (
                 <div className="w-full rounded-2xl border border-[#E6DDCF] bg-white/80 p-4 shadow-sm">
-                  <div className="flex items-center gap-4">
-                    {brandBestPerfume.image_url ? (
-                      <img
-                        src={brandBestPerfume.image_url}
-                        alt={`${brandBestPerfume.perfume_name} 이미지`}
-                        className="h-16 w-16 rounded-xl object-cover border border-[#E6DDCF]"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="h-16 w-16 rounded-xl bg-gradient-to-br from-[#F4EBDD] to-[#E8D9C4] flex items-center justify-center text-[10px] text-[#7A6B57] border border-[#E6DDCF]">
-                        No Image
-                      </div>
-                    )}
+                    <div className="flex items-center gap-4">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenPerfumeInfo(brandBestPerfume.perfume_id, "브랜드 추천")}
+                      className="h-16 w-16 rounded-xl overflow-hidden border border-[#E6DDCF] bg-white/80 shadow-sm hover:shadow-md transition"
+                      aria-label="브랜드 추천 향수 상세 정보 보기"
+                    >
+                      {brandBestPerfume.image_url ? (
+                        <img
+                          src={brandBestPerfume.image_url}
+                          alt={`${brandBestPerfume.perfume_name} 이미지`}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="h-full w-full bg-gradient-to-br from-[#F4EBDD] to-[#E8D9C4] flex items-center justify-center text-[10px] text-[#7A6B57]">
+                          No Image
+                        </div>
+                      )}
+                    </button>
                       <div className="flex-1">
                         <p className="text-[11px] font-semibold text-[#7A6B57]">브랜드 추천</p>
                         <p className="text-sm font-bold text-[#2E2B28]">
@@ -902,6 +1000,11 @@ export default function LayeringPage() {
                         <p className="text-xs text-[#7A6B57]">
                           {brandBestPerfume.perfume_brand}
                         </p>
+                        {brandBestPerfume.concentration && (
+                          <p className="text-[11px] text-[#8A7F73]">
+                            농도: {brandBestPerfume.concentration}
+                          </p>
+                        )}
                         {brandBestReason && (
                           <p className="text-[11px] text-[#5C5448] mt-2 leading-relaxed">
                             {brandBestReason}
@@ -982,6 +1085,11 @@ export default function LayeringPage() {
                         <p className="text-sm font-medium text-[#7A6B57]">
                           {candidate.perfume_brand}
                         </p>
+                        {candidate.concentration && (
+                          <p className="text-xs text-[#8A7F73]">
+                            농도: {candidate.concentration}
+                          </p>
+                        )}
                       </div>
                     </div>
 
@@ -1105,6 +1213,11 @@ export default function LayeringPage() {
                         <p className="text-sm font-medium text-[#7A6B57]">
                           {perfumeInfo.perfume_brand}
                         </p>
+                        {perfumeInfo.concentration && (
+                          <p className="text-xs text-[#8A7F73]">
+                            농도: {perfumeInfo.concentration}
+                          </p>
+                        )}
                       </div>
                     </div>
                     {perfumeInfo.gender && (
@@ -1139,8 +1252,19 @@ export default function LayeringPage() {
           <div className="min-h-[700px] h-full rounded-3xl bg-white/80 border border-[#E2D7C5] shadow-sm flex flex-col overflow-hidden">
             {/* 채팅 헤더 */}
             <div className="bg-gradient-to-r from-[#F8F4EC] to-[#F0EAE0] px-6 py-4 border-b border-[#E2D7C5]">
-              <h2 className="text-sm font-semibold text-[#7A6B57]">레이어링 어시스턴트</h2>
-              <p className="text-xs text-[#8A7F73] mt-1">원하는 향수 레이어링을 설명해주세요</p>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-sm font-semibold text-[#7A6B57]">레이어링 어시스턴트</h2>
+                  <p className="text-xs text-[#8A7F73] mt-1">원하는 향수 레이어링을 설명해주세요</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={resetChat}
+                  className="text-[11px] font-semibold text-[#7A6B57] border border-[#E2D7C5] rounded-full px-3 py-1.5 bg-white/80 hover:bg-white transition"
+                >
+                  대화 초기화
+                </button>
+              </div>
             </div>
 
             {/* 채팅 메시지 영역 - 스크롤 가능 */}
@@ -1276,6 +1400,18 @@ export default function LayeringPage() {
                     }}
                   />
 
+                  <button
+                    type="button"
+                    onClick={() => setSearchModalOpen(true)}
+                    className="w-[72px] h-[72px] flex items-center justify-center rounded-xl text-gray-400 hover:text-[#C5A55D] hover:bg-[#F5F2EA] transition-all"
+                    title="향수 검색"
+                    aria-label="향수 검색"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-7 h-7">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35m1.1-4.4a7.5 7.5 0 11-15 0 7.5 7.5 0 0115 0z" />
+                    </svg>
+                  </button>
+
                   <textarea
                     ref={textareaRef}
                     value={queryText}
@@ -1300,7 +1436,7 @@ export default function LayeringPage() {
                     aria-label="메시지 전송"
                   >
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 11.5L21 3l-6.8 18-3.6-7.2L3 11.5z" />
                     </svg>
                   </button>
                 </div>
@@ -1318,7 +1454,25 @@ export default function LayeringPage() {
         errorMessage={infoModalError}
         perfume={infoModalData}
         label={infoModalLabel ?? undefined}
+        archiveFeedbackStatus={archiveFeedbackStatus}
+        archiveFeedbackSaving={archiveFeedbackSaving}
+        archiveFeedbackLocked={archiveFeedbackLocked}
+        onArchiveFeedback={handleArchiveFeedback}
         onClose={() => setInfoModalOpen(false)}
+      />
+      <LayeringPerfumeSearchModal
+        open={searchModalOpen}
+        onClose={() => setSearchModalOpen(false)}
+        onSelect={(name) => {
+          const newText = queryText + (queryText ? " " : "") + name;
+          setQueryText(newText);
+          setTimeout(() => {
+            if (textareaRef.current) {
+              textareaRef.current.focus();
+              textareaRef.current.setSelectionRange(newText.length, newText.length);
+            }
+          }, 0);
+        }}
       />
     </div>
   );

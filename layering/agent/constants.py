@@ -91,6 +91,12 @@ KEYWORD_MAP: Dict[str, Sequence[str]] = {
     "매운": ["Spicy"],
     "톡쏘는": ["Spicy"],
     "자극적": ["Spicy"],
+    "무거운": ["Woody", "Resinous", "Oriental"],
+    "무겁게": ["Woody", "Resinous", "Oriental"],
+    "묵직": ["Woody", "Resinous", "Oriental"],
+    "딥": ["Resinous", "Oriental"],
+    "deep": ["Resinous", "Oriental"],
+    "heavy": ["Woody", "Resinous", "Oriental"],
 }
 
 KEYWORD_VECTOR_BOOST: float = 30.0

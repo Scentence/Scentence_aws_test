@@ -114,7 +114,7 @@ export default function ArchivesPage() {
                 body: JSON.stringify(payload)
             });
             fetchPerfumes();
-            setIsSearchOpen(false);
+            // setIsSearchOpen(false); <-모달 자동닫기
         } catch (e) { console.error("Add failed", e); }
     };
 

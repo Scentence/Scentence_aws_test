@@ -31,7 +31,8 @@ export default function PerfumeSearchModal({ memberId, onClose, onAdd, isKorean,
     const [query, setQuery] = useState("");
     const [results, setResults] = useState<SearchResult[]>([]);
     const [loading, setLoading] = useState(false);
-
+    // [추가] 등록된 향수 ID들을 추적하는 상태
+    const [addedIds, setAddedIds] = useState<Set<number>>(new Set());
     // Autocomplete States
     const [suggestions, setSuggestions] = useState<AutocompleteResult>({ brands: [], keywords: [] });
     const [showSuggestions, setShowSuggestions] = useState(false);
@@ -209,20 +210,36 @@ export default function PerfumeSearchModal({ memberId, onClose, onAdd, isKorean,
                                 </div>
 
                                 <div className="flex gap-2">
-                                    {/* 보유 (HAVE) */}
-                                    <button
-                                        onClick={() => onAdd(perfume, 'HAVE')}
-                                        className="px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100 hover:bg-indigo-600 hover:text-white transition text-[11px] font-bold whitespace-nowrap"
-                                    >
-                                        보유
-                                    </button>
-                                    {/* 위시 (RECOMMENDED) -> Rose */}
-                                    <button
-                                        onClick={() => onAdd(perfume, 'RECOMMENDED')}
-                                        className="px-3 py-1.5 rounded-lg bg-rose-50 text-rose-500 border border-rose-100 hover:bg-rose-500 hover:text-white transition text-[11px] font-bold whitespace-nowrap"
-                                    >
-                                        위시
-                                    </button>
+                                    {addedIds.has(perfume.perfume_id) ? (
+                                        // 등록 완료된 상태의 UI
+                                        <div className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-400 text-[11px] font-bold border border-gray-200 flex items-center gap-1">
+                                            <span>✓</span> 등록됨
+                                        </div>
+                                    ) : (
+                                        // 미등록 상태: 버튼 표시
+                                        <div className="flex gap-2">
+                                            {/* 보유 (HAVE) */}
+                                            <button
+                                                onClick={() => {
+                                                    onAdd(perfume, 'HAVE');
+                                                    setAddedIds(prev => new Set(prev).add(perfume.perfume_id));
+                                                }}
+                                                className="px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100 hover:bg-indigo-600 hover:text-white transition text-[11px] font-bold whitespace-nowrap"
+                                            >
+                                                보유
+                                            </button>
+                                            {/* 위시 (RECOMMENDED) */}
+                                            <button
+                                                onClick={() => {
+                                                    onAdd(perfume, 'RECOMMENDED');
+                                                    setAddedIds(prev => new Set(prev).add(perfume.perfume_id));
+                                                }}
+                                                className="px-3 py-1.5 rounded-lg bg-rose-50 text-rose-500 border border-rose-100 hover:bg-rose-500 hover:text-white transition text-[11px] font-bold whitespace-nowrap"
+                                            >
+                                                위시
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         ))

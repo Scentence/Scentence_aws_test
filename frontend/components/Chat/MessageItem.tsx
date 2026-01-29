@@ -12,7 +12,7 @@ export type Message = {
     isStreaming?: boolean;
 };
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const BACKEND_URL = "/api";
 
 // ✅ 1. 저장 버튼 컴포넌트 (카카오 세션 지원)
 const SaveButton = ({ id, name }: { id: string; name: string }) => {

@@ -41,10 +41,11 @@ services:
       - /app/.next               # [핵심 3] 빌드 캐시 충돌 방지
     env_file: .env
     environment:
-      - BACKEND_INTERNAL_URL=http://backend:8000
+      - BACKEND_INTERNAL_URL=${BACKEND_INTERNAL_URL:-http://backend:8000}
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
       - NEXT_PUBLIC_ADMIN_EMAILS=${NEXT_PUBLIC_ADMIN_EMAILS}
-      - LAYERING_API_URL=http://layering:8002
+      - LAYERING_API_URL=${LAYERING_API_URL:-http://layering:8002}
+      - SCENTMAP_INTERNAL_URL=${SCENTMAP_INTERNAL_URL:-http://scentmap:8001}
       - WATCHPACK_POLLING=true
       - NEXT_PUBLIC_ENABLE_AUTH=true
     depends_on:

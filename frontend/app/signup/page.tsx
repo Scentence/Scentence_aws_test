@@ -99,7 +99,7 @@ export default function SignupPage() {
   const [submitMessage, setSubmitMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [popupContent, setPopupContent] = useState<{ title: string; content: string; onAgree: () => void } | null>(null);
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "";
+  const apiBaseUrl = ""/api"";
 
   const allAgree = termsAgree && privacyAgree && emailAlarmAgree && snsAlarmAgree;
 

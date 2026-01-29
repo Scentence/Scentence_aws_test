@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 
-// 백엔드 주소 (기존 설정과 동일하게 맞추세요)
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const BACKEND_URL = "/api";
 
 interface ChatRoom {
     thread_id: string;

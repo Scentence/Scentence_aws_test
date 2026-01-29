@@ -11,7 +11,7 @@ import PerfumeDetailModal from "@/components/archives/PerfumeDetailModal";
 import HistoryModal from '@/components/archives/HistoryModal'; // <--- [추가]
 import ArchiveGlobeView from "@/components/archives/ArchiveGlobeView"; // <--- [추가]
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = "/api";
 // const MEMBER_ID = 1;
 
 interface MyPerfume {

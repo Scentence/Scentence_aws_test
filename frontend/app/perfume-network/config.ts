@@ -2,7 +2,7 @@
 
 // API 설정
 export const API_CONFIG = {
-  BASE_URL: process.env.NEXT_PUBLIC_SCENTMAP_API_URL ?? "http://localhost:8001",
+  BASE_URL: "/api/scentmap",
 } as const;
 
 // 그래프 설정

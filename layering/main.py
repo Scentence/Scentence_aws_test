@@ -77,10 +77,13 @@ DEBUG_ERROR_DETAILS = os.getenv("LAYERING_DEBUG_ERRORS", "").lower() in {
     "yes",
 }
 
-origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
+# CORS origins from environment variable
+cors_origins_env = os.getenv("LAYERING_CORS_ORIGINS", "")
+if cors_origins_env:
+    origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip() and origin.strip() != "*"]
+else:
+    # Default for local development
+    origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
 app.add_middleware(
     CORSMiddleware,

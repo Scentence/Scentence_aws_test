@@ -48,12 +48,7 @@ export default function MyPage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "";
-  const resolvedProfileImageUrl = profileImageUrl
-    ? profileImageUrl.startsWith("http")
-      ? profileImageUrl
-      : `${apiBaseUrl}${profileImageUrl}`
-    : "/default_profile.png";
+  const resolvedProfileImageUrl = profileImageUrl || "/default_profile.png";
   const showPasswordSection = profile?.sns_join_yn !== "Y";
 
   useEffect(() => {
@@ -103,7 +98,7 @@ export default function MyPage() {
 
     const loadProfile = async () => {
       try {
-        const response = await fetch(`${apiBaseUrl}/users/profile/${memberId}`, {
+        const response = await fetch(`/api/users/profile/${memberId}`, {
           signal: controller.signal,
         });
         if (!response.ok) {
@@ -138,7 +133,7 @@ export default function MyPage() {
     loadProfile();
 
     return () => controller.abort();
-  }, [apiBaseUrl, memberId]);
+  }, [memberId]);
 
   useEffect(() => {
     if (!nickname) {
@@ -157,7 +152,7 @@ export default function MyPage() {
       setNicknameStatus("checking");
       try {
         const response = await fetch(
-          `${apiBaseUrl}/users/nickname/check?nickname=${encodeURIComponent(nickname)}&member_id=${memberId}`
+          `/api/users/nickname/check?nickname=${encodeURIComponent(nickname)}&member_id=${memberId}`
         );
         const data = await response.json();
         setNicknameStatus(data.available ? "available" : "unavailable");
@@ -185,7 +180,7 @@ export default function MyPage() {
     setProfileMessage(null);
 
     try {
-      const response = await fetch(`${apiBaseUrl}/users/profile/${memberId}`, {
+      const response = await fetch(`/api/users/profile/${memberId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -243,7 +238,7 @@ export default function MyPage() {
     setPasswordMessage(null);
 
     try {
-      const response = await fetch(`${apiBaseUrl}/users/profile/${memberId}/password`, {
+      const response = await fetch(`/api/users/profile/${memberId}/password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -362,7 +357,7 @@ export default function MyPage() {
                   try {
                     const formData = new FormData();
                     formData.append("file", file);
-                    const response = await fetch(`${apiBaseUrl}/users/profile/${memberId}/image`, {
+                    const response = await fetch(`/api/users/profile/${memberId}/image`, {
                       method: "POST",
                       body: formData,
                     });
@@ -619,7 +614,7 @@ export default function MyPage() {
               if (!memberId) return;
               if (!window.confirm("탈퇴 요청일로부터 7일까지는 데이터가 유지됩니다. 정말 탈퇴처리하시겠습니까?")) return;
               try {
-                const response = await fetch(`${apiBaseUrl}/users/profile/${memberId}/withdraw`, {
+                const response = await fetch(`/api/users/profile/${memberId}/withdraw`, {
                   method: "POST",
                 });
                 if (!response.ok) {

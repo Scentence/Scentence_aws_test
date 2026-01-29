@@ -25,10 +25,13 @@ app.include_router(users.router)
 app.include_router(perfumes.router) # <--- ksu 추가
 app.include_router(archive.router) # <--- ksu 추가
 
-origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
+# CORS origins from environment variable
+cors_origins_env = os.getenv("BACKEND_CORS_ORIGINS", "")
+if cors_origins_env:
+    origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip() and origin.strip() != "*"]
+else:
+    # Default for local development
+    origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
 app.add_middleware(
     CORSMiddleware,

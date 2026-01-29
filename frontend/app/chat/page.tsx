@@ -9,10 +9,7 @@ import { Message } from "../../components/Chat/MessageItem";
 import Sidebar from "../../components/Chat/Sidebar";
 import { SavedPerfumesProvider } from "../../contexts/SavedPerfumesContext";
 
-// [수정] AWS와 로컬 모두 대응하기 위한 환경 변수 처리
-// .env에 NEXT_PUBLIC_API_URL이 있으면 그걸 쓰고, 없으면 로컬(localhost:8000)을 씁니다.
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const API_URL = `${BACKEND_URL}/chat`;
+const API_URL = "/api/chat";
 
 export default function ChatPage() {
     const { data: session } = useSession(); // 카카오 로그인 세션

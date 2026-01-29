@@ -35,20 +35,16 @@ export default function Sidebar({ isOpen, onClose, context }: SidebarProps) {
     useEffect(() => {
         if (!isOpen) return;
         if (typeof window === "undefined") return;
-        const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "";
         const memberId = session?.user?.id || localUser?.memberId;
         if (!memberId) {
             setProfileImageUrl(null);
             return;
         }
-        fetch(`${apiBaseUrl}/users/profile/${memberId}`)
+        fetch(`/api/users/profile/${memberId}`)
             .then((res) => (res.ok ? res.json() : null))
             .then((data) => {
                 if (data?.profile_image_url) {
-                    const url = data.profile_image_url.startsWith("http")
-                        ? data.profile_image_url
-                        : `${apiBaseUrl}${data.profile_image_url}`;
-                    setProfileImageUrl(url);
+                    setProfileImageUrl(data.profile_image_url);
                 } else {
                     setProfileImageUrl(null);
                 }

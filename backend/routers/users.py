@@ -313,7 +313,7 @@ def check_email(email: str):
     if not email:
         raise HTTPException(status_code=400, detail="Email is required")
 
-    conn = get_user_db_connection()
+    conn = get_member_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     try:
@@ -326,7 +326,8 @@ def check_email(email: str):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         cur.close()
-        conn.close()
+        if conn:
+            release_member_db_connection(conn)
 
 
 @router.post("/register")
@@ -363,8 +364,8 @@ def register_local_user(req: LocalRegisterRequest):
 
         sql_basic = """
             INSERT INTO tb_member_basic_m
-            (login_id, pwd_hash, join_channel, sns_join_yn, email_alarm_yn, sns_alarm_yn, role_type)
-            VALUES (%s, %s, 'LOCAL', 'N', %s, %s, %s)
+            (login_id, pwd_hash, join_channel, sns_join_yn, email_alarm_yn, sns_alarm_yn, role_type, user_mode)
+            VALUES (%s, %s, 'LOCAL', 'N', %s, %s, 'USER', %s)
             RETURNING member_id
         """
         cur.execute(sql_basic, (req.email, pwd_hash, req.email_alarm_yn, req.sns_alarm_yn, req.user_mode))

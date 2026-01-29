@@ -55,3 +55,4 @@ ngrok.yml
 
 .backup
 .backup/
+/backend/uploads

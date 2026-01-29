@@ -55,6 +55,7 @@ ngrok.yml
 
 .backup
 .backup/
+/backend/uploads
 
 .claude
 .claude/

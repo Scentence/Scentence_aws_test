@@ -13,7 +13,7 @@ import ArchiveGlobeView from "@/components/archives/ArchiveGlobeView";
 import NavSidebar from "@/components/common/sidebar"; // <--- 전역 내비게이션 추가
 import { SavedPerfumesProvider } from "@/contexts/SavedPerfumesContext";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = "/api";
 // const MEMBER_ID = 1;
 
 interface MyPerfume {

@@ -16,7 +16,7 @@ interface Props {
   selectedGenders: string[];
   setSelectedGenders: (genders: string[] | ((prev: string[]) => string[])) => void;
   setSelectedPerfumeId: (id: string | null) => void;
-  logActivity: (data: { accord_selected?: string; filter_changed?: string }) => void;
+  logActivity: (data: { accord_selected?: string; filter_changed?: string; selected_accords_override?: string[] }) => void;
   showMyPerfumesOnly: boolean;
   myPerfumeFilters: FilterOptions | null;
 }
@@ -81,11 +81,16 @@ export default function NMapFilters({
         {isAccordFilterOpen && (
           <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-10 gap-3">
             {effectiveFilterOptions.accords.map(acc => (
-              <button key={acc} onClick={() => { 
-                const newAccords = selectedAccords.includes(acc) ? selectedAccords.filter(a => a !== acc) : [...selectedAccords, acc];
-                setSelectedAccords(newAccords); 
-                setSelectedPerfumeId(null); 
-                if (!selectedAccords.includes(acc)) logActivity({ accord_selected: acc });
+              <button key={acc} onClick={() => {
+                const isAdding = !selectedAccords.includes(acc);
+                const newAccords = isAdding ? [...selectedAccords, acc] : selectedAccords.filter(a => a !== acc);
+                setSelectedAccords(newAccords);
+                setSelectedPerfumeId(null);
+                // 어코드 추가/제거 시 즉시 DB 업데이트 (업데이트된 배열 직접 전달)
+                logActivity({
+                  accord_selected: isAdding ? acc : undefined,
+                  selected_accords_override: newAccords
+                });
               }}
                 className={`relative aspect-square rounded-2xl border-2 transition-all ${selectedAccords.includes(acc) ? "border-[#C8A24D] bg-[#C8A24D]/10" : "border-[#E2D7C5] bg-white"}`}>
                 <div className="absolute inset-0 flex flex-col items-center justify-center p-2">

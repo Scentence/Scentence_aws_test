@@ -77,10 +77,13 @@ DEBUG_ERROR_DETAILS = os.getenv("LAYERING_DEBUG_ERRORS", "").lower() in {
     "yes",
 }
 
-origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
+# CORS origins from environment variable
+cors_origins_env = os.getenv("LAYERING_CORS_ORIGINS", "")
+if cors_origins_env:
+    origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip() and origin.strip() != "*"]
+else:
+    # Default for local development
+    origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
 app.add_middleware(
     CORSMiddleware,
@@ -230,6 +233,7 @@ def layering_recommend(payload: LayeringRequest) -> LayeringResponse:
             perfume_name=base_perfume.perfume_name,
             perfume_brand=base_perfume.perfume_brand,
             image_url=base_perfume.image_url,
+            concentration=base_perfume.concentration,
         ),
         base_perfume_id=payload.base_perfume_id,
         keywords=payload.keywords,
@@ -294,11 +298,15 @@ def layering_analyze(payload: UserQueryRequest) -> UserQueryResponse:
         brand_best_perfume = analysis.brand_best_perfume
         brand_best_score = analysis.brand_best_score
         brand_best_reason = analysis.brand_best_reason
+        similar_perfumes = analysis.similar_perfumes
         save_results = []
         skip_recommendation = False
 
         if analysis.recommended_perfume_info:
             note = "요청하신 향수 정보를 안내합니다."
+            skip_recommendation = True
+        elif similar_perfumes:
+            note = "비슷한 향수 후보를 정리해 드렸어요."
             skip_recommendation = True
         elif brand_best_perfume:
             note = "브랜드 내 레이어링 범용성이 가장 높은 향수입니다."
@@ -359,6 +367,7 @@ def layering_analyze(payload: UserQueryRequest) -> UserQueryResponse:
                     perfume_name=base.perfume_name,
                     perfume_brand=base.perfume_brand,
                     image_url=base.image_url,
+                    concentration=base.concentration,
                 )
             except KeyError:
                 base_perfume = None
@@ -414,6 +423,7 @@ def layering_analyze(payload: UserQueryRequest) -> UserQueryResponse:
         brand_best_perfume=brand_best_perfume,
         brand_best_score=brand_best_score,
         brand_best_reason=brand_best_reason,
+        similar_perfumes=similar_perfumes,
         clarification_prompt=clarification_prompt,
         clarification_options=clarification_options,
         note=note,

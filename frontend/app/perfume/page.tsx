@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 
 import type { PerfumeDetail, RatioItem } from "./types";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = "/api";
 
 const ACCORD_COLORS = [
   "#e91e63",

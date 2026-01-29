@@ -581,7 +581,7 @@ def check_email(email: str):
     if not email:
         raise HTTPException(status_code=400, detail="Email is required")
 
-    conn = get_user_db_connection()
+    conn = get_member_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     try:
@@ -594,7 +594,8 @@ def check_email(email: str):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         cur.close()
-        conn.close()
+        if conn:
+            release_member_db_connection(conn)
 
 
 @router.post("/register")
@@ -635,8 +636,8 @@ def register_local_user(req: LocalRegisterRequest):
 
         sql_basic = """
             INSERT INTO tb_member_basic_m
-            (login_id, pwd_hash, join_channel, sns_join_yn, email_alarm_yn, sns_alarm_yn, role_type)
-            VALUES (%s, %s, 'LOCAL', 'N', %s, %s, %s)
+            (login_id, pwd_hash, join_channel, sns_join_yn, email_alarm_yn, sns_alarm_yn, role_type, user_mode)
+            VALUES (%s, %s, 'LOCAL', 'N', %s, %s, 'USER', %s)
             RETURNING member_id
         """
         cur.execute(sql_basic, (req.email, pwd_hash, req.email_alarm_yn, req.sns_alarm_yn, req.user_mode))
@@ -1042,41 +1043,60 @@ def recover_account(member_id: int):
 
 
 @router.post("/profile/{member_id}/image")
-def upload_profile_image(member_id: int, file: UploadFile = File(...)):
-    if file.content_type not in ("image/png", "image/jpeg", "image/webp", "image/gif"):
-        raise HTTPException(status_code=400, detail="Unsupported image type")
+async def upload_profile_image(member_id: int, file: UploadFile = File(...)):
+    """
+    Upload profile image to S3 and save CDN URL to database.
 
+    Process:
+    1. Validate file type and size (max 5MB)
+    2. Convert to 256x256 WebP
+    3. Upload to S3 (profile_images/{uuid}.webp)
+    4. Save CDN URL to tb_member_profile_t
+    5. Delete old S3 object if it exists
+    """
+    from agent.image_utils import process_profile_image_upload
+    from agent.storage_s3 import upload_profile_webp, parse_key_from_cdn_url, delete_key
+
+    # Step 1: Validate and convert image
+    webp_data = await process_profile_image_upload(file)
+
+    # Step 2: Upload to S3 and get CDN URL
+    try:
+        s3_key, cdn_url = upload_profile_webp(webp_data)
+    except Exception as e:
+        import logging
+        logging.error(f"S3 upload failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to upload image to storage")
+
+    # Step 3: Update database
     conn = get_member_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     try:
         _ensure_profile_columns(cur)
+
+        # Verify member exists
         cur.execute(
             "SELECT member_id FROM tb_member_basic_m WHERE member_id=%s",
             (member_id,),
         )
         if not cur.fetchone():
+            # Clean up uploaded S3 object
+            try:
+                delete_key(s3_key)
+            except:
+                pass
             raise HTTPException(status_code=404, detail="Member not found")
 
+        # Get existing profile image URL
         cur.execute(
             "SELECT profile_image_url FROM tb_member_profile_t WHERE member_id=%s",
             (member_id,),
         )
         existing = cur.fetchone()
+        old_cdn_url = existing.get("profile_image_url") if existing else None
 
-        uploads_dir = os.path.join(os.getcwd(), "uploads")
-        os.makedirs(uploads_dir, exist_ok=True)
-        ext = os.path.splitext(file.filename or "")[1].lower()
-        if ext not in (".png", ".jpg", ".jpeg", ".webp", ".gif"):
-            ext = ".png"
-        filename = f"profile_{member_id}_{uuid.uuid4().hex}{ext}"
-        file_path = os.path.join(uploads_dir, filename)
-
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-
-        public_url = f"/uploads/{filename}"
-
+        # Update or insert profile image URL
         cur.execute(
             "SELECT member_id FROM tb_member_profile_t WHERE member_id=%s",
             (member_id,),
@@ -1088,7 +1108,7 @@ def upload_profile_image(member_id: int, file: UploadFile = File(...)):
                 SET profile_image_url=%s
                 WHERE member_id=%s
                 """,
-                (public_url, member_id),
+                (cdn_url, member_id),
             )
         else:
             cur.execute(
@@ -1096,28 +1116,40 @@ def upload_profile_image(member_id: int, file: UploadFile = File(...)):
                 INSERT INTO tb_member_profile_t (member_id, profile_image_url)
                 VALUES (%s, %s)
                 """,
-                (member_id, public_url),
+                (member_id, cdn_url),
             )
 
-        if existing and existing.get("profile_image_url"):
-            old_path = existing["profile_image_url"]
-            if old_path.startswith("/uploads/"):
-                old_file = os.path.join(uploads_dir, os.path.basename(old_path))
-                if os.path.exists(old_file):
-                    try:
-                        os.remove(old_file)
-                    except OSError:
-                        pass
-
         conn.commit()
-        return {"profile_image_url": public_url}
+
+        # Step 4: Best-effort cleanup of old S3 object
+        if old_cdn_url:
+            old_key = parse_key_from_cdn_url(old_cdn_url)
+            if old_key:
+                # Only delete if it's our profile image (starts with profile_images/)
+                try:
+                    delete_key(old_key)
+                except Exception as e:
+                    import logging
+                    logging.warning(f"Failed to delete old S3 object {old_key}: {e}")
+
+        return {"profile_image_url": cdn_url}
+
     except HTTPException:
         conn.rollback()
+        # Clean up uploaded S3 object on error
+        try:
+            delete_key(s3_key)
+        except:
+            pass
         raise
     except Exception as e:
         conn.rollback()
+        # Clean up uploaded S3 object on error
+        try:
+            delete_key(s3_key)
+        except:
+            pass
         import traceback
-
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
     finally:

@@ -27,7 +27,14 @@ def start_session(request: SessionStartRequest):
 def log_activity(session_id: str, request: ActivityLogRequest):
     """사용자 활동 기록 및 카드 생성 트리거 확인"""
     try:
-        update_session_activity(session_id, request.accord_selected, request.dwell_time, request.interaction_count)
+        update_session_activity(
+            session_id,
+            accord_selected=request.accord_selected,
+            selected_accords=request.selected_accords,
+            perfume_id=request.perfume_id,
+            dwell_time=request.dwell_time,
+            interaction_count=request.interaction_count
+        )
         trigger = check_card_trigger(session_id)
         return ActivityLogResponse(logged=True, card_trigger_ready=trigger["ready"], trigger_message=trigger.get("message"))
     except Exception as e:

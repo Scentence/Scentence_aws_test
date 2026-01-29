@@ -24,7 +24,7 @@ export default function AdminPage() {
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "";
+  const apiBaseUrl = "/api";
   useEffect(() => {
     if (session?.user?.id) {
       setMemberId(String(session.user.id));

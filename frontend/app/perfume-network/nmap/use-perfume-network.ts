@@ -79,14 +79,22 @@ export function usePerfumeNetwork(sessionUserId?: string | number) {
     }
   }, [sessionUserId]);
 
-  // 2. 세션 시작
+  // 2. 세션 시작 (sessionStorage로 유지)
   useEffect(() => {
     if (!memberIdReady) return;
-    
+
     const startScentSession = async () => {
       try {
+        // sessionStorage에서 기존 세션 확인
+        const storedSessionId = sessionStorage.getItem('scent_session_id');
+        if (storedSessionId) {
+          console.log("✅ 기존 세션 재사용:", storedSessionId);
+          setScentSessionId(storedSessionId);
+          return;
+        }
+
         // 로컬 스토리지에서 MBTI 정보 획득
-        let userMbti = "INFJ"; 
+        let userMbti = "INFJ";
         const storedAuth = localStorage.getItem("localAuth");
         if (storedAuth) {
           try {
@@ -95,24 +103,27 @@ export function usePerfumeNetwork(sessionUserId?: string | number) {
           } catch (e) {}
         }
 
+        // 새 세션 생성
         const response = await fetch(`${SESSION_API_BASE}/session/start`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
+          body: JSON.stringify({
             member_id: memberId ? Number(memberId) : null,
             mbti: userMbti
           }),
         });
-        
+
         if (response.ok) {
           const data = await response.json();
           setScentSessionId(data.session_id);
+          sessionStorage.setItem('scent_session_id', data.session_id);
+          console.log("✅ 새 세션 생성:", data.session_id);
         }
       } catch (e) {
         console.warn("⚠️ 세션 시작 실패:", e);
       }
     };
-    
+
     startScentSession();
   }, [memberIdReady, memberId]);
 
@@ -132,14 +143,16 @@ export function usePerfumeNetwork(sessionUserId?: string | number) {
   const logActivity = async (data: {
     accord_selected?: string;
     filter_changed?: string;
+    perfume_id?: number;
+    selected_accords_override?: string[];  // 업데이트된 어코드 배열을 직접 전달
   }) => {
     setInteractionCount(prev => prev + 1);
-    
+
     // 시각적 피드백: 클릭 시 콘솔에 로그 출력 (개발 확인용)
     console.log(`[Activity Log] Interaction #${interactionCount + 1}:`, data);
-    
+
     if (!scentSessionId) return;
-    
+
     try {
       const response = await fetch(
         `${SESSION_API_BASE}/session/${scentSessionId}/activity`,
@@ -148,7 +161,7 @@ export function usePerfumeNetwork(sessionUserId?: string | number) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             ...data,
-            selected_accords: selectedAccords, // 현재 선택된 모든 어코드 포함
+            selected_accords: data.selected_accords_override || selectedAccords, // 전달된 배열 우선 사용
             dwell_time: dwellTime,
             interaction_count: interactionCount + 1
           }),

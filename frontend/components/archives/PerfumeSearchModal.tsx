@@ -25,13 +25,22 @@ interface Props {
     onAdd: (perfume: SearchResult, status: string) => void;
     isKorean: boolean;
     onToggleLanguage: () => void;
+    existingIds?: number[]; // <--- 추가: 이미 등록된 ID 목록
 }
 
-export default function PerfumeSearchModal({ memberId, onClose, onAdd, isKorean, onToggleLanguage }: Props) {
+export default function PerfumeSearchModal({ memberId, onClose, onAdd, isKorean, onToggleLanguage, existingIds = [] }: Props) {
     const [query, setQuery] = useState("");
     const [results, setResults] = useState<SearchResult[]>([]);
     const [loading, setLoading] = useState(false);
+    // [수정] 초기값으로 existingIds를 사용하도록 변경
+    const [addedIds, setAddedIds] = useState<Set<number>>(new Set(existingIds));
 
+    // [추가] 부모로부터 받은 existingIds가 변경되면 동기화 (만약 모달 열린 채로 추가될 경우 대비)
+    useEffect(() => {
+        if (existingIds.length > 0) {
+            setAddedIds(new Set(existingIds));
+        }
+    }, [existingIds]);
     // Autocomplete States
     const [suggestions, setSuggestions] = useState<AutocompleteResult>({ brands: [], keywords: [] });
     const [showSuggestions, setShowSuggestions] = useState(false);
@@ -209,20 +218,36 @@ export default function PerfumeSearchModal({ memberId, onClose, onAdd, isKorean,
                                 </div>
 
                                 <div className="flex gap-2">
-                                    {/* 보유 (HAVE) */}
-                                    <button
-                                        onClick={() => onAdd(perfume, 'HAVE')}
-                                        className="px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100 hover:bg-indigo-600 hover:text-white transition text-[11px] font-bold whitespace-nowrap"
-                                    >
-                                        보유
-                                    </button>
-                                    {/* 위시 (RECOMMENDED) -> Rose */}
-                                    <button
-                                        onClick={() => onAdd(perfume, 'RECOMMENDED')}
-                                        className="px-3 py-1.5 rounded-lg bg-rose-50 text-rose-500 border border-rose-100 hover:bg-rose-500 hover:text-white transition text-[11px] font-bold whitespace-nowrap"
-                                    >
-                                        위시
-                                    </button>
+                                    {addedIds.has(perfume.perfume_id) ? (
+                                        // 등록 완료된 상태의 UI
+                                        <div className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-400 text-[11px] font-bold border border-gray-200 flex items-center gap-1">
+                                            <span>✓</span> 등록됨
+                                        </div>
+                                    ) : (
+                                        // 미등록 상태: 버튼 표시
+                                        <div className="flex gap-2">
+                                            {/* 보유 (HAVE) */}
+                                            <button
+                                                onClick={() => {
+                                                    onAdd(perfume, 'HAVE');
+                                                    setAddedIds(prev => new Set(prev).add(perfume.perfume_id));
+                                                }}
+                                                className="px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100 hover:bg-indigo-600 hover:text-white transition text-[11px] font-bold whitespace-nowrap"
+                                            >
+                                                보유
+                                            </button>
+                                            {/* 위시 (RECOMMENDED) */}
+                                            <button
+                                                onClick={() => {
+                                                    onAdd(perfume, 'RECOMMENDED');
+                                                    setAddedIds(prev => new Set(prev).add(perfume.perfume_id));
+                                                }}
+                                                className="px-3 py-1.5 rounded-lg bg-rose-50 text-rose-500 border border-rose-100 hover:bg-rose-500 hover:text-white transition text-[11px] font-bold whitespace-nowrap"
+                                            >
+                                                위시
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         ))

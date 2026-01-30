@@ -48,8 +48,16 @@ export default function MyPage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-  const resolvedProfileImageUrl = profileImageUrl || "/default_profile.png";
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "";
+  const resolvedProfileImageUrl = profileImageUrl
+    ? profileImageUrl.startsWith("http")
+      ? profileImageUrl
+      : `${apiBaseUrl}${profileImageUrl}`
+    : "/default_profile.png";
+  const checkedSnsJoinYn = profile?.sns_join_yn; // existing logic check
   const showPasswordSection = profile?.sns_join_yn !== "Y";
+
+  const displayName = session?.user?.name || profile?.nickname || profile?.name || profile?.email?.split('@')[0] || "User";
 
   useEffect(() => {
     if (session?.user?.id) {
@@ -267,25 +275,38 @@ export default function MyPage() {
 
   if (!memberId) {
     return (
-      <div className="min-h-screen bg-white text-black flex flex-col">
+      <div className="min-h-screen bg-[#FDFBF8] text-black flex flex-col">
         <Sidebar
           isOpen={isSidebarOpen}
           onClose={() => setIsSidebarOpen(false)}
           context="home"
         />
 
-        <header className="fixed top-0 left-0 w-screen flex items-center justify-between px-5 py-4 bg-[#E5E5E5] z-50">
+        {/* [STANDARD HEADER] 메인 페이지(app/page.tsx)와 100% 동일한 구조 및 디자인 적용 */}
+        <header className="fixed top-0 left-0 right-0 flex items-center justify-between px-5 py-4 bg-[#FDFBF8] border-b border-[#F0F0F0] z-50">
+          {/* 로고 영역: font-bold, text-black, tracking-tight (표준) */}
           <Link href="/" className="text-xl font-bold text-black tracking-tight">
             Scentence
           </Link>
-          <button onClick={() => setIsSidebarOpen(true)} className="p-1">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-[#555]">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-            </svg>
-          </button>
+
+          {/* 우측 상단 UI: 로그인 상태 및 사이드바 토글 버튼 (표준) */}
+          <div className="flex items-center gap-4">
+            {/* 비로그인 상태 UI (메인과 동일) */}
+            <div className="flex items-center gap-2 text-sm font-medium text-gray-400">
+              <Link href="/login" className="hover:text-black transition-colors">Sign in</Link>
+              <span className="text-gray-300">|</span>
+              <Link href="/signup" className="hover:text-black transition-colors">Sign up</Link>
+            </div>
+            {/* 마이페이지에서도 전역 내비게이션 사용을 위해 Sidebar 토글 버튼 유지 */}
+            <button onClick={() => setIsSidebarOpen(true)} className="p-1 rounded-md hover:bg-gray-100 transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-[#555]">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9h16.5m-16.5 6.75h16.5" />
+              </svg>
+            </button>
+          </div>
         </header>
 
-        <main className="flex-1 px-5 py-8 w-full max-w-md mx-auto pt-[72px]">
+        <main className="flex-1 px-5 py-8 w-full max-w-md mx-auto pt-[120px]">
           <h2 className="text-2xl font-bold mb-3">마이페이지</h2>
           <p className="text-sm text-[#666]">로그인이 필요합니다.</p>
         </main>
@@ -294,7 +315,7 @@ export default function MyPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white text-black flex flex-col">
+    <div className="min-h-screen bg-[#FDFBF8] text-black flex flex-col font-sans">
       <Sidebar
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
@@ -303,36 +324,57 @@ export default function MyPage() {
 
       {isSidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          className="fixed inset-0 bg-transparent z-40 md:hidden"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
 
-      <header className="fixed top-0 left-0 w-screen flex items-center justify-between px-5 py-4 bg-[#E5E5E5] z-50">
+      {/* [STANDARD HEADER] 메인 페이지(app/page.tsx)와 100% 동일한 구조 및 디자인 적용 */}
+      <header className="fixed top-0 left-0 right-0 flex items-center justify-between px-5 py-4 bg-[#FDFBF8] border-b border-[#F0F0F0] z-50">
+        {/* 로고 영역: font-bold, text-black, tracking-tight (표준) */}
         <Link href="/" className="text-xl font-bold text-black tracking-tight">
           Scentence
         </Link>
-        <button onClick={() => setIsSidebarOpen(true)} className="p-1">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-[#555]">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-          </svg>
-        </button>
+
+        {/* 우측 상단 UI: 로그인 상태 및 사이드바 토글 버튼 (표준) */}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-bold text-gray-800 hidden sm:block">
+              {displayName}님 반가워요!
+            </span>
+            {/* 프로필 이미지 Link: 표준 크기(w-9 h-9) 및 스타일 적용 */}
+            <Link href="/mypage" className="block w-9 h-9 rounded-full overflow-hidden border border-gray-100 shadow-sm hover:opacity-80 transition-opacity">
+              <img
+                src={resolvedProfileImageUrl}
+                alt="Profile"
+                className="w-full h-full object-cover"
+                onError={(e) => { e.currentTarget.src = "/default_profile.png"; }}
+              />
+            </Link>
+          </div>
+          {/* 글로벌 내비게이션 토글 버튼 (px-5 py-4 패딩 및 w-8 h-8 규격 준수) */}
+          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-1 rounded-md hover:bg-gray-100 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-[#555]">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9h16.5m-16.5 6.75h16.5" />
+            </svg>
+          </button>
+        </div>
       </header>
 
-      <main className="flex-1 px-5 py-8 w-full max-w-2xl mx-auto pt-[72px] space-y-10">
+      <main className="flex-1 px-5 py-8 w-full max-w-2xl mx-auto pt-[120px] space-y-10">
         <div>
-          <h2 className="text-2xl font-bold">마이페이지</h2>
-          <p className="text-sm text-[#666]">회원정보를 관리할 수 있어요.</p>
+          <h2 className="text-3xl font-bold tracking-tight">마이페이지</h2>
+          <p className="text-sm text-[#666] mt-2">회원정보를 관리할 수 있어요.</p>
           {loadMessage && (
             <p className="text-sm text-red-600 mt-2">{loadMessage}</p>
           )}
         </div>
 
-        <form className="space-y-5 rounded-2xl border border-[#EEE] p-6" onSubmit={handleProfileSubmit}>
-          <h3 className="text-lg font-semibold">프로필</h3>
+        <form className="space-y-6 rounded-2xl border border-gray-100 bg-white p-8 shadow-sm" onSubmit={handleProfileSubmit}>
+          <h3 className="text-xl font-bold">프로필</h3>
 
-          <div className="flex items-center gap-6">
-            <div className="w-28 h-28 rounded-full bg-[#F2F2F2] overflow-hidden">
+          <div className="flex items-center gap-8 py-2">
+            <div className="w-28 h-28 rounded-full bg-gray-50 overflow-hidden border border-gray-100 shadow-inner">
               <img
                 src={resolvedProfileImageUrl}
                 alt="프로필"
@@ -342,7 +384,7 @@ export default function MyPage() {
                 }}
               />
             </div>
-            <div className="flex-1 space-y-2">
+            <div className="flex-1 space-y-3">
               <input
                 id="profileImage"
                 name="profileImage"
@@ -380,19 +422,19 @@ export default function MyPage() {
               />
               <label
                 htmlFor="profileImage"
-                className="inline-flex items-center gap-2 rounded-xl border border-[#DDD] px-4 py-2 text-sm cursor-pointer hover:bg-[#F7F7F7]"
+                className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium cursor-pointer hover:bg-gray-50 transition-colors"
               >
-                <img src="/upload.svg" alt="업로드" className="w-4 h-4" />
-                이미지 업로드
+                <img src="/upload.svg" alt="업로드" className="w-4 h-4 opacity-60" />
+                이미지 변경
               </label>
               {isUploadingImage && (
-                <p className="text-xs text-[#666]">업로드 중...</p>
+                <p className="text-xs text-[#666] ml-2 animate-pulse">업로드 중...</p>
               )}
             </div>
           </div>
 
           <div className="space-y-2">
-            <label htmlFor="nickname" className="text-sm font-medium text-[#333]">닉네임</label>
+            <label htmlFor="nickname" className="text-sm font-bold text-gray-700">닉네임</label>
             <input
               id="nickname"
               name="nickname"
@@ -400,7 +442,7 @@ export default function MyPage() {
               value={nickname}
               onChange={(event) => setNickname(event.target.value)}
               placeholder="닉네임을 입력하세요"
-              className="w-full rounded-xl border border-[#DDD] px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/20"
+              className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10 transition-shadow"
             />
             {nicknameHint && (
               <p className={`text-xs ${nicknameStatus === "available" ? "text-green-600" : "text-red-600"}`}>
@@ -410,7 +452,7 @@ export default function MyPage() {
           </div>
 
           <div className="space-y-2">
-            <label htmlFor="subEmail" className="text-sm font-medium text-[#333]">보조 이메일</label>
+            <label htmlFor="subEmail" className="text-sm font-bold text-gray-700">보조 이메일</label>
             <input
               id="subEmail"
               name="subEmail"
@@ -418,138 +460,145 @@ export default function MyPage() {
               value={subEmail}
               onChange={(event) => setSubEmail(event.target.value)}
               placeholder="보조 이메일을 입력하세요"
-              className="w-full rounded-xl border border-[#DDD] px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/20"
+              className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10 transition-shadow"
             />
           </div>
 
-          <h3 className="text-lg font-semibold pt-4">기본정보 설정</h3>
+          <div className="pt-6 pb-2 border-t border-gray-100">
+            <h3 className="text-lg font-bold mb-4">기본정보</h3>
 
-          <div className="space-y-2">
-            <label htmlFor="name" className="text-sm font-medium text-[#333]">이름</label>
-            <input
-              id="name"
-              name="name"
-              type="text"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="이름을 입력하세요"
-              className="w-full rounded-xl border border-[#DDD] px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/20"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <span className="text-sm font-medium text-[#333]">성별</span>
-            <div className="flex gap-4">
-              <label className="flex items-center gap-2 text-sm">
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <label htmlFor="name" className="text-sm font-bold text-gray-700">이름</label>
                 <input
-                  type="radio"
-                  name="sex"
-                  value="M"
-                  checked={sex === "M"}
-                  onChange={() => setSex("M")}
-                  className="accent-black"
+                  id="name"
+                  name="name"
+                  type="text"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  placeholder="이름을 입력하세요"
+                  className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10 transition-shadow"
                 />
-                남자
+              </div>
+
+              <div className="space-y-2">
+                <span className="text-sm font-bold text-gray-700">성별</span>
+                <div className="flex gap-6 pt-1">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer group">
+                    <input
+                      type="radio"
+                      name="sex"
+                      value="M"
+                      checked={sex === "M"}
+                      onChange={() => setSex("M")}
+                      className="accent-black w-4 h-4"
+                    />
+                    <span className="group-hover:text-black text-gray-600">남자</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer group">
+                    <input
+                      type="radio"
+                      name="sex"
+                      value="F"
+                      checked={sex === "F"}
+                      onChange={() => setSex("F")}
+                      className="accent-black w-4 h-4"
+                    />
+                    <span className="group-hover:text-black text-gray-600">여자</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="phoneNo" className="text-sm font-bold text-gray-700">핸드폰번호</label>
+                <input
+                  id="phoneNo"
+                  name="phoneNo"
+                  type="text"
+                  value={phoneNo}
+                  onChange={(event) => setPhoneNo(event.target.value)}
+                  placeholder="핸드폰번호를 입력하세요"
+                  className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10 transition-shadow"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="address" className="text-sm font-bold text-gray-700">주소</label>
+                <input
+                  id="address"
+                  name="address"
+                  type="text"
+                  value={address}
+                  onChange={(event) => setAddress(event.target.value)}
+                  placeholder="주소를 입력하세요"
+                  className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10 transition-shadow"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="email" className="text-sm font-bold text-gray-700">이메일</label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="이메일을 입력하세요"
+                  className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10 transition-shadow"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-gray-100">
+            <h3 className="text-lg font-bold mb-4">알림설정</h3>
+
+            <div className="space-y-3">
+              <label className="flex items-center gap-3 text-sm cursor-pointer p-3 rounded-xl border border-gray-100 bg-gray-50 hover:bg-white hover:border-black/10 transition-all">
+                <input
+                  type="checkbox"
+                  className="accent-black w-4 h-4"
+                  checked={emailMarketing}
+                  onChange={(event) => setEmailMarketing(event.target.checked)}
+                />
+                <span className="font-medium">이메일 알림 수신</span>
               </label>
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex items-center gap-3 text-sm cursor-pointer p-3 rounded-xl border border-gray-100 bg-gray-50 hover:bg-white hover:border-black/10 transition-all">
                 <input
-                  type="radio"
-                  name="sex"
-                  value="F"
-                  checked={sex === "F"}
-                  onChange={() => setSex("F")}
-                  className="accent-black"
+                  type="checkbox"
+                  className="accent-black w-4 h-4"
+                  checked={snsMarketing}
+                  onChange={(event) => setSnsMarketing(event.target.checked)}
                 />
-                여자
+                <span className="font-medium">SNS 알림 수신</span>
               </label>
             </div>
           </div>
 
-          <div className="space-y-2">
-            <label htmlFor="phoneNo" className="text-sm font-medium text-[#333]">핸드폰번호</label>
-            <input
-              id="phoneNo"
-              name="phoneNo"
-              type="text"
-              value={phoneNo}
-              onChange={(event) => setPhoneNo(event.target.value)}
-              placeholder="핸드폰번호를 입력하세요"
-              className="w-full rounded-xl border border-[#DDD] px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/20"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label htmlFor="address" className="text-sm font-medium text-[#333]">주소</label>
-            <input
-              id="address"
-              name="address"
-              type="text"
-              value={address}
-              onChange={(event) => setAddress(event.target.value)}
-              placeholder="주소를 입력하세요"
-              className="w-full rounded-xl border border-[#DDD] px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/20"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label htmlFor="email" className="text-sm font-medium text-[#333]">이메일</label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="이메일을 입력하세요"
-              className="w-full rounded-xl border border-[#DDD] px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/20"
-            />
-          </div>
-
-          <h3 className="text-lg font-semibold pt-4">알림설정</h3>
-
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="accent-black"
-                checked={emailMarketing}
-                onChange={(event) => setEmailMarketing(event.target.checked)}
-              />
-              이메일 알림 수신
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="accent-black"
-                checked={snsMarketing}
-                onChange={(event) => setSnsMarketing(event.target.checked)}
-              />
-              SNS 알림 수신
-            </label>
-          </div>
-
           {profileMessage && (
-            <p className="text-xs text-red-600">{profileMessage}</p>
+            <div className="p-3 bg-gray-50 rounded-lg text-center">
+              <p className="text-sm font-medium text-black">{profileMessage}</p>
+            </div>
           )}
 
           <button
             type="submit"
             disabled={isSubmittingProfile}
-            className={`w-full py-3 rounded-xl font-bold transition ${
-              isSubmittingProfile
-                ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                : "bg-black text-white hover:opacity-90"
-            }`}
+            className={`w-full py-4 rounded-xl font-bold text-lg transition shadow-md ${isSubmittingProfile
+              ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+              : "bg-black text-white hover:bg-gray-900 active:scale-[0.99]"
+              }`}
           >
             저장하기
           </button>
         </form>
 
         {showPasswordSection && (
-          <form className="space-y-5 rounded-2xl border border-[#EEE] p-6" onSubmit={handlePasswordSubmit}>
-            <h3 className="text-lg font-semibold">비밀번호 변경</h3>
+          <form className="space-y-6 rounded-2xl border border-gray-100 bg-white p-8 shadow-sm" onSubmit={handlePasswordSubmit}>
+            <h3 className="text-xl font-bold">비밀번호 변경</h3>
 
             <div className="space-y-2">
-              <label htmlFor="currentPassword" className="text-sm font-medium text-[#333]">현재 비밀번호</label>
+              <label htmlFor="currentPassword" className="text-sm font-bold text-gray-700">현재 비밀번호</label>
               <input
                 id="currentPassword"
                 name="currentPassword"
@@ -557,12 +606,12 @@ export default function MyPage() {
                 value={currentPassword}
                 onChange={(event) => setCurrentPassword(event.target.value)}
                 placeholder="현재 비밀번호를 입력하세요"
-                className="w-full rounded-xl border border-[#DDD] px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/20"
+                className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10 transition-shadow"
               />
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="newPassword" className="text-sm font-medium text-[#333]">새 비밀번호</label>
+              <label htmlFor="newPassword" className="text-sm font-bold text-gray-700">새 비밀번호</label>
               <input
                 id="newPassword"
                 name="newPassword"
@@ -570,12 +619,12 @@ export default function MyPage() {
                 value={newPassword}
                 onChange={(event) => setNewPassword(event.target.value)}
                 placeholder="새 비밀번호를 입력하세요"
-                className="w-full rounded-xl border border-[#DDD] px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/20"
+                className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10 transition-shadow"
               />
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="confirmPassword" className="text-sm font-medium text-[#333]">새 비밀번호 확인</label>
+              <label htmlFor="confirmPassword" className="text-sm font-bold text-gray-700">새 비밀번호 확인</label>
               <input
                 id="confirmPassword"
                 name="confirmPassword"
@@ -583,31 +632,35 @@ export default function MyPage() {
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}
                 placeholder="새 비밀번호를 다시 입력하세요"
-                className="w-full rounded-xl border border-[#DDD] px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/20"
+                className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10 transition-shadow"
               />
             </div>
 
             {passwordMessage && (
-              <p className="text-xs text-red-600">{passwordMessage}</p>
+              <div className="p-3 bg-gray-50 rounded-lg text-center">
+                <p className="text-sm font-medium text-black">{passwordMessage}</p>
+              </div>
             )}
 
             <button
               type="submit"
               disabled={isSubmittingPassword}
-              className={`w-full py-3 rounded-xl font-bold transition ${
-                isSubmittingPassword
-                  ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                  : "bg-black text-white hover:opacity-90"
-              }`}
+              className={`w-full py-4 rounded-xl font-bold text-lg transition shadow-md ${isSubmittingPassword
+                ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                : "bg-black text-white hover:bg-gray-900 active:scale-[0.99]"
+                }`}
             >
               비밀번호 변경
             </button>
           </form>
         )}
 
-        <section className="space-y-4 rounded-2xl border border-[#F4DADA] p-6">
-          <h3 className="text-lg font-semibold text-red-600">회원탈퇴</h3>
-          <p className="text-sm text-[#666]">탈퇴 요청 시 계정은 탈퇴 요청 상태로 전환됩니다.</p>
+        <section className="space-y-4 rounded-2xl border border-red-100 bg-red-50/50 p-8">
+          <div>
+            <h3 className="text-lg font-bold text-red-600">회원탈퇴</h3>
+            <p className="text-sm text-red-400 mt-1">탈퇴 요청 시 계정은 탈퇴 요청 상태로 전환됩니다.</p>
+          </div>
+
           <button
             type="button"
             onClick={async () => {
@@ -631,7 +684,7 @@ export default function MyPage() {
                 setProfileMessage("탈퇴 요청에 실패했습니다.");
               }
             }}
-            className="w-full py-3 rounded-xl font-bold text-white bg-red-600 hover:bg-red-700 transition"
+            className="w-full py-3 rounded-xl font-bold text-red-600 border border-red-200 bg-white hover:bg-red-50 transition"
           >
             회원탈퇴
           </button>

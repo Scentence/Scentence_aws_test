@@ -39,6 +39,10 @@ export default function NMapView({ sessionUserId }: { sessionUserId?: string | n
     error, setError,
     logActivity,
     handleGenerateCard,
+    handleSaveCard,
+    isSavingCard,
+    saveSuccess,
+    setSaveSuccess,
     myPerfumeIds,
     myPerfumeFilters,
     interactionCount,
@@ -65,29 +69,53 @@ export default function NMapView({ sessionUserId }: { sessionUserId?: string | n
     }, 0);
   };
 
+  const isLoading = status === "전체 데이터 로드 중..." || status === "대기 중";
+
   return (
     <div className="min-h-screen bg-[#F5F2EA] text-[#1F1F1F] relative overflow-x-hidden">
       <div className={`max-w-7xl mx-auto px-6 py-12 space-y-12 transition-all duration-500 ${showCardModal && generatedCard ? 'mr-[440px]' : ''}`}>
         <NMapHeader />
 
-        <NMapFilters
-          filterOptions={filterOptions}
-          labelsData={labelsData}
-          selectedAccords={selectedAccords}
-          setSelectedAccords={setSelectedAccords}
-          selectedBrands={selectedBrands}
-          setSelectedBrands={setSelectedBrands}
-          selectedSeasons={selectedSeasons}
-          setSelectedSeasons={setSelectedSeasons}
-          selectedOccasions={selectedOccasions}
-          setSelectedOccasions={setSelectedOccasions}
-          selectedGenders={selectedGenders}
-          setSelectedGenders={setSelectedGenders}
-          setSelectedPerfumeId={setSelectedPerfumeId}
-          logActivity={logActivity}
-          showMyPerfumesOnly={showMyPerfumesOnly}
-          myPerfumeFilters={myPerfumeFilters}
-        />
+        {isLoading ? (
+          // 필터 영역 스켈레톤 로딩
+          <div className="space-y-6">
+            <div className="space-y-3">
+              <div className="h-5 w-48 bg-[#E6DDCF] rounded animate-pulse"></div>
+              <div className="flex flex-wrap gap-2">
+                {[...Array(8)].map((_, i) => (
+                  <div key={i} className="h-10 w-24 bg-[#E6DDCF] rounded-full animate-pulse"></div>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-3">
+              <div className="h-5 w-32 bg-[#E6DDCF] rounded animate-pulse"></div>
+              <div className="flex flex-wrap gap-2">
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className="h-10 w-28 bg-[#E6DDCF] rounded-full animate-pulse"></div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <NMapFilters
+            filterOptions={filterOptions}
+            labelsData={labelsData}
+            selectedAccords={selectedAccords}
+            setSelectedAccords={setSelectedAccords}
+            selectedBrands={selectedBrands}
+            setSelectedBrands={setSelectedBrands}
+            selectedSeasons={selectedSeasons}
+            setSelectedSeasons={setSelectedSeasons}
+            selectedOccasions={selectedOccasions}
+            setSelectedOccasions={setSelectedOccasions}
+            selectedGenders={selectedGenders}
+            setSelectedGenders={setSelectedGenders}
+            setSelectedPerfumeId={setSelectedPerfumeId}
+            logActivity={logActivity}
+            showMyPerfumesOnly={showMyPerfumesOnly}
+            myPerfumeFilters={myPerfumeFilters}
+          />
+        )}
 
         <div className="border-t-2 border-[#E6DDCF]"></div>
 
@@ -97,37 +125,71 @@ export default function NMapView({ sessionUserId }: { sessionUserId?: string | n
             <p className="text-xs text-[#7A6B57]">궁금한 향수를 클릭하면, 유사한 향수가 나타나요.</p>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
-            <NMapGraphSection
-              fullPayload={fullPayload}
-              labelsData={labelsData}
-              selectedPerfumeId={selectedPerfumeId}
-              setSelectedPerfumeId={setSelectedPerfumeId}
-              displayLimit={displayLimit}
-              setDisplayLimit={setDisplayLimit}
-              minSimilarity={minSimilarity}
-              setMinSimilarity={setMinSimilarity}
-              topAccords={topAccords}
-              selectedAccords={selectedAccords}
-              selectedBrands={selectedBrands}
-              selectedSeasons={selectedSeasons}
-              selectedOccasions={selectedOccasions}
-              selectedGenders={selectedGenders}
-              showMyPerfumesOnly={showMyPerfumesOnly}
-              myPerfumeIds={myPerfumeIds}
-              logActivity={logActivity}
-              memberId={memberId}
-              setShowLoginPrompt={setShowLoginPrompt}
-              setShowMyPerfumesOnly={setShowMyPerfumesOnly}
-            />
-            <NMapDetailPanel
-              selectedPerfumeId={selectedPerfumeId}
-              fullPayload={fullPayload}
-              labelsData={labelsData}
-              selectedAccords={selectedAccords}
-              logActivity={logActivity}
-            />
-          </div>
+          {isLoading ? (
+            // 지도 영역 로딩 UI
+            <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
+              <div className="bg-white rounded-3xl shadow-lg border border-[#E6DDCF] p-8 flex flex-col items-center justify-center min-h-[600px]">
+                <div className="relative w-24 h-24 mb-6">
+                  <div className="absolute inset-0 border-4 border-[#E6DDCF] rounded-full"></div>
+                  <div className="absolute inset-0 border-4 border-[#C8A24D] border-t-transparent rounded-full animate-spin"></div>
+                </div>
+                <h3 className="text-xl font-bold text-[#2E2B28] mb-2">향수 정보를 불러오는 중...</h3>
+                <p className="text-sm text-[#7A6B57] text-center max-w-md">
+                  수천 개의 향수 데이터를 분석하고 있어요.<br/>
+                  잠시만 기다려주세요! 🌸
+                </p>
+                <div className="mt-8 flex gap-2">
+                  <div className="w-2 h-2 bg-[#C8A24D] rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
+                  <div className="w-2 h-2 bg-[#C8A24D] rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                  <div className="w-2 h-2 bg-[#C8A24D] rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                </div>
+              </div>
+              <div className="bg-white rounded-3xl shadow-lg border border-[#E6DDCF] p-6 min-h-[600px]">
+                <div className="space-y-4 animate-pulse">
+                  <div className="h-6 w-3/4 bg-[#E6DDCF] rounded"></div>
+                  <div className="h-4 w-full bg-[#E6DDCF] rounded"></div>
+                  <div className="h-4 w-5/6 bg-[#E6DDCF] rounded"></div>
+                  <div className="h-48 w-full bg-[#E6DDCF] rounded-xl mt-6"></div>
+                  <div className="space-y-2 mt-6">
+                    <div className="h-4 w-full bg-[#E6DDCF] rounded"></div>
+                    <div className="h-4 w-4/5 bg-[#E6DDCF] rounded"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
+              <NMapGraphSection
+                fullPayload={fullPayload}
+                labelsData={labelsData}
+                selectedPerfumeId={selectedPerfumeId}
+                setSelectedPerfumeId={setSelectedPerfumeId}
+                displayLimit={displayLimit}
+                setDisplayLimit={setDisplayLimit}
+                minSimilarity={minSimilarity}
+                setMinSimilarity={setMinSimilarity}
+                topAccords={topAccords}
+                selectedAccords={selectedAccords}
+                selectedBrands={selectedBrands}
+                selectedSeasons={selectedSeasons}
+                selectedOccasions={selectedOccasions}
+                selectedGenders={selectedGenders}
+                showMyPerfumesOnly={showMyPerfumesOnly}
+                myPerfumeIds={myPerfumeIds}
+                logActivity={logActivity}
+                memberId={memberId}
+                setShowLoginPrompt={setShowLoginPrompt}
+                setShowMyPerfumesOnly={setShowMyPerfumesOnly}
+              />
+              <NMapDetailPanel
+                selectedPerfumeId={selectedPerfumeId}
+                fullPayload={fullPayload}
+                labelsData={labelsData}
+                selectedAccords={selectedAccords}
+                logActivity={logActivity}
+              />
+            </div>
+          )}
         </section>
       </div>
 
@@ -206,7 +268,32 @@ export default function NMapView({ sessionUserId }: { sessionUserId?: string | n
           userName={memberId ? "Member" : "Guest"}
           onClose={() => { setShowCardModal(false); setGeneratedCard(null); setGeneratedCardId(null); }}
           onAccordClick={handleAccordClick}
+          onSave={memberId ? handleSaveCard : undefined}
+          isSaving={isSavingCard}
         />
+      )}
+
+      {/* 카드 저장 성공 메시지 */}
+      {saveSuccess && (
+        <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50 max-w-md w-full mx-6 animate-fade-in">
+          <div className="bg-white border-2 border-green-300 rounded-2xl shadow-2xl p-6">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
+                <span className="text-2xl">✅</span>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-bold text-green-700 mb-1">카드 저장 완료!</h3>
+                <p className="text-sm text-green-600 leading-relaxed">나의 보관함에 성공적으로 저장되었습니다. 새로운 세션이 시작되었어요!</p>
+              </div>
+              <button
+                onClick={() => setSaveSuccess(false)}
+                className="flex-shrink-0 w-8 h-8 rounded-full hover:bg-green-100 flex items-center justify-center transition-colors"
+              >
+                <span className="text-xl">×</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

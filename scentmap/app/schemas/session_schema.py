@@ -76,6 +76,7 @@ class SaveCardResponse(BaseModel):
     success: bool
     message: str
     card_id: str
+    new_session_id: str  # 카드 저장 후 발급된 새 세션 ID
 
 
 class MyCardsResponse(BaseModel):

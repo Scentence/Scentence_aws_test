@@ -7,6 +7,8 @@ import AccordWheel from "@/components/layering/AccordWheel";
 import { BACKEND_ACCORDS, ACCORD_LABELS } from "@/lib/accords";
 import LayeringPerfumePicker from "@/components/layering/LayeringPerfumePicker"; // 내 향수 불러오기
 import PerfumeInfoModal from "@/components/layering/PerfumeInfoModal";
+import Sidebar from "@/components/common/sidebar";
+import LayeringPerfumeSearchModal from "@/components/layering/LayeringPerfumeSearchModal";
 
 // ==================== 타입 정의 ====================
 

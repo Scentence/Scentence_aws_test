@@ -33,6 +33,8 @@ export default function Sidebar({ isOpen, onClose, context }: SidebarProps) {
     const { data: session } = useSession();
     const [localUser, setLocalUser] = useState<{ memberId?: string | null; email?: string | null; nickname?: string | null; roleType?: string | null; isAdmin?: boolean } | null>(null);
     const [profileRoleType, setProfileRoleType] = useState<string | null>(null);
+    const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "";
 
     // [AUTH CHECK LOGIC] 기존 로직 유지
     useEffect(() => {

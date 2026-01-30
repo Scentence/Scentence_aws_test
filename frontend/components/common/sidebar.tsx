@@ -93,7 +93,11 @@ export default function Sidebar({ isOpen, onClose, context }: SidebarProps) {
 
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
-            if (ref && !ref.contains(event.target as Node)) {
+            // [수정] 햄버거 버튼(id="global-menu-toggle") 클릭 시에는 닫기 동작 수행 X (버튼 자체의 토글 기능과 충돌 방지)
+            const target = event.target as Element;
+            if (target.closest("#global-menu-toggle")) return;
+
+            if (ref && !ref.contains(target as Node)) {
                 onClose();
             }
         }

@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useSession } from "next-auth/react"; // [Login Check]
-import MaximumCounter from "@/components/perfume-wiki/MaximumCounter"; // (만약 사용하는 경우 유지, 없으면 삭제 가능하지만 기존 import 유지)
 import Sidebar from "@/components/common/sidebar";
 
 export default function LandingPage() {

@@ -21,20 +21,34 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("🚀 Scentmap 서비스 시작 중...")
-    init_db_schema()
+    
+    # DB 스키마 초기화 시도 (실패해도 계속 진행)
+    try:
+        db_initialized = init_db_schema()
+        if db_initialized:
+            logger.info("✅ DB 스키마 초기화 완료")
+        else:
+            logger.warning("⚠️ DB 연결 불가, 재시도 대기 중...")
+    except Exception as e:
+        logger.error(f"❌ DB 스키마 초기화 중 오류: {e}")
+    
+    # 라벨 데이터 로드 시도
     try:
         load_labels()
         logger.info("✅ 라벨 데이터 로드 완료")
     except Exception as e:
         logger.error(f"⚠️ 라벨 데이터 로드 실패: {e}")
+    
+    logger.info("✅ Scentmap 서비스 시작 완료 (헬스체크 준비됨)")
     yield
+    
     logger.info("🛑 Scentmap 서비스 종료 중...")
     close_pool()
 
 app = FastAPI(title="Scentmap Service", lifespan=lifespan)
 
 # CORS 설정
-origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
+origins = os.getenv("CORS_ORIGINS").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in origins],

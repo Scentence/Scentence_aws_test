@@ -11,16 +11,18 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 환경변수 로드
-DATABASE_URL = os.getenv("PERFUME_DATABASE_URL", "")
-RECOM_DATABASE_URL = os.getenv("RECOM_DATABASE_URL", "")
-
+# DB 설정
 DB_CONFIG = {
     "dbname": os.getenv("DB_NAME", "perfume_db"),
-    "user": os.getenv("DB_USER", "scentence"),
-    "password": os.getenv("DB_PASSWORD", "scentence"),
-    "host": os.getenv("DB_HOST", "host.docker.internal"),
-    "port": os.getenv("DB_PORT", "5435"),
+    "user": os.getenv("DB_USER", "postgres"),
+    "password": os.getenv("DB_PASSWORD"),
+    "host": os.getenv("DB_HOST"),
+    "port": os.getenv("DB_PORT"),
+}
+
+RECOM_DB_CONFIG = {
+    **DB_CONFIG,
+    "dbname": os.getenv("RECOM_DB_NAME", "recom_db"),
 }
 
 _pg_pool = None
@@ -31,45 +33,34 @@ def initialize_pool():
     global _pg_pool
     try:
         if not _pg_pool:
-            if DATABASE_URL:
-                logger.info(f"🔌 Connecting via PERFUME_DATABASE_URL...")
-                _pg_pool = psycopg2.pool.ThreadedConnectionPool(
-                    minconn=1, maxconn=10, dsn=DATABASE_URL
-                )
-            else:
-                logger.info(f"🔌 Connecting via DB_CONFIG...")
-                _pg_pool = psycopg2.pool.ThreadedConnectionPool(
-                    minconn=1, maxconn=10, **DB_CONFIG
-                )
+            logger.info(f"🔌 Connecting to perfume_db at {DB_CONFIG['host']}:{DB_CONFIG['port']}...")
+            _pg_pool = psycopg2.pool.ThreadedConnectionPool(
+                minconn=1, 
+                maxconn=10, 
+                connect_timeout=10,
+                **DB_CONFIG
+            )
             logger.info("✅ DB Connection Pool created successfully")
     except (Exception, psycopg2.DatabaseError) as error:
         logger.error(f"❌ Error while connecting to PostgreSQL: {error}")
+        _pg_pool = None  # 명시적으로 None 설정
 
 
 def initialize_recom_pool():
     global _recom_pg_pool
     try:
         if not _recom_pg_pool:
-            if RECOM_DATABASE_URL:
-                logger.info("🔌 Connecting via RECOM_DATABASE_URL...")
-                _recom_pg_pool = psycopg2.pool.ThreadedConnectionPool(
-                    minconn=1, maxconn=10, dsn=RECOM_DATABASE_URL
-                )
-            else:
-                recom_db_config = {
-                    "dbname": os.getenv("RECOM_DB_NAME", "recom_db"),
-                    "user": os.getenv("RECOM_DB_USER", DB_CONFIG["user"]),
-                    "password": os.getenv("RECOM_DB_PASSWORD", DB_CONFIG["password"]),
-                    "host": os.getenv("RECOM_DB_HOST", DB_CONFIG["host"]),
-                    "port": os.getenv("RECOM_DB_PORT", DB_CONFIG["port"]),
-                }
-                logger.info("🔌 Connecting via RECOM_DB_CONFIG...")
-                _recom_pg_pool = psycopg2.pool.ThreadedConnectionPool(
-                    minconn=1, maxconn=10, **recom_db_config
-                )
+            logger.info(f"🔌 Connecting to recom_db at {RECOM_DB_CONFIG['host']}:{RECOM_DB_CONFIG['port']}...")
+            _recom_pg_pool = psycopg2.pool.ThreadedConnectionPool(
+                minconn=1, 
+                maxconn=10, 
+                connect_timeout=10,
+                **RECOM_DB_CONFIG
+            )
             logger.info("✅ Recom DB Connection Pool created successfully")
     except (Exception, psycopg2.DatabaseError) as error:
         logger.error(f"❌ Error while connecting to Recom DB: {error}")
+        _recom_pg_pool = None  # 명시적으로 None 설정
 
 
 def close_pool():
@@ -91,6 +82,11 @@ def get_db_connection():
     global _pg_pool
     if not _pg_pool:
         initialize_pool()
+    
+    # pool 초기화 실패 시 예외 발생
+    if not _pg_pool:
+        raise Exception("Database connection pool is not initialized. Check DB_HOST and DB_PORT.")
+    
     conn = _pg_pool.getconn()
     try:
         yield conn
@@ -103,6 +99,11 @@ def get_recom_db_connection():
     global _recom_pg_pool
     if not _recom_pg_pool:
         initialize_recom_pool()
+    
+    # pool 초기화 실패 시 예외 발생
+    if not _recom_pg_pool:
+        raise Exception("Recom database connection pool is not initialized. Check DB_HOST and DB_PORT.")
+    
     conn = _recom_pg_pool.getconn()
     try:
         yield conn
@@ -134,11 +135,21 @@ def init_db_schema():
     CREATE INDEX IF NOT EXISTS idx_sim_score_b ON TB_PERFUME_SIMILARITY (score DESC, perfume_id_b);
     """
 
+    # 먼저 pool 초기화 시도
+    initialize_pool()
+    
+    # pool이 생성되지 않았으면 스킵
+    if not _pg_pool:
+        logger.warning("⚠️ DB connection pool not available, skipping schema initialization")
+        return False
+    
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(create_table_sql)
                 conn.commit()
         logger.info("✅ Database schema initialized (Table check complete).")
+        return True
     except Exception as e:
         logger.error(f"❌ Failed to initialize DB schema: {e}")
+        return False

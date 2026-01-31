@@ -8,13 +8,14 @@ import { ncardService, ScentCard } from '@/app/perfume-network/ncard/ncard-servi
 interface ActionButtonsProps {
   summary: NMapAnalysisSummary;
   isLoggedIn: boolean;
+  sessionId: string; // 세션 ID 추가
 }
 
 /**
  * 향수 맵(NMap) 하단 액션 버튼 컴포넌트
  * 향기 카드 생성 및 결과 공유 기능을 담당합니다.
  */
-const ActionButtons = ({ summary, isLoggedIn }: ActionButtonsProps) => {
+const ActionButtons = ({ summary, isLoggedIn, sessionId }: ActionButtonsProps) => {
   const router = useRouter();
   const [isGenerating, setIsGenerating] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -27,15 +28,8 @@ const ActionButtons = ({ summary, isLoggedIn }: ActionButtonsProps) => {
       setIsGenerating(true);
       setError(null);
       
-      // nmap의 summary 데이터를 ncard 형식으로 변환하여 저장
-      const card = await ncardService.generateAndSaveCard({
-        top_notes: summary.top_notes,
-        middle_notes: summary.middle_notes,
-        base_notes: summary.base_notes,
-        mood_keywords: summary.mood_keywords,
-        analysis_text: summary.analysis_text,
-        representative_color: summary.representative_color
-      });
+      // 세션 ID를 사용하여 카드 생성 (백엔드가 세션의 컨텍스트 정보를 사용)
+      const card = await ncardService.generateAndSaveCard(sessionId);
 
       setGeneratedCard(card);
       setShowModal(true);

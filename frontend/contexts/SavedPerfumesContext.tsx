@@ -38,7 +38,7 @@ export function SavedPerfumesProvider({
         }
 
         const data = await response.json();
-        const ids = new Set(data.map((p: any) => p.perfume_id));
+        const ids = new Set<number>(data.map((p: any) => Number(p.perfume_id)));
         setSavedPerfumeIds(ids);
       } catch (error) {
         console.error('Error fetching saved perfumes:', error);

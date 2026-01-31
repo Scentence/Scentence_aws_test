@@ -40,7 +40,7 @@ const PerfumeList = ({ nodes, selectedId, onSelect }: PerfumeListProps) => {
         {perfumes.length > 0 ? (
           perfumes.map((perfume) => {
             const isSelected = selectedId === perfume.id;
-            const status = getStatusBadge(perfume.register_status);
+            const status = getStatusBadge(perfume.register_status ?? undefined);
             const borderColor = getAccordColor(perfume.primary_accord);
 
             return (

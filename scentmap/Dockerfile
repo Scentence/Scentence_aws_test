@@ -5,11 +5,12 @@ FROM python:3.11-slim
 # 작업 디렉토리 설정
 WORKDIR /app
 
-# 시스템 패키지 업데이트 및 PostgreSQL 클라이언트 설치
+# 시스템 패키지 업데이트 및 PostgreSQL 클라이언트, curl 설치
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     libpq-dev \
-    gcc && \
+    gcc \
+    curl && \
     rm -rf /var/lib/apt/lists/*
 
 # 프로젝트 파일 복사 및 설치
@@ -18,9 +19,9 @@ COPY scentmap /app/scentmap
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir .
 
-# 헬스체크 설정
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8001/health')" || exit 1
+# 헬스체크 설정 (curl 사용)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8001/health || exit 1
 
 # 포트 노출
 EXPOSE 8001

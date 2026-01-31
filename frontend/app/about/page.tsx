@@ -25,7 +25,7 @@ const textRevealVariants = {
         opacity: 1,
         transition: {
             duration: 1.2,
-            ease: [0.16, 1, 0.3, 1] // Custom quint-like ease
+            ease: [0.16, 1, 0.3, 1] as const // Custom quint-like ease
         }
     }
 };
@@ -37,7 +37,7 @@ const fadeUpVariants = {
         y: 0,
         transition: {
             duration: 0.8,
-            ease: [0, 0, 0.58, 1] // easeOut cubic-bezier
+            ease: [0, 0, 0.58, 1] as const // easeOut cubic-bezier
         }
     }
 };

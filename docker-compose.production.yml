@@ -38,6 +38,11 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.production
+      args:
+        - BACKEND_INTERNAL_URL=http://backend:8000
+        - LAYERING_API_URL=http://layering:8002
+        - SCENTMAP_INTERNAL_URL=http://scentmap:8001
+        - NODE_ENV=production
     container_name: scentence-frontend
     dns:
       - 8.8.8.8

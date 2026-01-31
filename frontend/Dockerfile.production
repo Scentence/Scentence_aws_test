@@ -16,8 +16,19 @@ RUN npm ci
 
 COPY . .
 
+# 빌드 시점에 필요한 환경변수 ARG로 선언
+ARG BACKEND_INTERNAL_URL=http://backend:8000
+ARG LAYERING_API_URL=http://layering:8002
+ARG SCENTMAP_INTERNAL_URL=http://scentmap:8001
+ARG NODE_ENV=production
+
+# ARG를 ENV로 변환하여 빌드 시점에 사용 가능하도록 설정
+ENV BACKEND_INTERNAL_URL=${BACKEND_INTERNAL_URL}
+ENV LAYERING_API_URL=${LAYERING_API_URL}
+ENV SCENTMAP_INTERNAL_URL=${SCENTMAP_INTERNAL_URL}
+ENV NODE_ENV=${NODE_ENV}
+
 # Next.js 프로덕션 빌드
-# 환경변수는 런타임에 주입되므로 빌드시 필요하지 않음
 RUN npm run build
 
 # 프로덕션 실행 단계

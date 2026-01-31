@@ -8,9 +8,11 @@ interface MyPerfume {
     name_en?: string;
     name_kr?: string;
     brand: string;
-    brand_kr?: string; // 추가
+    brand_kr?: string;
     image_url: string | null;
+    register_status: string;
     status: string;
+    preference?: string;
 }
 
 interface Props {

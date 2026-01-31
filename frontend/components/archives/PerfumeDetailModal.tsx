@@ -7,10 +7,14 @@ interface MyPerfume {
     my_perfume_id: number;
     perfume_id: number;
     name: string;
+    name_en?: string;
+    name_kr?: string;
     brand: string;
+    brand_kr?: string;
     image_url: string | null;
+    register_status: string;
     status: string; // HAVE, HAD, RECOMMENDED
-    preference?: string; // 추가
+    preference?: string;
 }
 
 interface Props {

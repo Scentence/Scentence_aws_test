@@ -6,7 +6,7 @@ import MessageItem, { Message } from "./MessageItem";
 interface ChatListProps {
     messages: Message[];
     loading: boolean;
-    messagesEndRef: RefObject<HTMLDivElement>;
+    messagesEndRef: RefObject<HTMLDivElement | null>;
     scrollToBottom: () => void;
     statusLog?: string;
     userName?: string; // 사용자 이름 추가
@@ -86,7 +86,7 @@ const ChatList = ({ messages, loading, messagesEndRef, scrollToBottom, statusLog
             <div className="space-y-6">
                 {/* 기존 메시지 목록 렌더링 */}
                 {messages.map((msg, idx) => (
-                    <MessageItem key={idx} message={msg} onScroll={scrollToBottom} />
+                    <MessageItem key={idx} message={msg} />
                 ))}
 
                 {/* ✅ 실시간 진행 상태(statusLog) 표시 영역 */}

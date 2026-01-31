@@ -584,13 +584,14 @@ export default function LayeringPage() {
           },
         ]);
       } else if (payload.brand_best_perfume) {
-        const brandName = payload.brand_name ?? payload.brand_best_perfume.perfume_brand;
+        const brandBestPerfume = payload.brand_best_perfume;
+        const brandName = payload.brand_name ?? brandBestPerfume.perfume_brand;
         setChatMessages((prev) => [
           ...prev,
           {
             id: `brand-${Date.now()}`,
             type: "assistant",
-            content: `${brandName} 브랜드에서 어디에나 레이어링하기 좋은 향수를 골라드렸어요. 👈 왼쪽 카드에서 "${payload.brand_best_perfume.perfume_name}"을 확인해보세요.`,
+            content: `${brandName} 브랜드에서 어디에나 레이어링하기 좋은 향수를 골라드렸어요. 👈 왼쪽 카드에서 "${brandBestPerfume.perfume_name}"을 확인해보세요.`,
             timestamp: new Date(),
           },
         ]);

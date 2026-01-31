@@ -23,9 +23,10 @@ interface Props {
     onUpdateStatus: (id: number, status: string) => void;
     onDelete: (id: number, rating: number) => void;
     onUpdatePreference: (id: number, preference: string) => void;
+    isKorean: boolean;
 }
 
-export default function PerfumeDetailModal({ perfume, onClose, onUpdateStatus, onDelete, onUpdatePreference }: Props) {
+export default function PerfumeDetailModal({ perfume, onClose, onUpdateStatus, onDelete, onUpdatePreference, isKorean }: Props) {
     const [isDeleting, setIsDeleting] = useState(false);
 
     const handleDeleteWithRating = (rating: number) => {
@@ -66,8 +67,12 @@ export default function PerfumeDetailModal({ perfume, onClose, onUpdateStatus, o
                     {!isDeleting ? (
                         <>
                             <div className="mb-8">
-                                <p className="text-[#C5A55D] text-xs font-bold tracking-widest uppercase mb-2">{perfume.brand}</p>
-                                <h2 className="text-3xl font-bold text-[#222] leading-tight mb-4">{perfume.name}</h2>
+                                <p className="text-[#C5A55D] text-xs font-bold tracking-widest uppercase mb-2">
+                                    {isKorean ? (perfume.brand_kr || perfume.brand) : perfume.brand}
+                                </p>
+                                <h2 className="text-3xl font-bold text-[#222] leading-tight mb-4">
+                                    {isKorean ? (perfume.name_kr || perfume.name) : (perfume.name_en || perfume.name)}
+                                </h2>
                                 <div className="h-1 w-12 bg-[#C5A55D]/30 rounded-full"></div>
                             </div>
 

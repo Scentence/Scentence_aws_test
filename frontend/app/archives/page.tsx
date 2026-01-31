@@ -343,6 +343,7 @@ export default function ArchivesPage() {
                                             historyItems={collection.filter(p => p.register_status === 'HAD')}
                                             onClose={() => setIsHistoryOpen(false)}
                                             onSelect={(perfume) => setSelectedPerfume(perfume)}
+                                            isKorean={isKorean}
                                         />
                                     )}
                                 </div>

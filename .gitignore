@@ -1,75 +1,93 @@
-# [1. OS 및 개인 설정]
+# ==================================================
+# Scentence Project .gitignore
+# ==================================================
+
+# [1. 보안 - 절대 커밋 금지!]
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# [2. OS 및 에디터]
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 
-# [2. 보안 및 환경 변수 - 절대 공유 금지]
-.env*
-*.pem
-
-# [3. 파이썬 (Backend) - 핵심 보호]
+# [3. Python (Backend/Scentmap/Layering)]
 __pycache__/
 *.py[cod]
+*$py.class
 .venv/
 venv/
+env/
+ENV/
 dist/
 build/
 *.egg-info/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
 
-# [4. 노드/Next.js (Frontend) - 핵심 보호]
+# [4. Node.js (Frontend)]
 node_modules/
 .next/
 out/
-/coverage/   # 테스트 결과 리포트 제외
-.pnp*        # Yarn 사용 시 대비
-.yarn/*      # Yarn 사용 시 대비
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
 
-# [5. 배포 및 빌드 로그]
-.vercel
+# [5. 빌드 및 로그]
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
+.vercel
 
-# [6. AI 협업 지침서 - 사용자님 전용]
-.*
-.github/
-.gitkeep
-.gitignore
+# [6. 백업 및 임시 파일]
+.backup/
+.backups/
+*_backup/
+*_backups/
+_backups/
+*.backup
+*.bak
+*.tmp
+*.temp
 
+# [7. 업로드 파일]
+/backend/uploads
+/uploads
+
+# [8. 테스트 커버리지]
+/coverage/
+.nyc_output/
+
+# [9. AI 협업 관련 (개인 작업 공간)]
 .agent/
-.agent
-.plans(old)
+.plans/
 .plans(old)/
-
-docs/.idea_kugnus
+.plan/
+.claude/
+.sisyphus/
 docs/.idea_kugnus/
-
-docs/.plans_kugnus
 docs/.plans_kugnus/
 
+# [10. 기타]
 ngrok.yml
 
-.plan
-.plan/
-
-.backup
-.backup/
-/backend/uploads
-
-.claude
-.claude/
-
+# [11. 문서]
 docs/
-
-.sisyphus
-.sisyphus/
-
-.pytest_cache
-.pytest_cache/
-
-docs/
-
-docs/
-**/*.md
-# [.md 파일 관리]

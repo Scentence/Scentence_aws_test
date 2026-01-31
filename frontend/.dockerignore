@@ -1,0 +1,70 @@
+# ==================================================
+# Frontend Docker Build 제외 항목
+# ==================================================
+
+# 빌드 파일 (Docker에서 새로 빌드)
+node_modules
+.next
+out
+dist
+
+# Git 관련
+.git
+.gitignore
+
+# 환경 변수 (런타임에 주입)
+.env*
+!.env.example
+
+# 백업 및 임시 파일
+*_backup
+*_backups
+_backups
+.backup
+.backups
+*.backup
+*.bak
+*.tmp
+*.temp
+app/_backups
+app/*_backup*
+
+# 개발 전용
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# 테스트 및 커버리지
+coverage
+.nyc_output
+jest.config.*
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+__tests__
+**/__tests__
+
+# 문서
+README.md
+*.md
+!package.json
+
+# 로그 파일
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 기타
+.vercel
+.husky
+.prettierrc*
+.eslintrc*
+tsconfig.tsbuildinfo

@@ -70,6 +70,6 @@ docs/
 
 docs/
 
-# [.md 파일 관리]
+docs/
 **/*.md
-!README.md
+# [.md 파일 관리]
